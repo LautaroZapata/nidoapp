@@ -119,6 +119,12 @@ export default function PisoDetallePage() {
   const [videoError, setVideoError] = useState('')
   const [videoActivo, setVideoActivo] = useState<number | null>(null)
 
+  // Editar
+  const [editOpen, setEditOpen] = useState(false)
+  const [editForm, setEditForm] = useState({ titulo: '', url: '', precio: '', m2: '', zona: '', notas: '', direccion: '' })
+  const [editGuardando, setEditGuardando] = useState(false)
+  const [editError, setEditError] = useState('')
+
   useEffect(() => {
     if (!lightboxOpen || !piso) return
     const p = piso
@@ -255,6 +261,46 @@ export default function PisoDetallePage() {
     if (videoActivo !== null && videoActivo >= nuevosVideos.length) setVideoActivo(nuevosVideos.length > 0 ? nuevosVideos.length - 1 : null)
   }
 
+  function abrirEditar() {
+    if (!piso) return
+    setEditForm({
+      titulo: piso.titulo,
+      url: piso.url ?? '',
+      precio: piso.precio?.toString() ?? '',
+      m2: piso.m2?.toString() ?? '',
+      zona: piso.zona ?? '',
+      notas: piso.notas ?? '',
+      direccion: piso.direccion ?? '',
+    })
+    setEditError('')
+    setEditOpen(true)
+  }
+
+  async function handleEditar(e: React.FormEvent) {
+    e.preventDefault()
+    if (!piso) return
+    setEditGuardando(true)
+    setEditError('')
+    const supabase = createClient()
+    const { error } = await supabase.from('pisos').update({
+      titulo: editForm.titulo.trim(),
+      url: editForm.url.trim() || null,
+      precio: editForm.precio ? parseFloat(editForm.precio) : null,
+      m2: editForm.m2 ? parseFloat(editForm.m2) : null,
+      zona: editForm.zona.trim() || null,
+      notas: editForm.notas.trim() || null,
+      direccion: editForm.direccion.trim() || null,
+    }).eq('id', pisoId)
+    if (error) {
+      setEditError('Error al guardar los cambios')
+      setEditGuardando(false)
+      return
+    }
+    setEditOpen(false)
+    setEditGuardando(false)
+    cargarDatos()
+  }
+
   async function handleEliminarPiso() {
     if (!confirm('¿Eliminar este apto? Esta acción no se puede deshacer.')) return
     setEliminando(true)
@@ -320,6 +366,18 @@ export default function PisoDetallePage() {
         .d-back:hover { background: #FFF5EE; border-color: #C05A3B; color: #C05A3B; }
         .d-breadcrumb { font-size: 0.72rem; color: #B09080; font-weight: 400; }
         .d-breadcrumb span { color: #7A5040; font-weight: 600; }
+        .d-edit-btn {
+          display: flex; align-items: center; gap: 5px;
+          padding: 7px 13px;
+          background: rgba(192,90,59,0.07); border: 1px solid rgba(192,90,59,0.2);
+          color: #C05A3B; border-radius: 9px;
+          font-size: 0.75rem; font-weight: 600;
+          font-family: var(--font-body), 'Nunito', sans-serif;
+          cursor: pointer; transition: background 0.18s, border-color 0.18s;
+        }
+        .d-edit-btn:hover:not(:disabled) { background: rgba(192,90,59,0.14); border-color: rgba(192,90,59,0.35); }
+        .d-edit-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
         .d-del-btn {
           display: flex; align-items: center; gap: 5px;
           padding: 7px 13px;
@@ -333,6 +391,69 @@ export default function PisoDetallePage() {
           background: rgba(192,60,60,0.12); border-color: rgba(192,60,60,0.3);
         }
         .d-del-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+        /* Edit modal */
+        @keyframes d-modal { from { opacity: 0; transform: translateY(30px) scale(0.96); } to { opacity: 1; transform: translateY(0) scale(1); } }
+        @keyframes d-overlay { from { opacity: 0; } to { opacity: 1; } }
+
+        .d-modal-overlay {
+          position: fixed; inset: 0; background: rgba(42,26,14,0.5);
+          backdrop-filter: blur(6px); z-index: 100;
+          display: flex; align-items: flex-end; justify-content: center;
+          animation: d-overlay 0.2s ease both;
+        }
+        @media (min-width: 600px) { .d-modal-overlay { align-items: center; } }
+
+        .d-modal {
+          background: #FFF8F2; border: 1.5px solid #EAD8C8;
+          border-radius: 24px 24px 0 0; width: 100%; max-width: 520px;
+          padding: 2rem; animation: d-modal 0.3s cubic-bezier(0.22, 1, 0.36, 1) both;
+          max-height: 92vh; overflow-y: auto;
+          box-shadow: 0 -8px 40px rgba(150,80,40,0.12);
+        }
+        @media (min-width: 600px) { .d-modal { border-radius: 20px; box-shadow: 0 20px 60px rgba(150,80,40,0.15); } }
+
+        .d-modal-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.75rem; }
+        .d-modal-title { font-family: var(--font-serif), serif; font-size: 1.4rem; color: #2A1A0E; letter-spacing: -0.025em; font-weight: 600; }
+        .d-modal-close {
+          width: 32px; height: 32px; border-radius: 8px;
+          background: #F0E8DF; border: 1px solid #E0C8B8;
+          display: flex; align-items: center; justify-content: center;
+          cursor: pointer; color: #A07060; transition: background 0.18s, color 0.18s;
+        }
+        .d-modal-close:hover { background: #E8D0C0; color: #2A1A0E; }
+
+        .d-field { margin-bottom: 1rem; }
+        .d-label { display: block; font-size: 0.68rem; font-weight: 700; color: #8A6050; text-transform: uppercase; letter-spacing: 0.09em; margin-bottom: 5px; }
+        .d-label-hint { font-size: 0.68rem; color: #B09080; font-weight: 400; text-transform: none; letter-spacing: 0; margin-left: 5px; }
+        .d-input {
+          width: 100%; padding: 10px 13px;
+          background: white; border: 1.5px solid #E0C8B8;
+          border-radius: 10px; font-size: 0.88rem;
+          font-family: var(--font-body), 'Nunito', sans-serif;
+          color: #2A1A0E; outline: none;
+          transition: border-color 0.18s, box-shadow 0.18s;
+        }
+        .d-input::placeholder { color: #C8B0A0; }
+        .d-input:focus { border-color: #C05A3B; box-shadow: 0 0 0 3px rgba(192,90,59,0.12); }
+        .d-textarea { resize: vertical; min-height: 72px; }
+        .d-row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; }
+        .d-save-btn {
+          width: 100%; padding: 13px; background: #C05A3B; color: white; border: none;
+          border-radius: 13px; font-size: 0.9rem; font-weight: 700;
+          font-family: var(--font-body), 'Nunito', sans-serif; cursor: pointer;
+          transition: background 0.18s, transform 0.15s, box-shadow 0.18s;
+          display: flex; align-items: center; justify-content: center; gap: 8px;
+          margin-top: 0.5rem;
+        }
+        .d-save-btn:hover:not(:disabled) { background: #A04730; transform: translateY(-1.5px); box-shadow: 0 10px 28px rgba(192,90,59,0.35); }
+        .d-save-btn:disabled { opacity: 0.55; cursor: not-allowed; }
+        .d-form-error {
+          display: flex; align-items: center; gap: 7px;
+          padding: 10px 13px; background: #FFF0EC;
+          border: 1px solid #F0C0B0; border-radius: 9px;
+          color: #B03A1A; font-size: 0.81rem; margin-bottom: 1rem;
+        }
 
         /* Cards */
         .d-card {
@@ -789,12 +910,20 @@ export default function PisoDetallePage() {
                 Sala <span>{session.salaNombre}</span> &rsaquo; <span>Aptos</span>
               </div>
             </div>
-            <button className="d-del-btn" onClick={handleEliminarPiso} disabled={eliminando}>
-              <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-                <path d="M1.5 3h9M4 3V2h4v1M5 5.5v3M7 5.5v3M2 3l.75 7.5h6.5L10 3" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-              Eliminar
-            </button>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button className="d-edit-btn" onClick={abrirEditar} disabled={loading || !piso}>
+                <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                  <path d="M8.5 1.5l2 2L4 10H2v-2L8.5 1.5z" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+                Editar
+              </button>
+              <button className="d-del-btn" onClick={handleEliminarPiso} disabled={eliminando}>
+                <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                  <path d="M1.5 3h9M4 3V2h4v1M5 5.5v3M7 5.5v3M2 3l.75 7.5h6.5L10 3" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+                Eliminar
+              </button>
+            </div>
           </div>
 
           {/* ── LOADING ── */}
@@ -1273,6 +1402,76 @@ export default function PisoDetallePage() {
           )}
         </div>
       </div>
+
+      {/* ── MODAL EDITAR ── */}
+      {editOpen && (
+        <div className="d-modal-overlay" onClick={e => e.target === e.currentTarget && setEditOpen(false)}>
+          <div className="d-modal">
+            <div className="d-modal-header">
+              <div className="d-modal-title">Editar apto</div>
+              <button className="d-modal-close" onClick={() => setEditOpen(false)}>
+                <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                  <path d="M2 2l10 10M12 2L2 12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+                </svg>
+              </button>
+            </div>
+
+            <form onSubmit={handleEditar}>
+              <div className="d-field">
+                <label className="d-label">Nombre / Título *</label>
+                <input className="d-input" type="text" required autoFocus value={editForm.titulo} onChange={e => setEditForm(f => ({ ...f, titulo: e.target.value }))} placeholder="Ej: Apto Pocitos 3 dorm" />
+              </div>
+
+              <div className="d-field">
+                <label className="d-label">URL del anuncio</label>
+                <input className="d-input" type="url" value={editForm.url} onChange={e => setEditForm(f => ({ ...f, url: e.target.value }))} placeholder="https://infocasas.com.uy/..." />
+              </div>
+
+              <div className="d-row2">
+                <div className="d-field">
+                  <label className="d-label">Precio total/mes <span className="d-label-hint">($ UYU)</span></label>
+                  <input className="d-input" type="number" min={0} value={editForm.precio} onChange={e => setEditForm(f => ({ ...f, precio: e.target.value }))} placeholder="28000" />
+                </div>
+                <div className="d-field">
+                  <label className="d-label">Metros cuadrados</label>
+                  <input className="d-input" type="number" min={0} value={editForm.m2} onChange={e => setEditForm(f => ({ ...f, m2: e.target.value }))} placeholder="75" />
+                </div>
+              </div>
+
+              <div className="d-field">
+                <label className="d-label">Zona / Barrio</label>
+                <input className="d-input" type="text" value={editForm.zona} onChange={e => setEditForm(f => ({ ...f, zona: e.target.value }))} placeholder="Ej: Pocitos" />
+              </div>
+
+              <div className="d-field">
+                <label className="d-label">Dirección <span className="d-label-hint">— se muestra en el mapa</span></label>
+                <input className="d-input" type="text" value={editForm.direccion} onChange={e => setEditForm(f => ({ ...f, direccion: e.target.value }))} placeholder="Ej: Av. Brasil 2850, Pocitos, Montevideo" />
+              </div>
+
+              <div className="d-field">
+                <label className="d-label">Notas</label>
+                <textarea className="d-input d-textarea" value={editForm.notas} onChange={e => setEditForm(f => ({ ...f, notas: e.target.value }))} placeholder="Impresiones, pros, contras..." />
+              </div>
+
+              {editError && (
+                <div className="d-form-error">
+                  <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
+                    <circle cx="6.5" cy="6.5" r="5.5" stroke="currentColor" strokeWidth="1.3" />
+                    <path d="M6.5 4v3" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+                    <circle cx="6.5" cy="9" r="0.6" fill="currentColor" />
+                  </svg>
+                  {editError}
+                </div>
+              )}
+
+              <button type="submit" className="d-save-btn" disabled={editGuardando || !editForm.titulo.trim()}>
+                {editGuardando && <span className="d-spinner" />}
+                {editGuardando ? 'Guardando...' : 'Guardar cambios'}
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* ── LIGHTBOX ── */}
       {lightboxOpen && piso && piso.fotos?.length > 0 && (
