@@ -55,8 +55,8 @@ export default function PisoDetallePage() {
     if (!lightboxOpen || !piso) return
     function onKey(e: KeyboardEvent) {
       if (e.key === 'Escape') setLightboxOpen(false)
-      if (e.key === 'ArrowRight') setFotoActiva(i => (i + 1) % piso.fotos.length)
-      if (e.key === 'ArrowLeft') setFotoActiva(i => (i - 1 + piso.fotos.length) % piso.fotos.length)
+      if (e.key === 'ArrowRight') setFotoActiva(i => (i + 1) % piso!.fotos.length)
+      if (e.key === 'ArrowLeft') setFotoActiva(i => (i - 1 + piso!.fotos.length) % piso!.fotos.length)
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
