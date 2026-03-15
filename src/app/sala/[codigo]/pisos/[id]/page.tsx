@@ -53,10 +53,11 @@ export default function PisoDetallePage() {
 
   useEffect(() => {
     if (!lightboxOpen || !piso) return
+    const p = piso
     function onKey(e: KeyboardEvent) {
       if (e.key === 'Escape') setLightboxOpen(false)
-      if (e.key === 'ArrowRight') setFotoActiva(i => (i + 1) % piso!.fotos.length)
-      if (e.key === 'ArrowLeft') setFotoActiva(i => (i - 1 + piso!.fotos.length) % piso!.fotos.length)
+      if (e.key === 'ArrowRight') setFotoActiva(i => (i + 1) % p.fotos.length)
+      if (e.key === 'ArrowLeft') setFotoActiva(i => (i - 1 + p.fotos.length) % p.fotos.length)
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
