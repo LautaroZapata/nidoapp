@@ -1,0 +1,1851 @@
+'use client'
+
+import { useEffect, useState, useCallback, useMemo } from 'react'
+import { useParams, useRouter } from 'next/navigation'
+import { Fraunces, Nunito, DM_Mono } from 'next/font/google'
+import { createClient } from '@/lib/supabase'
+import { getSession } from '@/lib/session'
+import type { Gasto, Miembro, Pago } from '@/lib/types'
+
+const fraunces = Fraunces({
+  weight: 'variable',
+  subsets: ['latin'],
+  variable: '--font-serif',
+})
+const nunito = Nunito({
+  subsets: ['latin'],
+  weight: ['300', '400', '500', '600', '700'],
+  variable: '--font-body',
+})
+const dmMono = DM_Mono({
+  subsets: ['latin'],
+  weight: ['400', '500'],
+  variable: '--font-code',
+})
+
+type Categoria = Gasto['categoria']
+
+const CATEGORIA_META: Record<Categoria, { label: string; icon: string; color: string; bg: string; border: string }> = {
+  alquiler:    { label: 'Alquiler',    icon: '🏠', color: '#2E7D52', bg: 'rgba(46,125,82,0.1)',   border: 'rgba(46,125,82,0.25)'   },
+  suministros: { label: 'Suministros', icon: '💡', color: '#1E6BA8', bg: 'rgba(30,107,168,0.1)',  border: 'rgba(30,107,168,0.25)'  },
+  internet:    { label: 'Internet',    icon: '📶', color: '#7C3D9E', bg: 'rgba(124,61,158,0.1)',  border: 'rgba(124,61,158,0.25)'  },
+  comida:      { label: 'Comida',      icon: '🛒', color: '#B06820', bg: 'rgba(176,104,32,0.1)',  border: 'rgba(176,104,32,0.25)'  },
+  limpieza:    { label: 'Limpieza',    icon: '🧹', color: '#1E7D8A', bg: 'rgba(30,125,138,0.1)',  border: 'rgba(30,125,138,0.25)'  },
+  otro:        { label: 'Otro',        icon: '📦', color: '#7A6858', bg: 'rgba(122,104,88,0.1)',  border: 'rgba(122,104,88,0.25)'  },
+}
+
+function fmtUYU(n: number) {
+  return `$ ${n.toLocaleString('es-UY')}`
+}
+
+function isPersonal(g: Gasto): boolean {
+  if (!g.splits) return false
+  const nonZero = Object.values(g.splits as Record<string, number>).filter(v => v > 0)
+  return nonZero.length === 1
+}
+
+function personalOwner(g: Gasto): string | null {
+  if (!isPersonal(g)) return null
+  const entry = Object.entries(g.splits as Record<string, number>).find(([, v]) => v > 0)
+  return entry ? entry[0] : null
+}
+
+function fmtFecha(iso: string) {
+  const d = new Date(iso + 'T00:00:00')
+  return d.toLocaleDateString('es-UY', { day: 'numeric', month: 'short' })
+}
+
+// ─── Balance types ────────────────────────────────────────────────────────────
+type Debt = { from: string; to: string; amount: number }
+
+// ─── Desglose de deuda: qué gastos generan la deuda de `fromId` a `toId` ─────
+function desglosarDeuda(
+  fromId: string,
+  toId: string,
+  gastos: Gasto[],
+  miembros: Miembro[],
+): Array<{ gasto: Gasto; monto: number }> {
+  const n = miembros.length || 1
+  const result: Array<{ gasto: Gasto; monto: number }> = []
+  for (const g of gastos) {
+    if (g.tipo === 'fijo') continue
+    if (g.pagado_por !== toId) continue        // solo gastos que el acreedor pagó
+    let monto: number
+    if (!g.splits) {
+      monto = g.importe / n                    // partes iguales
+    } else {
+      monto = (g.splits as Record<string, number>)[fromId] ?? 0
+      if (monto <= 0) continue                 // no participa
+    }
+    result.push({ gasto: g, monto })
+  }
+  return result.sort((a, b) => b.gasto.fecha.localeCompare(a.gasto.fecha))
+}
+
+// Epsilon de 0.5 peso: absorbe residuos de redondeo al entero más cercano.
+// Sin esto, un pago de $500 contra una deuda de $499.67 deja un residuo de
+// -$0.33 que vuelve a aparecer como deuda fantasma.
+const EPS = 0.5
+
+function calcularBalance(
+  gastos: Gasto[],
+  miembros: Miembro[],
+  pagos: Pago[],
+): { debts: Debt[]; net: Record<string, number> } {
+  const net: Record<string, number> = {}
+  miembros.forEach(m => { net[m.id] = 0 })
+
+  gastos.forEach(g => {
+    if (g.tipo === 'fijo') return           // fijos no generan deuda
+    if (!g.pagado_por) return              // sin pagador, no hay deuda que distribuir
+
+    const payer = g.pagado_por
+
+    if (!g.splits) {
+      // ── Partes iguales: el pagador adelantó el total, todos le deben su cuota ──
+      const share = g.importe / (miembros.length || 1)
+      net[payer] = (net[payer] ?? 0) + g.importe - share
+      miembros.forEach(m => {
+        if (m.id !== payer) net[m.id] = (net[m.id] ?? 0) - share
+      })
+    } else {
+      // ── Personalizado: splits[id] = cuánto debe esa persona. 0 = no participa ──
+      const splits = g.splits as Record<string, number>
+      miembros.forEach(m => {
+        if (m.id === payer) return           // el pagador ya puso el dinero
+        const owes = splits[m.id] ?? 0
+        if (owes <= 0) return               // no participa en este gasto
+        net[m.id]  = (net[m.id]  ?? 0) - owes
+        net[payer] = (net[payer] ?? 0) + owes
+      })
+    }
+  })
+
+  // ── Pagos directos (liquidaciones) ──
+  pagos.forEach(p => {
+    net[p.de_id] = (net[p.de_id] ?? 0) + p.importe
+    net[p.a_id]  = (net[p.a_id]  ?? 0) - p.importe
+  })
+
+  // ── Derivar deudas mínimas ──
+  const debts: Debt[] = []
+  const debtors   = miembros.filter(m => net[m.id] < -EPS).map(m => ({ id: m.id, amt: net[m.id] }))
+  const creditors = miembros.filter(m => net[m.id] >  EPS).map(m => ({ id: m.id, amt: net[m.id] }))
+
+  let i = 0, j = 0
+  while (i < debtors.length && j < creditors.length) {
+    const d = debtors[i]
+    const c = creditors[j]
+    const transfer = Math.min(-d.amt, c.amt)
+    if (transfer > EPS) {
+      debts.push({ from: d.id, to: c.id, amount: Math.round(transfer) })
+    }
+    d.amt += transfer
+    c.amt -= transfer
+    if (Math.abs(d.amt) < EPS) i++
+    if (Math.abs(c.amt) < EPS) j++
+  }
+
+  return { debts, net }
+}
+
+const FORM_INIT = {
+  descripcion: '',
+  importe: '',
+  tipo: 'fijo' as 'fijo' | 'variable',
+  categoria: 'otro' as Categoria,
+  fecha: new Date().toISOString().slice(0, 10),
+  pagadoPor: null as string | null,
+}
+
+const MESES_ES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre']
+const DIAS_ES  = ['L','M','X','J','V','S','D']
+
+function CalendarioPicker({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const [open, setOpen] = useState(false)
+  const todayStr = new Date().toISOString().slice(0, 10)
+
+  const parseV = (iso: string) => {
+    const [y, m, d] = iso.split('-').map(Number)
+    return { y, m, d }
+  }
+
+  const init = value ? parseV(value) : parseV(todayStr)
+  const [viewY, setViewY] = useState(init.y)
+  const [viewM, setViewM] = useState(init.m)
+
+  const prevM = () => { if (viewM === 1) { setViewM(12); setViewY(y => y - 1) } else setViewM(m => m - 1) }
+  const nextM = () => { if (viewM === 12) { setViewM(1); setViewY(y => y + 1) } else setViewM(m => m + 1) }
+
+  const firstDow = (new Date(viewY, viewM - 1, 1).getDay() + 6) % 7 // Mon=0
+  const daysInM  = new Date(viewY, viewM, 0).getDate()
+  const cells: (number | null)[] = []
+  for (let i = 0; i < firstDow; i++) cells.push(null)
+  for (let d = 1; d <= daysInM; d++) cells.push(d)
+  while (cells.length % 7 !== 0) cells.push(null)
+
+  function pick(day: number) {
+    const iso = `${viewY}-${String(viewM).padStart(2,'0')}-${String(day).padStart(2,'0')}`
+    onChange(iso)
+    setOpen(false)
+  }
+
+  function fmtDisplay(iso: string) {
+    const d = new Date(iso + 'T00:00:00')
+    return d.toLocaleDateString('es-UY', { weekday: 'short', day: 'numeric', month: 'long' })
+  }
+
+  const navBtn: React.CSSProperties = {
+    width: 28, height: 28, borderRadius: 8,
+    background: '#F0E8DF', border: '1px solid #E0C8B8',
+    display: 'flex', alignItems: 'center', justifyContent: 'center',
+    cursor: 'pointer', color: '#6B4030',
+  }
+
+  return (
+    <div style={{ position: 'relative' }}>
+      <button
+        type="button"
+        onClick={() => setOpen(o => !o)}
+        style={{
+          width: '100%', padding: '10px 13px',
+          background: 'white', border: `1.5px solid ${open ? '#C05A3B' : '#E0C8B8'}`,
+          borderRadius: 10, fontSize: '0.88rem',
+          fontFamily: 'var(--font-body), Nunito, sans-serif',
+          color: value ? '#2A1A0E' : '#C8B0A0', outline: 'none',
+          cursor: 'pointer', textAlign: 'left',
+          display: 'flex', alignItems: 'center', gap: 8,
+          boxShadow: open ? '0 0 0 3px rgba(192,90,59,0.12)' : 'none',
+          transition: 'border-color 0.18s, box-shadow 0.18s',
+        }}
+      >
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" style={{ flexShrink: 0, color: '#C05A3B' }}>
+          <rect x="1" y="2.5" width="12" height="10.5" rx="2.5" stroke="currentColor" strokeWidth="1.3"/>
+          <path d="M1 6h12" stroke="currentColor" strokeWidth="1.3"/>
+          <path d="M4 1v3M10 1v3" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
+        </svg>
+        {value ? fmtDisplay(value) : 'Seleccionar fecha'}
+      </button>
+
+      {open && (
+        <>
+          <div style={{ position: 'fixed', inset: 0, zIndex: 200 }} onClick={() => setOpen(false)} />
+          <div style={{
+            position: 'absolute', top: 'calc(100% + 6px)', left: 0, right: 0,
+            zIndex: 201, background: '#FFF8F2', border: '1.5px solid #EAD8C8',
+            borderRadius: 16, padding: '0.9rem',
+            boxShadow: '0 8px 32px rgba(150,80,40,0.18)',
+          }}>
+            {/* Nav */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+              <button type="button" onClick={prevM} style={navBtn}>
+                <svg width="13" height="13" viewBox="0 0 13 13" fill="none"><path d="M8 10L4 6.5 8 3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+              </button>
+              <span style={{ fontFamily: 'var(--font-serif), serif', fontSize: '0.92rem', fontWeight: 600, color: '#2A1A0E', letterSpacing: '-0.01em' }}>
+                {MESES_ES[viewM - 1]} {viewY}
+              </span>
+              <button type="button" onClick={nextM} style={navBtn}>
+                <svg width="13" height="13" viewBox="0 0 13 13" fill="none"><path d="M5 3l4 3.5-4 3.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+              </button>
+            </div>
+
+            {/* Day names */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 2, marginBottom: 4 }}>
+              {DIAS_ES.map(d => (
+                <div key={d} style={{ textAlign: 'center', fontSize: '0.62rem', fontWeight: 700, color: '#B09080', padding: '3px 0' }}>{d}</div>
+              ))}
+            </div>
+
+            {/* Cells */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 2 }}>
+              {cells.map((day, i) => {
+                if (!day) return <div key={i} />
+                const iso = `${viewY}-${String(viewM).padStart(2,'0')}-${String(day).padStart(2,'0')}`
+                const isSel   = iso === value
+                const isToday = iso === todayStr
+                return (
+                  <button
+                    key={i}
+                    type="button"
+                    onClick={() => pick(day)}
+                    style={{
+                      width: '100%', aspectRatio: '1',
+                      borderRadius: 7,
+                      border: isToday && !isSel ? '1.5px solid rgba(192,90,59,0.5)' : '1.5px solid transparent',
+                      background: isSel ? '#C05A3B' : 'transparent',
+                      color: isSel ? 'white' : isToday ? '#C05A3B' : '#2A1A0E',
+                      fontSize: '0.78rem', fontWeight: isSel || isToday ? 700 : 400,
+                      cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      fontFamily: 'var(--font-body), Nunito, sans-serif',
+                      transition: 'all 0.1s',
+                    }}
+                    onMouseEnter={e => { if (!isSel) (e.currentTarget as HTMLElement).style.background = 'rgba(192,90,59,0.1)' }}
+                    onMouseLeave={e => { if (!isSel) (e.currentTarget as HTMLElement).style.background = 'transparent' }}
+                  >
+                    {day}
+                  </button>
+                )
+              })}
+            </div>
+
+            {/* Hoy shortcut */}
+            <div style={{ marginTop: 8, paddingTop: 8, borderTop: '1px solid #EAD8C8', display: 'flex', justifyContent: 'center' }}>
+              <button
+                type="button"
+                onClick={() => { onChange(todayStr); setOpen(false) }}
+                style={{
+                  fontSize: '0.73rem', fontWeight: 600, color: '#C05A3B',
+                  background: 'rgba(192,90,59,0.08)', border: '1px solid rgba(192,90,59,0.2)',
+                  padding: '4px 14px', borderRadius: 7, cursor: 'pointer',
+                  fontFamily: 'var(--font-body), Nunito, sans-serif',
+                }}
+              >
+                Hoy
+              </button>
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
+export default function GastosPage() {
+  const params = useParams()
+  const router = useRouter()
+  const codigo = params.codigo as string
+
+  const [session] = useState(getSession)
+  const [gastos, setGastos] = useState<Gasto[]>([])
+  const [miembros, setMiembros] = useState<Miembro[]>([])
+  const [pagos, setPagos] = useState<Pago[]>([])
+  const [loading, setLoading] = useState(true)
+  const [tab, setTab] = useState<'gastos' | 'balance'>('gastos')
+  const [modalOpen, setModalOpen] = useState(false)
+  const [guardando, setGuardando] = useState(false)
+  const [form, setForm] = useState(FORM_INIT)
+  const [formError, setFormError] = useState('')
+  const [realtimeOk, setRealtimeOk] = useState(false)
+  const [borrando, setBorrando] = useState<string | null>(null)
+  const [liquidando, setLiquidando] = useState<string | null>(null)
+  const [editandoId, setEditandoId] = useState<string | null>(null)
+  const [autoSplit, setAutoSplit] = useState(true)
+  const [customSplits, setCustomSplits] = useState<Record<string, string>>({})
+  const [fijosPag, setFijosPag] = useState(8)
+  const [variablesPag, setVariablesPag] = useState(10)
+  const [liquidandoPendiente, setLiquidandoPendiente] = useState<string | null>(null)
+  const [liquidandoNota, setLiquidandoNota] = useState('')
+  const [expandedDebt, setExpandedDebt] = useState<string | null>(null)
+
+
+  const cargarDatos = useCallback(async () => {
+    if (!session) return
+    const supabase = createClient()
+    setLoading(true)
+    const [{ data: gastosData }, { data: miembrosData }, { data: pagosData }] = await Promise.all([
+      supabase.from('gastos').select().eq('sala_id', session.salaId).order('fecha', { ascending: false }),
+      supabase.from('miembros').select().eq('sala_id', session.salaId),
+      supabase.from('pagos').select().eq('sala_id', session.salaId).order('creado_en', { ascending: false }),
+    ])
+    if (gastosData) setGastos(gastosData as Gasto[])
+    if (miembrosData) setMiembros(miembrosData as Miembro[])
+    if (pagosData) setPagos(pagosData as Pago[])
+    setLoading(false)
+  }, [session])
+
+  useEffect(() => {
+    if (!session || session.salaCodigo !== codigo) {
+      router.replace('/')
+      return
+    }
+    cargarDatos()
+  }, [codigo, session, cargarDatos, router])
+
+  useEffect(() => {
+    if (!session) return
+    const supabase = createClient()
+    const channel = supabase
+      .channel(`gastos_${session.salaId}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'gastos', filter: `sala_id=eq.${session.salaId}` },
+        (payload) => {
+          if (payload.eventType === 'INSERT') {
+            setGastos(prev => [payload.new as Gasto, ...prev])
+          } else if (payload.eventType === 'UPDATE') {
+            setGastos(prev => prev.map(g => g.id === payload.new.id ? payload.new as Gasto : g))
+          } else if (payload.eventType === 'DELETE') {
+            setGastos(prev => prev.filter(g => g.id !== payload.old.id))
+          }
+        }
+      )
+      .subscribe((status) => {
+        setRealtimeOk(status === 'SUBSCRIBED')
+      })
+    return () => { supabase.removeChannel(channel) }
+  }, [session])
+
+  const miId = session?.miembroId ?? ''
+
+  // Gastos que el usuario actual puede ver: todos los compartidos + los propios personales
+  const gastosVisibles = useMemo(
+    () => gastos.filter(g => !isPersonal(g) || personalOwner(g) === miId),
+    [gastos, miId]
+  )
+
+  // Gastos compartidos (sin personales) para balance — los personales no crean deudas entre personas
+  const gastosCompartidos = useMemo(
+    () => gastos.filter(g => !isPersonal(g)),
+    [gastos]
+  )
+
+  const stats = useMemo(() => {
+    const now = new Date()
+    const mes = gastosVisibles.filter(g => {
+      const d = new Date(g.fecha)
+      return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth()
+    })
+    const totalMes = mes.reduce((s, g) => s + g.importe, 0)
+    const miParte = mes.reduce((s, g) => {
+      const parte = g.splits?.[miId] !== undefined ? g.splits[miId] : g.importe / (miembros.length || 1)
+      return s + parte
+    }, 0)
+    return { totalMes, miParte }
+  }, [gastosVisibles, miId, miembros])
+
+  const { debts, net: balanceNet } = useMemo(
+    () => calcularBalance(gastosCompartidos, miembros, pagos),
+    [gastosCompartidos, miembros, pagos],
+  )
+
+  function abrirModal() {
+    setForm({ ...FORM_INIT, fecha: new Date().toISOString().slice(0, 10), pagadoPor: session?.miembroId ?? null })
+    setFormError('')
+    setAutoSplit(true)
+    setCustomSplits({})
+    setEditandoId(null)
+    setModalOpen(true)
+  }
+
+  function abrirEditar(g: Gasto) {
+    setForm({
+      descripcion: g.descripcion,
+      importe: g.importe.toString(),
+      tipo: g.tipo,
+      categoria: g.categoria,
+      fecha: g.fecha,
+      pagadoPor: g.pagado_por,
+    })
+    const hasSplits = g.splits && Object.keys(g.splits).length > 0
+    setAutoSplit(!hasSplits)
+    setCustomSplits(
+      hasSplits
+        ? Object.fromEntries(Object.entries(g.splits as Record<string, number>).map(([k, v]) => [k, v.toString()]))
+        : {}
+    )
+    setEditandoId(g.id)
+    setFormError('')
+    setModalOpen(true)
+  }
+
+  async function handleGuardar(e: React.FormEvent) {
+    e.preventDefault()
+    setFormError('')
+    if (!form.descripcion.trim()) { setFormError('La descripción es obligatoria'); return }
+    const importe = parseFloat(form.importe)
+    if (!importe || importe <= 0) { setFormError('El importe debe ser mayor a 0'); return }
+
+    let splits: Record<string, number> | null = null
+    let importeFinal = importe
+
+    if (autoSplit) {
+      splits = null
+    } else {
+      splits = Object.fromEntries(miembros.map(m => [m.id, parseFloat(customSplits[m.id] ?? '0') || 0]))
+      const sumaSplits = Object.values(splits).reduce((s, v) => s + v, 0)
+      if (sumaSplits <= 0) { setFormError('Ingresá al menos el monto de una persona'); return }
+      if (importe > 0 && Math.abs(sumaSplits - importe) > 0.5) {
+        setFormError(`Las partes suman ${fmtUYU(Math.round(sumaSplits))} pero el total es ${fmtUYU(importe)}`)
+        return
+      }
+      importeFinal = importe > 0 ? importe : sumaSplits
+    }
+
+    setGuardando(true)
+    const supabase = createClient()
+
+    const payload = {
+      descripcion: form.descripcion.trim(),
+      importe: importeFinal,
+      categoria: form.categoria,
+      tipo: form.tipo,
+      fecha: form.fecha,
+      splits,
+      pagado_por: form.tipo === 'variable' ? (form.pagadoPor ?? null) : null,
+    }
+
+    if (editandoId) {
+      const { error } = await supabase.from('gastos').update(payload).eq('id', editandoId)
+      if (error) { setFormError('Error al actualizar el gasto'); setGuardando(false); return }
+    } else {
+      const { error } = await supabase.from('gastos').insert({ sala_id: session!.salaId, ...payload })
+      if (error) { setFormError('Error al guardar el gasto'); setGuardando(false); return }
+    }
+
+    setModalOpen(false)
+    setGuardando(false)
+    setEditandoId(null)
+    cargarDatos()
+  }
+
+  async function handleLiquidar(d: Debt, nota: string) {
+    const key = `${d.from}-${d.to}`
+    setLiquidando(key)
+    setLiquidandoPendiente(null)
+    setLiquidandoNota('')
+    const { error } = await createClient()
+      .from('pagos')
+      .insert({
+        sala_id: session!.salaId,
+        de_id: d.from,
+        a_id: d.to,
+        importe: Math.round(d.amount),
+        nota: nota.trim() || null,
+      })
+    if (error) {
+      console.error('Error liquidar:', error)
+      alert(`Error: ${error.message}`)
+    } else {
+      await cargarDatos()
+    }
+    setLiquidando(null)
+  }
+
+  async function handleEliminarPago(id: string) {
+    await createClient().from('pagos').delete().eq('id', id)
+    await cargarDatos()
+  }
+
+  async function handleEliminar(id: string) {
+    setBorrando(id)
+    setGastos(prev => prev.filter(g => g.id !== id))
+    const supabase = createClient()
+    await supabase.from('gastos').delete().eq('id', id)
+    setBorrando(null)
+  }
+
+  if (!session) return null
+
+  return (
+    <div className={`${fraunces.variable} ${nunito.variable} ${dmMono.variable}`}>
+      <style>{`
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+        @keyframes g-spin    { to { transform: rotate(360deg); } }
+        @keyframes g-fadeup  { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes g-in      { from { opacity: 0; transform: translateX(-12px); } to { opacity: 1; transform: translateX(0); } }
+        @keyframes g-card    { from { opacity: 0; transform: translateY(14px) scale(0.98); } to { opacity: 1; transform: translateY(0) scale(1); } }
+        @keyframes g-modal   { from { opacity: 0; transform: translateY(30px) scale(0.96); } to { opacity: 1; transform: translateY(0) scale(1); } }
+        @keyframes g-overlay { from { opacity: 0; } to { opacity: 1; } }
+        @keyframes g-shimmer { from { background-position: -200% 0; } to { background-position: 200% 0; } }
+        @keyframes g-pulse   { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+
+        .g-root {
+          min-height: 100vh;
+          background: #FAF5EE;
+          font-family: var(--font-body), 'Nunito', system-ui, sans-serif;
+          color: #2A1A0E;
+          position: relative;
+        }
+        .g-bg {
+          position: fixed; inset: 0;
+          background-image: radial-gradient(circle at 10% 15%, rgba(192,90,59,0.05) 0%, transparent 40%),
+            radial-gradient(circle at 90% 85%, rgba(200,130,58,0.04) 0%, transparent 40%);
+          pointer-events: none; z-index: 0;
+        }
+        .g-wrap {
+          position: relative; z-index: 1;
+          max-width: 760px; margin: 0 auto; padding: 0 1.5rem 5rem;
+        }
+
+        /* ── Header ── */
+        .g-header {
+          display: flex; align-items: center; justify-content: space-between;
+          padding: 1.75rem 0 2rem;
+          animation: g-in 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+        }
+        .g-header-left { display: flex; align-items: center; gap: 1rem; }
+        .g-back {
+          width: 36px; height: 36px; border-radius: 10px;
+          background: white; border: 1.5px solid #E8D5C0;
+          display: flex; align-items: center; justify-content: center;
+          cursor: pointer; transition: background 0.18s, border-color 0.18s;
+          color: #A07060; box-shadow: 0 1px 4px rgba(150,80,40,0.08);
+        }
+        .g-back:hover { background: #FFF5EE; border-color: #C05A3B; color: #C05A3B; }
+        .g-header-title {
+          font-family: var(--font-serif), 'Georgia', serif;
+          font-size: 1.5rem; font-weight: 600; letter-spacing: -0.02em; color: #2A1A0E;
+        }
+        .g-header-sub { font-size: 0.75rem; color: #A07060; font-weight: 400; margin-top: 1px; }
+        .g-header-right { display: flex; align-items: center; gap: 10px; }
+        .g-realtime {
+          display: flex; align-items: center; gap: 6px;
+          padding: 5px 11px; border-radius: 999px;
+          background: rgba(46,125,82,0.1); border: 1px solid rgba(46,125,82,0.2);
+          font-size: 0.72rem; font-weight: 600; color: #2E7D52;
+        }
+        .g-realtime-dot {
+          width: 7px; height: 7px; border-radius: 50%; background: #2E7D52;
+          animation: g-pulse 1.8s ease-in-out infinite;
+        }
+        .g-avatar {
+          width: 34px; height: 34px; border-radius: 50%;
+          display: flex; align-items: center; justify-content: center;
+          font-size: 0.8rem; font-weight: 700; color: white;
+          border: 2px solid rgba(255,255,255,0.6);
+          box-shadow: 0 2px 8px rgba(0,0,0,0.12);
+        }
+        .g-add-btn {
+          display: flex; align-items: center; gap: 7px;
+          padding: 9px 18px; background: #C05A3B; color: white; border: none;
+          border-radius: 12px; font-size: 0.83rem; font-weight: 600;
+          font-family: var(--font-body), 'Nunito', sans-serif; cursor: pointer;
+          transition: background 0.18s, transform 0.15s, box-shadow 0.18s;
+        }
+        .g-add-btn:hover { background: #A04730; transform: translateY(-1px); box-shadow: 0 8px 24px rgba(192,90,59,0.35); }
+        .g-add-btn:active { transform: translateY(0); }
+
+        /* ── Stats bar ── */
+        .g-stats {
+          display: flex; gap: 1rem; margin-bottom: 1.75rem;
+          animation: g-fadeup 0.5s 0.1s cubic-bezier(0.22, 1, 0.36, 1) both;
+        }
+        .g-stat {
+          flex: 1; background: white;
+          border: 1.5px solid #EAD8C8;
+          border-radius: 16px; padding: 1rem 1.25rem;
+          display: flex; flex-direction: column; gap: 3px;
+          box-shadow: 0 2px 8px rgba(150,80,40,0.06);
+        }
+        .g-stat-val { font-family: var(--font-serif), serif; font-size: 1.5rem; color: #2A1A0E; letter-spacing: -0.03em; line-height: 1.2; font-weight: 600; }
+        .g-stat-label { font-size: 0.7rem; color: #B09080; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; }
+
+        /* ── Tabs ── */
+        .g-tabs {
+          display: flex; gap: 4px;
+          background: white; border: 1.5px solid #EAD8C8;
+          border-radius: 14px; padding: 4px;
+          margin-bottom: 1.5rem;
+          animation: g-fadeup 0.5s 0.15s cubic-bezier(0.22, 1, 0.36, 1) both;
+          width: fit-content;
+          box-shadow: 0 2px 8px rgba(150,80,40,0.06);
+        }
+        .g-tab {
+          padding: 7px 22px; border-radius: 10px; border: none; cursor: pointer;
+          font-size: 0.84rem; font-weight: 600;
+          font-family: var(--font-body), 'Nunito', sans-serif;
+          transition: all 0.18s; color: #A07060;
+          background: transparent;
+        }
+        .g-tab.active { background: #C05A3B; color: white; box-shadow: 0 2px 10px rgba(192,90,59,0.3); }
+        .g-tab:not(.active):hover { color: #2A1A0E; background: #FAF0E8; }
+
+        /* ── Skeleton ── */
+        .g-skeleton {
+          background: linear-gradient(90deg, #F0E8DF 25%, #E8DDD4 50%, #F0E8DF 75%);
+          background-size: 200% 100%; animation: g-shimmer 1.5s infinite; border-radius: 10px;
+        }
+
+        /* ── Empty state ── */
+        .g-empty { text-align: center; padding: 5rem 2rem; animation: g-fadeup 0.5s 0.2s cubic-bezier(0.22, 1, 0.36, 1) both; }
+        .g-empty-icon {
+          width: 72px; height: 72px; margin: 0 auto 1.5rem; border-radius: 20px;
+          background: rgba(192,90,59,0.1); border: 1.5px solid rgba(192,90,59,0.2);
+          display: flex; align-items: center; justify-content: center; font-size: 2rem;
+        }
+        .g-empty-title { font-family: var(--font-serif), serif; font-size: 1.6rem; color: #2A1A0E; letter-spacing: -0.025em; margin-bottom: 0.5rem; font-weight: 600; }
+        .g-empty-sub { font-size: 0.85rem; color: #A07060; font-weight: 400; line-height: 1.6; }
+
+        /* ── Gasto list ── */
+        .g-list { display: flex; flex-direction: column; gap: 8px; }
+        .g-item {
+          background: white; border: 1.5px solid #EAD8C8;
+          border-radius: 16px; padding: 1rem 1.2rem;
+          display: flex; align-items: center; gap: 1rem;
+          animation: g-card 0.4s cubic-bezier(0.22, 1, 0.36, 1) both;
+          transition: background 0.18s, border-color 0.18s, box-shadow 0.18s;
+          box-shadow: 0 2px 8px rgba(150,80,40,0.05);
+        }
+        .g-item:hover { background: #FFFAF5; border-color: #D4B8A0; box-shadow: 0 4px 14px rgba(150,80,40,0.09); }
+        .g-cat-badge {
+          width: 42px; height: 42px; border-radius: 12px; flex-shrink: 0;
+          display: flex; align-items: center; justify-content: center; font-size: 1.2rem;
+          border: 1.5px solid;
+        }
+        .g-item-body { flex: 1; min-width: 0; }
+        .g-item-top { display: flex; align-items: center; gap: 7px; margin-bottom: 3px; }
+        .g-item-desc { font-size: 0.9rem; font-weight: 600; color: #2A1A0E; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .g-tipo-badge {
+          padding: 1px 7px; border-radius: 999px; font-size: 0.65rem; font-weight: 700;
+          text-transform: uppercase; letter-spacing: 0.07em; flex-shrink: 0;
+        }
+        .g-tipo-fijo    { background: rgba(90,136,105,0.12); color: #3A7050; border: 1px solid rgba(90,136,105,0.25); }
+        .g-tipo-variable{ background: rgba(176,104,32,0.12); color: #9A5A10; border: 1px solid rgba(176,104,32,0.22); }
+        .g-item-meta { font-size: 0.75rem; color: #B09080; font-weight: 400; }
+        .g-item-end { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+        .g-item-right { text-align: right; flex-shrink: 0; }
+        .g-item-importe { font-family: var(--font-code), monospace; font-size: 1rem; font-weight: 500; color: #2A1A0E; }
+        .g-item-parte { font-size: 0.72rem; color: #A07060; margin-top: 2px; }
+        .g-item-btns { display: flex; gap: 2px; }
+        .g-del-btn {
+          width: 30px; height: 30px; border-radius: 8px; flex-shrink: 0;
+          background: transparent; border: 1px solid transparent;
+          display: flex; align-items: center; justify-content: center;
+          cursor: pointer; color: #D0B8A8;
+          transition: background 0.18s, border-color 0.18s, color 0.18s;
+        }
+        .g-del-btn:hover { background: rgba(180,50,50,0.08); border-color: rgba(180,50,50,0.2); color: #C04040; }
+        .g-del-btn:disabled { opacity: 0.3; pointer-events: none; }
+
+        .g-edit-btn {
+          width: 30px; height: 30px; border-radius: 8px; flex-shrink: 0;
+          background: transparent; border: 1px solid transparent;
+          display: flex; align-items: center; justify-content: center;
+          cursor: pointer; color: #D0B8A8;
+          transition: background 0.18s, border-color 0.18s, color 0.18s;
+        }
+        .g-edit-btn:hover { background: rgba(192,90,59,0.08); border-color: rgba(192,90,59,0.2); color: #C05A3B; }
+
+        .g-section-label {
+          font-size: 0.68rem; font-weight: 700; color: #B09080;
+          text-transform: uppercase; letter-spacing: 0.09em;
+          padding: 4px 2px; margin-bottom: 4px; margin-top: 4px;
+          display: flex; align-items: center; gap: 6px;
+        }
+        .g-section-label::after {
+          content: ''; flex: 1; height: 1px; background: #EAD8C8;
+        }
+        .g-item-fijo {
+          border-left: 3px solid rgba(90,136,105,0.4);
+        }
+
+        /* ── Balance tab ── */
+        .g-balance-list { display: flex; flex-direction: column; gap: 10px; }
+        .g-debt-card {
+          background: white; border: 1.5px solid #EAD8C8;
+          border-radius: 18px; padding: 1.1rem 1.4rem;
+          display: flex; align-items: center; gap: 1rem;
+          animation: g-card 0.4s cubic-bezier(0.22, 1, 0.36, 1) both;
+          box-shadow: 0 2px 8px rgba(150,80,40,0.06);
+        }
+        .g-debt-avatars { display: flex; align-items: center; gap: 6px; }
+        .g-debt-av {
+          width: 36px; height: 36px; border-radius: 50%; flex-shrink: 0;
+          display: flex; align-items: center; justify-content: center;
+          font-size: 0.78rem; font-weight: 700; color: white;
+          box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+        }
+        .g-debt-arrow { color: #C0A898; font-size: 1rem; }
+        .g-debt-body { flex: 1; }
+        .g-debt-text { font-size: 0.88rem; color: #6B4030; line-height: 1.4; }
+        .g-debt-text strong { color: #2A1A0E; font-weight: 700; }
+        .g-debt-amount { font-family: var(--font-code), monospace; font-size: 1.15rem; font-weight: 500; color: #C05A3B; margin-top: 2px; }
+
+        .g-liquidar-btn {
+          display: flex; align-items: center; gap: 5px;
+          padding: 6px 12px; border-radius: 8px; border: 1.5px solid rgba(90,136,105,0.3);
+          background: rgba(90,136,105,0.08); color: #3A7050;
+          font-size: 0.75rem; font-weight: 700;
+          font-family: var(--font-body), 'Nunito', sans-serif;
+          cursor: pointer; transition: all 0.18s; flex-shrink: 0;
+        }
+        .g-liquidar-btn:hover { background: rgba(90,136,105,0.16); border-color: rgba(90,136,105,0.5); transform: translateY(-1px); }
+        .g-liquidar-btn:disabled { opacity: 0.4; pointer-events: none; }
+
+        .g-debt-card { flex-direction: column; align-items: stretch; }
+        .g-debt-card-top { display: flex; align-items: center; gap: 1rem; }
+        .g-nota-form {
+          margin-top: 10px; padding-top: 10px; border-top: 1px solid #EAD8C8;
+          display: flex; flex-direction: column; gap: 8px;
+          animation: g-fadeup 0.2s cubic-bezier(0.22,1,0.36,1) both;
+        }
+        .g-nota-input {
+          width: 100%; padding: 8px 11px;
+          background: #F8F2EC; border: 1.5px solid #E0C8B8;
+          border-radius: 9px; font-size: 0.83rem;
+          font-family: var(--font-body), 'Nunito', sans-serif;
+          color: #2A1A0E; outline: none;
+          transition: border-color 0.18s, box-shadow 0.18s;
+        }
+        .g-nota-input::placeholder { color: #C8B0A0; }
+        .g-nota-input:focus { border-color: #C05A3B; box-shadow: 0 0 0 3px rgba(192,90,59,0.1); }
+        .g-nota-actions { display: flex; gap: 6px; }
+        .g-nota-cancel {
+          flex: 1; padding: 7px; border-radius: 8px;
+          border: 1.5px solid #E0C8B8; background: white;
+          color: #A07060; font-size: 0.78rem; font-weight: 600;
+          font-family: var(--font-body), 'Nunito', sans-serif; cursor: pointer;
+          transition: background 0.15s;
+        }
+        .g-nota-cancel:hover { background: #F5EDE4; }
+        .g-nota-confirm {
+          flex: 2; padding: 7px; border-radius: 8px;
+          border: none; background: #5A8869; color: white;
+          font-size: 0.78rem; font-weight: 700;
+          font-family: var(--font-body), 'Nunito', sans-serif; cursor: pointer;
+          display: flex; align-items: center; justify-content: center; gap: 5px;
+          transition: background 0.15s, transform 0.12s;
+        }
+        .g-nota-confirm:hover { background: #3A6849; transform: translateY(-1px); }
+        .g-nota-confirm:disabled { opacity: 0.5; pointer-events: none; }
+
+        /* ── Desglose de deuda ── */
+        .g-desglose {
+          margin-top: 10px; padding-top: 10px; border-top: 1px solid #EAD8C8;
+          animation: g-fadeup 0.22s cubic-bezier(0.22,1,0.36,1) both;
+        }
+        .g-desglose-row {
+          display: flex; align-items: center; gap: 8px;
+          padding: 5px 0; border-bottom: 1px solid #F0E8DF;
+          font-size: 0.8rem;
+        }
+        .g-desglose-row:last-of-type { border-bottom: none; }
+        .g-desglose-icon {
+          width: 28px; height: 28px; border-radius: 8px; flex-shrink: 0;
+          display: flex; align-items: center; justify-content: center;
+          font-size: 0.9rem; border: 1.5px solid;
+        }
+        .g-desglose-desc { flex: 1; min-width: 0; }
+        .g-desglose-name { font-weight: 600; color: #2A1A0E; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .g-desglose-date { font-size: 0.68rem; color: #B09080; }
+        .g-desglose-monto {
+          font-family: var(--font-code), monospace; font-size: 0.88rem;
+          font-weight: 500; color: #C05A3B; flex-shrink: 0;
+        }
+        .g-desglose-total {
+          display: flex; align-items: center; justify-content: space-between;
+          margin-top: 8px; padding: 6px 10px; border-radius: 8px;
+          background: rgba(192,90,59,0.06); border: 1px solid rgba(192,90,59,0.15);
+          font-size: 0.78rem;
+        }
+        .g-desglose-total-label { color: #8A6050; font-weight: 600; }
+        .g-desglose-total-val {
+          font-family: var(--font-code), monospace; font-weight: 700;
+          color: #C05A3B; font-size: 0.92rem;
+        }
+        .g-desglose-empty { font-size: 0.78rem; color: #B09080; font-style: italic; padding: 4px 0; }
+        .g-ver-detalle {
+          display: flex; align-items: center; gap: 4px;
+          background: none; border: none; cursor: pointer;
+          font-size: 0.72rem; font-weight: 600; color: #A07060;
+          font-family: var(--font-body), 'Nunito', sans-serif;
+          padding: 2px 0; transition: color 0.15s;
+        }
+        .g-ver-detalle:hover { color: #C05A3B; }
+
+        .g-pagos-hist { margin-top: 16px; }
+        .g-pagos-label { font-size: 0.68rem; font-weight: 700; color: #B09080; text-transform: uppercase; letter-spacing: 0.09em; margin-bottom: 8px; }
+        .g-pago-row {
+          display: flex; align-items: flex-start; gap: 10px;
+          padding: 9px 12px; border-radius: 10px;
+          background: white; border: 1px solid #EAD8C8;
+          margin-bottom: 6px; font-size: 0.8rem;
+        }
+        .g-pago-info { flex: 1; min-width: 0; }
+        .g-pago-members { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+        .g-pago-nota { font-size: 0.72rem; color: #A07060; font-style: italic; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .g-pago-del-btn {
+          width: 24px; height: 24px; border-radius: 6px; flex-shrink: 0;
+          background: transparent; border: 1px solid transparent;
+          display: flex; align-items: center; justify-content: center;
+          cursor: pointer; color: #C8B0A0; margin-left: auto;
+          transition: background 0.18s, color 0.18s;
+        }
+        .g-pago-del-btn:hover { background: rgba(180,50,50,0.08); color: #C04040; }
+
+        .g-all-good {
+          text-align: center; padding: 5rem 2rem;
+          animation: g-fadeup 0.5s 0.15s cubic-bezier(0.22, 1, 0.36, 1) both;
+        }
+        .g-all-good-icon {
+          width: 72px; height: 72px; margin: 0 auto 1.5rem; border-radius: 20px;
+          background: rgba(46,125,82,0.1); border: 1.5px solid rgba(46,125,82,0.25);
+          display: flex; align-items: center; justify-content: center; font-size: 2rem;
+        }
+        .g-all-good-title { font-family: var(--font-serif), serif; font-size: 1.6rem; color: #2E7D52; letter-spacing: -0.025em; margin-bottom: 0.5rem; font-weight: 600; }
+        .g-all-good-sub { font-size: 0.85rem; color: #A07060; font-weight: 400; }
+
+        /* ── Modal ── */
+        .g-overlay {
+          position: fixed; inset: 0; background: rgba(42,26,14,0.5);
+          backdrop-filter: blur(6px); z-index: 100;
+          display: flex; align-items: flex-end; justify-content: center;
+          animation: g-overlay 0.2s ease both;
+        }
+        @media (min-width: 600px) { .g-overlay { align-items: center; } }
+
+        .g-modal {
+          background: #FFF8F2; border: 1.5px solid #EAD8C8;
+          border-radius: 24px 24px 0 0; width: 100%; max-width: 520px;
+          padding: 2rem; animation: g-modal 0.3s cubic-bezier(0.22, 1, 0.36, 1) both;
+          max-height: 92vh; overflow-y: auto;
+          box-shadow: 0 -8px 40px rgba(150,80,40,0.12);
+        }
+        @media (min-width: 600px) { .g-modal { border-radius: 20px; box-shadow: 0 20px 60px rgba(150,80,40,0.15); } }
+
+        .g-modal-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.75rem; }
+        .g-modal-title { font-family: var(--font-serif), serif; font-size: 1.5rem; color: #2A1A0E; letter-spacing: -0.025em; font-weight: 600; }
+        .g-modal-close {
+          width: 32px; height: 32px; border-radius: 8px;
+          background: #F0E8DF; border: 1px solid #E0C8B8;
+          display: flex; align-items: center; justify-content: center;
+          cursor: pointer; color: #A07060; transition: background 0.18s, color 0.18s;
+        }
+        .g-modal-close:hover { background: #E8D0C0; color: #2A1A0E; }
+
+        .g-field { margin-bottom: 1rem; }
+        .g-label { display: block; font-size: 0.68rem; font-weight: 700; color: #8A6050; text-transform: uppercase; letter-spacing: 0.09em; margin-bottom: 6px; }
+        .g-input {
+          width: 100%; padding: 10px 13px;
+          background: white; border: 1.5px solid #E0C8B8;
+          border-radius: 10px; font-size: 0.88rem;
+          font-family: var(--font-body), 'Nunito', sans-serif;
+          color: #2A1A0E; outline: none;
+          transition: border-color 0.18s, box-shadow 0.18s;
+        }
+        .g-input::placeholder { color: #C8B0A0; }
+        .g-input:focus { border-color: #C05A3B; box-shadow: 0 0 0 3px rgba(192,90,59,0.12); }
+
+        /* Tipo toggle */
+        .g-toggle-row { display: flex; gap: 0; border-radius: 10px; overflow: hidden; border: 1.5px solid #E0C8B8; }
+        .g-toggle-btn {
+          flex: 1; padding: 9px 14px; border: none; cursor: pointer; font-size: 0.84rem; font-weight: 600;
+          font-family: var(--font-body), 'Nunito', sans-serif;
+          transition: all 0.18s; background: white; color: #A07060;
+        }
+        .g-toggle-btn.active { background: #C05A3B; color: white; }
+        .g-toggle-btn:not(.active):hover { background: #FFF0E8; color: #2A1A0E; }
+
+        /* Categoria grid */
+        .g-cat-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+        .g-cat-btn {
+          display: flex; flex-direction: column; align-items: center; gap: 4px;
+          padding: 10px 8px; border-radius: 10px; border: 1.5px solid #E0C8B8;
+          background: white; cursor: pointer;
+          font-size: 0.72rem; font-weight: 600; color: #A07060;
+          transition: all 0.18s; font-family: var(--font-body), 'Nunito', sans-serif;
+        }
+        .g-cat-btn .g-cat-icon { font-size: 1.25rem; line-height: 1; }
+        .g-cat-btn:hover { background: #FFF5EE; border-color: #C05A3B; color: #2A1A0E; }
+        .g-cat-btn.active { border-width: 1.5px; }
+
+        /* Payer row (kept for layout compatibility) */
+        .g-payer-row { display: flex; gap: 8px; flex-wrap: wrap; }
+        .g-payer-av {
+          width: 22px; height: 22px; border-radius: 50%;
+          display: flex; align-items: center; justify-content: center;
+          font-size: 0.65rem; font-weight: 700; color: white; flex-shrink: 0;
+        }
+
+        .g-error {
+          display: flex; align-items: center; gap: 7px;
+          padding: 10px 13px; background: #FFF0EC;
+          border: 1px solid #F0C0B0; border-radius: 9px;
+          color: #B03A1A; font-size: 0.81rem; margin-bottom: 1rem;
+        }
+        .g-submit {
+          width: 100%; padding: 13px; background: #C05A3B; color: white; border: none;
+          border-radius: 13px; font-size: 0.9rem; font-weight: 700;
+          font-family: var(--font-body), 'Nunito', sans-serif; cursor: pointer;
+          transition: background 0.18s, transform 0.15s, box-shadow 0.18s;
+          display: flex; align-items: center; justify-content: center; gap: 8px;
+          margin-top: 0.5rem;
+        }
+        .g-submit:hover:not(:disabled) { background: #A04730; transform: translateY(-1.5px); box-shadow: 0 10px 28px rgba(192,90,59,0.35); }
+        .g-submit:disabled { opacity: 0.55; cursor: not-allowed; }
+        .g-spinner { width: 15px; height: 15px; border-radius: 50%; border: 2px solid rgba(255,255,255,0.35); border-top-color: white; animation: g-spin 0.7s linear infinite; flex-shrink: 0; }
+
+        /* ── Splits ── */
+        .g-split-row {
+          display: flex; align-items: center; gap: 10px; padding: 6px 0;
+        }
+        .g-split-av {
+          width: 26px; height: 26px; border-radius: 50%; flex-shrink: 0;
+          display: flex; align-items: center; justify-content: center;
+          font-size: 0.68rem; font-weight: 700; color: white;
+        }
+        .g-split-name { flex: 1; font-size: 0.84rem; color: #6B4030; font-weight: 500; }
+        .g-split-input {
+          width: 100px; padding: 7px 10px;
+          background: white; border: 1.5px solid #E0C8B8;
+          border-radius: 8px; font-size: 0.84rem;
+          font-family: var(--font-code), monospace;
+          color: #2A1A0E; outline: none; text-align: right;
+          transition: border-color 0.18s, box-shadow 0.18s;
+        }
+        .g-split-input:focus { border-color: #C05A3B; box-shadow: 0 0 0 3px rgba(192,90,59,0.12); }
+        .g-split-total {
+          display: flex; align-items: center; justify-content: space-between;
+          padding: 8px 10px; border-radius: 8px;
+          background: #F5EDE4; border: 1px solid #E0C8B8;
+          font-size: 0.78rem; margin-top: 4px;
+        }
+
+        @media (max-width: 640px) {
+          .g-wrap { padding: 0 1rem 5rem; }
+          /* Header */
+          .g-header { padding: 1.25rem 0 1.5rem; }
+          .g-header-title { font-size: 1.15rem; }
+          .g-header-right { gap: 7px; }
+          .g-realtime { display: none; }
+          .g-add-text { display: none; }
+          .g-add-btn { padding: 9px; border-radius: 10px; }
+          /* Stats: 2-col grid, tercero full ancho */
+          .g-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 0.6rem; overflow: visible; }
+          .g-stat:last-child { grid-column: 1 / 3; }
+          .g-stat { padding: 0.8rem 1rem; }
+          .g-stat-val { font-size: 1.25rem; }
+          /* Tabs */
+          .g-tabs { width: 100%; }
+          .g-tab { flex: 1; padding: 7px 10px; }
+          /* Gasto items: 2 filas */
+          .g-item { flex-wrap: wrap; row-gap: 6px; padding: 0.85rem 0.9rem; gap: 0 0.65rem; }
+          .g-cat-badge { align-self: flex-start; margin-top: 3px; }
+          .g-item-body { min-width: 0; }
+          .g-item-desc { font-size: 0.84rem; white-space: normal; }
+          .g-item-meta { font-size: 0.69rem; }
+          .g-item-end { flex: 0 0 100%; padding-left: calc(42px + 0.65rem); justify-content: space-between; align-items: center; }
+          .g-item-right { text-align: left; display: flex; align-items: baseline; gap: 8px; }
+          .g-item-parte { margin-top: 0; }
+          .g-item-importe { font-size: 0.9rem; }
+          /* Balance */
+          .g-debt-card-top { flex-wrap: wrap; gap: 8px; }
+          .g-debt-body { min-width: 0; width: 100%; }
+          .g-pago-members { flex-wrap: wrap; gap: 4px; }
+          /* Modal */
+          .g-modal { padding: 1.5rem 1.25rem; }
+          .g-modal-title { font-size: 1.25rem; }
+          .g-cat-grid { grid-template-columns: repeat(3, 1fr); }
+          .g-split-input { width: 80px; }
+        }
+        @media (max-width: 420px) {
+          .g-wrap { padding: 0 0.75rem 5rem; }
+          .g-header-title { font-size: 1rem; }
+          .g-stat-val { font-size: 1.1rem; }
+          .g-stat { padding: 0.7rem 0.85rem; }
+          .g-debt-av { width: 30px; height: 30px; font-size: 0.68rem; }
+          .g-tipo-badge { display: none; }
+        }
+      `}</style>
+
+      <div className="g-root">
+        <div className="g-bg" />
+
+        <div className="g-wrap">
+
+          {/* ── HEADER ── */}
+          <div className="g-header">
+            <div className="g-header-left">
+              <button className="g-back" onClick={() => router.push(`/sala/${codigo}`)}>
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                  <path d="M10 12L6 8l4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </button>
+              <div>
+                <div className="g-header-title">Gastos</div>
+                <div className="g-header-sub">{session.salaNombre}</div>
+              </div>
+            </div>
+            <div className="g-header-right">
+              {realtimeOk && (
+                <div className="g-realtime">
+                  <span className="g-realtime-dot" />
+                  En vivo
+                </div>
+              )}
+              <div className="g-avatar" style={{ background: session.miembroColor }}>
+                {session.miembroNombre[0].toUpperCase()}
+              </div>
+              <button className="g-add-btn" onClick={abrirModal}>
+                <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                  <circle cx="7" cy="7" r="5.5" stroke="currentColor" strokeWidth="1.4" />
+                  <path d="M7 4.5v5M4.5 7h5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+                </svg>
+                <span className="g-add-text">Añadir gasto</span>
+              </button>
+            </div>
+          </div>
+
+          {/* ── STATS ── */}
+          {!loading && (
+            <div className="g-stats">
+              <div className="g-stat">
+                <div className="g-stat-val" style={{ fontSize: stats.totalMes >= 100000 ? '1.1rem' : undefined }}>
+                  {fmtUYU(stats.totalMes)}
+                </div>
+                <div className="g-stat-label">Total del mes</div>
+              </div>
+              <div className="g-stat">
+                <div className="g-stat-val" style={{ fontSize: stats.miParte >= 100000 ? '1.1rem' : undefined }}>
+                  {fmtUYU(Math.round(stats.miParte))}
+                </div>
+                <div className="g-stat-label">Mi parte</div>
+              </div>
+              <div className="g-stat">
+                <div className="g-stat-val">{gastosVisibles.length}</div>
+                <div className="g-stat-label">Gastos totales</div>
+              </div>
+            </div>
+          )}
+
+          {/* ── LOADING SKELETONS ── */}
+          {loading && (
+            <div className="g-stats">
+              {[1, 2, 3].map(i => (
+                <div key={i} className="g-stat">
+                  <div className="g-skeleton" style={{ height: 28, width: '70%', marginBottom: 8 }} />
+                  <div className="g-skeleton" style={{ height: 10, width: '55%' }} />
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* ── TABS ── */}
+          <div className="g-tabs">
+            <button className={`g-tab${tab === 'gastos' ? ' active' : ''}`} onClick={() => setTab('gastos')}>Gastos</button>
+            <button className={`g-tab${tab === 'balance' ? ' active' : ''}`} onClick={() => setTab('balance')}>Balance</button>
+          </div>
+
+          {/* ── TAB: GASTOS ── */}
+          {tab === 'gastos' && (
+            <>
+              {loading && (
+                <div className="g-list">
+                  {[1, 2, 3, 4].map(i => (
+                    <div key={i} style={{ borderRadius: 16, padding: '1rem 1.2rem', border: '1.5px solid #EAD8C8', background: 'white', display: 'flex', gap: '1rem', alignItems: 'center' }}>
+                      <div className="g-skeleton" style={{ width: 42, height: 42, borderRadius: 12, flexShrink: 0 }} />
+                      <div style={{ flex: 1 }}>
+                        <div className="g-skeleton" style={{ height: 14, width: '55%', marginBottom: 8 }} />
+                        <div className="g-skeleton" style={{ height: 11, width: '35%' }} />
+                      </div>
+                      <div className="g-skeleton" style={{ height: 18, width: 70, borderRadius: 6 }} />
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {!loading && gastosVisibles.length === 0 && (
+                <div className="g-empty">
+                  <div className="g-empty-icon">💸</div>
+                  <div className="g-empty-title">Sin gastos aún</div>
+                  <p className="g-empty-sub">Añadí el primero con el botón de arriba.<br />Podéis dividir y controlar gastos juntos.</p>
+                </div>
+              )}
+
+              {!loading && gastosVisibles.length > 0 && (() => {
+                const fijos = [...gastosVisibles].filter(g => g.tipo === 'fijo').sort((a, b) => b.fecha.localeCompare(a.fecha))
+                const variables = [...gastosVisibles].filter(g => g.tipo === 'variable').sort((a, b) => b.fecha.localeCompare(a.fecha))
+                const renderGasto = (g: Gasto, idx: number) => {
+                  const cat = CATEGORIA_META[g.categoria]
+                  const miId = session.miembroId
+                  const miParte = Math.round(g.splits?.[miId] !== undefined ? g.splits[miId] : g.importe / (miembros.length || 1))
+                  return (
+                    <div key={g.id} className={`g-item${g.tipo === 'fijo' ? ' g-item-fijo' : ''}`} style={{ animationDelay: `${idx * 0.05}s` }}>
+                      <div className="g-cat-badge" style={{ background: cat.bg, borderColor: cat.border }}>
+                        {cat.icon}
+                      </div>
+                      <div className="g-item-body">
+                        <div className="g-item-top">
+                          <span className="g-item-desc">{g.descripcion}</span>
+                          <span className={`g-tipo-badge g-tipo-${g.tipo}`}>
+                            {g.tipo === 'fijo' ? '📌 Fijo' : 'Variable'}
+                          </span>
+                        </div>
+                        <div className="g-item-meta">
+                          <span style={{ color: cat.color }}>{cat.label}</span>
+                          <span style={{ color: '#D0B8A8', margin: '0 5px' }}>·</span>
+                          {fmtFecha(g.fecha)}
+                          <span style={{ color: '#D0B8A8', margin: '0 5px' }}>·</span>
+                          {isPersonal(g)
+                            ? <span style={{ color: '#9060A0', fontWeight: 600 }}>🔒 Solo vos</span>
+                            : (() => {
+                                const payerM = g.pagado_por ? miembros.find(m => m.id === g.pagado_por) : null
+                                return (
+                                  <>
+                                    {g.splits ? 'Personalizado' : 'Partes iguales'}
+                                    {payerM && (
+                                      <>
+                                        <span style={{ color: '#D0B8A8', margin: '0 5px' }}>·</span>
+                                        <span style={{ color: payerM.color, fontWeight: 600 }}>pagó {payerM.nombre}</span>
+                                      </>
+                                    )}
+                                  </>
+                                )
+                              })()
+                          }
+                        </div>
+                      </div>
+                      <div className="g-item-end">
+                        <div className="g-item-right">
+                          <div className="g-item-importe">{fmtUYU(g.importe)}</div>
+                          <div className="g-item-parte">Tu parte: {fmtUYU(miParte)}</div>
+                        </div>
+                        <div className="g-item-btns">
+                          <button className="g-edit-btn" onClick={() => abrirEditar(g)} title="Editar gasto">
+                            <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
+                              <path d="M9 2l2 2-6 6-2.5.5.5-2.5L9 2z" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
+                            </svg>
+                          </button>
+                          <button
+                            className="g-del-btn"
+                            onClick={() => handleEliminar(g.id)}
+                            disabled={borrando === g.id}
+                            title="Eliminar gasto"
+                          >
+                            {borrando === g.id ? (
+                              <div style={{ width: 10, height: 10, borderRadius: '50%', border: '1.5px solid #D0B8A8', borderTopColor: '#C04040', animation: 'g-spin 0.7s linear infinite' }} />
+                            ) : (
+                              <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
+                                <path d="M2 2l9 9M11 2L2 11" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+                              </svg>
+                            )}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )
+                }
+                const fijosSlice = fijos.slice(0, fijosPag)
+                const variablesSlice = variables.slice(0, variablesPag)
+                return (
+                  <div className="g-list">
+                    {fijos.length > 0 && (
+                      <>
+                        <div className="g-section-label">Gastos fijos</div>
+                        {fijosSlice.map((g, i) => renderGasto(g, i))}
+                        {fijos.length > fijosPag && (
+                          <button
+                            type="button"
+                            onClick={() => setFijosPag(p => p + 8)}
+                            style={{
+                              width: '100%', padding: '9px', borderRadius: 12,
+                              background: 'white', border: '1.5px dashed #D4B8A0',
+                              color: '#A07060', fontSize: '0.8rem', fontWeight: 600,
+                              cursor: 'pointer', fontFamily: 'var(--font-body), Nunito, sans-serif',
+                              transition: 'border-color 0.18s, color 0.18s, background 0.18s',
+                            }}
+                            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = '#FFF5EE'; (e.currentTarget as HTMLElement).style.color = '#C05A3B'; (e.currentTarget as HTMLElement).style.borderColor = '#C05A3B' }}
+                            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'white'; (e.currentTarget as HTMLElement).style.color = '#A07060'; (e.currentTarget as HTMLElement).style.borderColor = '#D4B8A0' }}
+                          >
+                            Ver más ({fijos.length - fijosPag} restantes)
+                          </button>
+                        )}
+                      </>
+                    )}
+                    {variables.length > 0 && (
+                      <>
+                        <div className="g-section-label" style={{ marginTop: fijos.length > 0 ? 8 : 0 }}>Gastos variables</div>
+                        {variablesSlice.map((g, i) => renderGasto(g, fijosSlice.length + i))}
+                        {variables.length > variablesPag && (
+                          <button
+                            type="button"
+                            onClick={() => setVariablesPag(p => p + 10)}
+                            style={{
+                              width: '100%', padding: '9px', borderRadius: 12,
+                              background: 'white', border: '1.5px dashed #D4B8A0',
+                              color: '#A07060', fontSize: '0.8rem', fontWeight: 600,
+                              cursor: 'pointer', fontFamily: 'var(--font-body), Nunito, sans-serif',
+                              transition: 'border-color 0.18s, color 0.18s, background 0.18s',
+                            }}
+                            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = '#FFF5EE'; (e.currentTarget as HTMLElement).style.color = '#C05A3B'; (e.currentTarget as HTMLElement).style.borderColor = '#C05A3B' }}
+                            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'white'; (e.currentTarget as HTMLElement).style.color = '#A07060'; (e.currentTarget as HTMLElement).style.borderColor = '#D4B8A0' }}
+                          >
+                            Ver más ({variables.length - variablesPag} restantes)
+                          </button>
+                        )}
+                      </>
+                    )}
+                  </div>
+                )
+              })()}
+            </>
+          )}
+
+          {/* ── TAB: BALANCE ── */}
+          {tab === 'balance' && (
+            <>
+              {loading && (
+                <div className="g-balance-list">
+                  {[1, 2].map(i => (
+                    <div key={i} style={{ borderRadius: 18, padding: '1.1rem 1.4rem', border: '1.5px solid #EAD8C8', background: 'white', display: 'flex', gap: '1rem', alignItems: 'center' }}>
+                      <div style={{ display: 'flex', gap: 6 }}>
+                        <div className="g-skeleton" style={{ width: 36, height: 36, borderRadius: '50%' }} />
+                        <div className="g-skeleton" style={{ width: 36, height: 36, borderRadius: '50%' }} />
+                      </div>
+                      <div style={{ flex: 1 }}>
+                        <div className="g-skeleton" style={{ height: 14, width: '60%', marginBottom: 7 }} />
+                        <div className="g-skeleton" style={{ height: 20, width: '35%' }} />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {!loading && debts.filter(d => d.from === miId || d.to === miId).length === 0 && (
+                <div className="g-all-good">
+                  <div className="g-all-good-icon">✅</div>
+                  <div className="g-all-good-title">¡Todo al día!</div>
+                  <p className="g-all-good-sub">No tenés deudas pendientes.<br />Las cuentas están equilibradas.</p>
+                </div>
+              )}
+
+              {!loading && debts.length > 0 && (
+                <div className="g-balance-list">
+                  {debts.filter(d => d.from === miId || d.to === miId).map((d, idx) => {
+                    const fromM = miembros.find(m => m.id === d.from)
+                    const toM = miembros.find(m => m.id === d.to)
+                    if (!fromM || !toM) return null
+                    const key = `${d.from}-${d.to}`
+                    const isPending  = liquidandoPendiente === key
+                    const isSaving   = liquidando === key
+                    const isExpanded = expandedDebt === key
+                    const desglose   = desglosarDeuda(d.from, d.to, gastosCompartidos, miembros)
+                    const totalBruto = desglose.reduce((s, x) => s + x.monto, 0)
+                    return (
+                      <div key={idx} className="g-debt-card" style={{ animationDelay: `${idx * 0.08}s` }}>
+                        <div className="g-debt-card-top">
+                          <div className="g-debt-avatars">
+                            <div className="g-debt-av" style={{ background: fromM.color }}>
+                              {fromM.nombre[0].toUpperCase()}
+                            </div>
+                            <span className="g-debt-arrow">→</span>
+                            <div className="g-debt-av" style={{ background: toM.color }}>
+                              {toM.nombre[0].toUpperCase()}
+                            </div>
+                          </div>
+                          <div className="g-debt-body">
+                            <div className="g-debt-text">
+                              <strong>{fromM.nombre}</strong> le debe a <strong>{toM.nombre}</strong>
+                            </div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 2 }}>
+                              <div className="g-debt-amount">{fmtUYU(d.amount)}</div>
+                              {desglose.length > 0 && (
+                                <button
+                                  className="g-ver-detalle"
+                                  type="button"
+                                  onClick={() => setExpandedDebt(isExpanded ? null : key)}
+                                >
+                                  {isExpanded ? 'Ocultar' : `Ver detalle (${desglose.length})`}
+                                  <svg width="10" height="10" viewBox="0 0 10 10" fill="none" style={{ transition: 'transform 0.2s', transform: isExpanded ? 'rotate(180deg)' : 'none' }}>
+                                    <path d="M2 3.5l3 3 3-3" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
+                                  </svg>
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                          {!isPending && d.from === miId && (
+                            <button
+                              className="g-liquidar-btn"
+                              onClick={() => { setLiquidandoPendiente(key); setLiquidandoNota('') }}
+                              disabled={isSaving}
+                            >
+                              {isSaving ? (
+                                <div style={{ width: 10, height: 10, borderRadius: '50%', border: '1.5px solid #5A8869', borderTopColor: 'transparent', animation: 'g-spin 0.7s linear infinite' }} />
+                              ) : (
+                                <svg width="11" height="11" viewBox="0 0 11 11" fill="none">
+                                  <path d="M1.5 5.5L4.5 8.5L9.5 2.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
+                                </svg>
+                              )}
+                              {isSaving ? 'Guardando...' : 'Liquidar'}
+                            </button>
+                          )}
+                        </div>
+
+                        {/* ── Desglose de gastos ── */}
+                        {isExpanded && (
+                          <div className="g-desglose">
+                            {desglose.length === 0 ? (
+                              <div className="g-desglose-empty">Sin gastos que generen esta deuda aún.</div>
+                            ) : (
+                              <>
+                                {desglose.map(({ gasto: g, monto }) => {
+                                  const cat = CATEGORIA_META[g.categoria]
+                                  const esIgual = !g.splits
+                                  return (
+                                    <div key={g.id} className="g-desglose-row">
+                                      <div className="g-desglose-icon" style={{ background: cat.bg, borderColor: cat.border }}>
+                                        {cat.icon}
+                                      </div>
+                                      <div className="g-desglose-desc">
+                                        <div className="g-desglose-name">{g.descripcion}</div>
+                                        <div className="g-desglose-date">
+                                          {fmtFecha(g.fecha)} · {cat.label}
+                                          {esIgual && (
+                                            <span style={{ color: '#C0A898' }}> · {fmtUYU(g.importe)} ÷ {miembros.length}</span>
+                                          )}
+                                        </div>
+                                      </div>
+                                      <div className="g-desglose-monto">{fmtUYU(Math.round(monto))}</div>
+                                    </div>
+                                  )
+                                })}
+                                {/* Footer explicativo */}
+                                {Math.abs(totalBruto - d.amount) <= 1 ? (
+                                  <div className="g-desglose-total">
+                                    <span className="g-desglose-total-label">Total de estos gastos</span>
+                                    <span className="g-desglose-total-val">{fmtUYU(Math.round(totalBruto))}</span>
+                                  </div>
+                                ) : (
+                                  <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.76rem', color: '#8A6050' }}>
+                                      <span>Total de estos gastos</span>
+                                      <span style={{ fontFamily: 'var(--font-code), monospace', fontWeight: 600 }}>{fmtUYU(Math.round(totalBruto))}</span>
+                                    </div>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.76rem', color: '#5A8869' }}>
+                                      <span>Ya pagado</span>
+                                      <span style={{ fontFamily: 'var(--font-code), monospace', fontWeight: 600 }}>− {fmtUYU(Math.round(totalBruto - d.amount))}</span>
+                                    </div>
+                                    <div style={{ borderTop: '1px dashed #EAD8C8', paddingTop: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                      <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#2A1A0E' }}>Queda por pagar</span>
+                                      <span style={{ fontFamily: 'var(--font-code), monospace', fontWeight: 700, fontSize: '0.95rem', color: '#C05A3B' }}>{fmtUYU(d.amount)}</span>
+                                    </div>
+                                  </div>
+                                )}
+                              </>
+                            )}
+                          </div>
+                        )}
+
+                        {/* ── Confirmación con nota ── */}
+                        {isPending && d.from === miId && (
+                          <div className="g-nota-form">
+                            <input
+                              className="g-nota-input"
+                              type="text"
+                              placeholder="Concepto del pago (opcional)"
+                              value={liquidandoNota}
+                              onChange={e => setLiquidandoNota(e.target.value)}
+                              autoFocus
+                              onKeyDown={e => { if (e.key === 'Enter') handleLiquidar(d, liquidandoNota) }}
+                            />
+                            <div className="g-nota-actions">
+                              <button className="g-nota-cancel" type="button" onClick={() => setLiquidandoPendiente(null)}>
+                                Cancelar
+                              </button>
+                              <button className="g-nota-confirm" type="button" onClick={() => handleLiquidar(d, liquidandoNota)} disabled={isSaving}>
+                                <svg width="11" height="11" viewBox="0 0 11 11" fill="none">
+                                  <path d="M1.5 5.5L4.5 8.5L9.5 2.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
+                                </svg>
+                                Confirmar pago
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })}
+
+                  {/* Per-person summary */}
+                  {miembros.length > 0 && (
+                    <div style={{ marginTop: 12, background: 'white', border: '1.5px solid #EAD8C8', borderRadius: 16, padding: '1rem 1.25rem', boxShadow: '0 2px 8px rgba(150,80,40,0.06)' }}>
+                      <div style={{ fontSize: '0.68rem', fontWeight: 700, color: '#B09080', textTransform: 'uppercase', letterSpacing: '0.09em', marginBottom: 10 }}>
+                        Resumen por persona
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                        {miembros.map(m => {
+                          const balance = balanceNet[m.id] ?? 0
+                          return (
+                            <div key={m.id} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                              <div className="g-debt-av" style={{ background: m.color, width: 28, height: 28, fontSize: '0.65rem' }}>
+                                {m.nombre[0].toUpperCase()}
+                              </div>
+                              <span style={{ fontSize: '0.84rem', color: '#6B4030', flex: 1, fontWeight: 500 }}>{m.nombre}</span>
+                              <span style={{ fontFamily: 'var(--font-code), monospace', fontSize: '0.88rem', fontWeight: 500, color: balance >= 0 ? '#2E7D52' : '#C04040' }}>
+                                {balance >= 0 ? '+' : ''}{fmtUYU(Math.round(balance))}
+                              </span>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Historial de pagos */}
+                  {pagos.length > 0 && (
+                    <div className="g-pagos-hist">
+                      <div className="g-pagos-label">Pagos registrados</div>
+                      {pagos.map(p => {
+                        const deM = miembros.find(m => m.id === p.de_id)
+                        const aM  = miembros.find(m => m.id === p.a_id)
+                        if (!deM || !aM) return null
+                        return (
+                          <div key={p.id} className="g-pago-row">
+                            <div className="g-pago-info">
+                              <div className="g-pago-members">
+                                <div className="g-debt-av" style={{ background: deM.color, width: 22, height: 22, fontSize: '0.58rem', flexShrink: 0 }}>{deM.nombre[0].toUpperCase()}</div>
+                                <span style={{ color: '#6B4030', fontWeight: 600 }}>{deM.nombre}</span>
+                                <span style={{ color: '#C0A898' }}>→</span>
+                                <div className="g-debt-av" style={{ background: aM.color, width: 22, height: 22, fontSize: '0.58rem', flexShrink: 0 }}>{aM.nombre[0].toUpperCase()}</div>
+                                <span style={{ color: '#6B4030', fontWeight: 600 }}>{aM.nombre}</span>
+                                <span style={{ fontFamily: 'var(--font-code), monospace', color: '#5A8869', fontWeight: 600 }}>{fmtUYU(p.importe)}</span>
+                                <span style={{ color: '#C0A898', fontSize: '0.7rem' }}>{fmtFecha(p.fecha)}</span>
+                              </div>
+                              {p.nota && <div className="g-pago-nota">📌 {p.nota}</div>}
+                            </div>
+                            <button className="g-pago-del-btn" onClick={() => handleEliminarPago(p.id)} title="Deshacer pago">
+                              <svg width="11" height="11" viewBox="0 0 11 11" fill="none">
+                                <path d="M1.5 1.5l8 8M9.5 1.5l-8 8" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/>
+                              </svg>
+                            </button>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Historial cuando no hay deudas pero sí pagos */}
+              {!loading && debts.length === 0 && pagos.length > 0 && (
+                <div style={{ marginTop: 16 }}>
+                  <div className="g-pagos-label">Pagos registrados</div>
+                  {pagos.map(p => {
+                    const deM = miembros.find(m => m.id === p.de_id)
+                    const aM  = miembros.find(m => m.id === p.a_id)
+                    if (!deM || !aM) return null
+                    return (
+                      <div key={p.id} className="g-pago-row">
+                        <div className="g-pago-info">
+                          <div className="g-pago-members">
+                            <div className="g-debt-av" style={{ background: deM.color, width: 22, height: 22, fontSize: '0.58rem', flexShrink: 0 }}>{deM.nombre[0].toUpperCase()}</div>
+                            <span style={{ color: '#6B4030', fontWeight: 600 }}>{deM.nombre}</span>
+                            <span style={{ color: '#C0A898' }}>→</span>
+                            <div className="g-debt-av" style={{ background: aM.color, width: 22, height: 22, fontSize: '0.58rem', flexShrink: 0 }}>{aM.nombre[0].toUpperCase()}</div>
+                            <span style={{ color: '#6B4030', fontWeight: 600 }}>{aM.nombre}</span>
+                            <span style={{ fontFamily: 'var(--font-code), monospace', color: '#5A8869', fontWeight: 600 }}>{fmtUYU(p.importe)}</span>
+                            <span style={{ color: '#C0A898', fontSize: '0.7rem' }}>{fmtFecha(p.fecha)}</span>
+                          </div>
+                          {p.nota && <div className="g-pago-nota">📌 {p.nota}</div>}
+                        </div>
+                        <button className="g-pago-del-btn" onClick={() => handleEliminarPago(p.id)} title="Deshacer pago">
+                          <svg width="11" height="11" viewBox="0 0 11 11" fill="none"><path d="M1.5 1.5l8 8M9.5 1.5l-8 8" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/></svg>
+                        </button>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </>
+          )}
+
+        </div>
+      </div>
+
+      {/* ── MODAL: AÑADIR GASTO ── */}
+      {modalOpen && (
+        <div className="g-overlay" onClick={e => e.target === e.currentTarget && setModalOpen(false)}>
+          <div className="g-modal">
+            <div className="g-modal-header">
+              <div className="g-modal-title">{editandoId ? 'Editar gasto' : 'Añadir gasto'}</div>
+              <button className="g-modal-close" onClick={() => setModalOpen(false)}>
+                <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                  <path d="M2 2l10 10M12 2L2 12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+                </svg>
+              </button>
+            </div>
+
+            <form onSubmit={handleGuardar}>
+
+              {/* Descripción */}
+              <div className="g-field">
+                <label className="g-label">Descripción *</label>
+                <input
+                  className="g-input"
+                  type="text"
+                  placeholder="Ej: Alquiler marzo"
+                  value={form.descripcion}
+                  onChange={e => setForm(f => ({ ...f, descripcion: e.target.value }))}
+                  autoFocus
+                  required
+                />
+              </div>
+
+              {/* Modo de división */}
+              <div className="g-field">
+                <label className="g-label">¿Cómo se divide?</label>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button
+                    type="button"
+                    onClick={() => setAutoSplit(true)}
+                    style={{
+                      flex: 1, padding: '9px 12px', borderRadius: 10, border: '1.5px solid',
+                      borderColor: autoSplit ? '#C05A3B' : '#E0C8B8',
+                      background: autoSplit ? 'rgba(192,90,59,0.08)' : 'white',
+                      color: autoSplit ? '#C05A3B' : '#A07060',
+                      cursor: 'pointer', fontFamily: 'var(--font-body), sans-serif',
+                      fontSize: '0.82rem', fontWeight: 600, textAlign: 'left' as const, transition: 'all 0.18s',
+                    }}
+                  >
+                    <div style={{ fontWeight: 700, marginBottom: 2 }}>Partes iguales</div>
+                    <div style={{ fontSize: '0.72rem', opacity: 0.7 }}>Se divide automáticamente</div>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setAutoSplit(false)}
+                    style={{
+                      flex: 1, padding: '9px 12px', borderRadius: 10, border: '1.5px solid',
+                      borderColor: !autoSplit ? '#C05A3B' : '#E0C8B8',
+                      background: !autoSplit ? 'rgba(192,90,59,0.08)' : 'white',
+                      color: !autoSplit ? '#C05A3B' : '#A07060',
+                      cursor: 'pointer', fontFamily: 'var(--font-body), sans-serif',
+                      fontSize: '0.82rem', fontWeight: 600, textAlign: 'left' as const, transition: 'all 0.18s',
+                    }}
+                  >
+                    <div style={{ fontWeight: 700, marginBottom: 2 }}>Personalizado</div>
+                    <div style={{ fontSize: '0.72rem', opacity: 0.7 }}>Cada uno pone su parte</div>
+                  </button>
+                </div>
+              </div>
+
+              {/* Importe + división */}
+              {miembros.length > 0 && (() => {
+                const importeNum = parseFloat(form.importe) || 0
+                const sumaSplits = miembros.reduce((s, m) => s + (parseFloat(customSplits[m.id] ?? '0') || 0), 0)
+                const ok = importeNum > 0 && Math.abs(sumaSplits - importeNum) <= 0.5
+                return (
+                  <>
+                    {autoSplit ? (
+                      /* ── PARTES IGUALES ── */
+                      <div className="g-field">
+                        <label className="g-label">Total del gasto *</label>
+                        <input
+                          className="g-input"
+                          type="number"
+                          placeholder="0"
+                          min={1}
+                          step="any"
+                          value={form.importe}
+                          onChange={e => setForm(f => ({ ...f, importe: e.target.value }))}
+                          required
+                        />
+                        {importeNum > 0 && (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 10 }}>
+                            {miembros.map(m => (
+                              <div key={m.id} className="g-split-row">
+                                <div className="g-split-av" style={{ background: m.color }}>
+                                  {m.nombre[0].toUpperCase()}
+                                </div>
+                                <span className="g-split-name">{m.nombre}</span>
+                                <span style={{ fontFamily: 'var(--font-code), monospace', fontSize: '0.9rem', fontWeight: 500, color: '#C05A3B' }}>
+                                  {fmtUYU(Math.round(importeNum / miembros.length))}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      /* ── PERSONALIZADO ── */
+                      <div className="g-field">
+                        <label className="g-label">¿Cuánto pone cada uno? *</label>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                          {miembros.map(m => {
+                            const restante = importeNum > 0
+                              ? importeNum - miembros.filter(x => x.id !== m.id).reduce((s, x) => s + (parseFloat(customSplits[x.id] ?? '0') || 0), 0)
+                              : null
+                            const valorActual = parseFloat(customSplits[m.id] ?? '0') || 0
+                            const puedeCompletar = restante !== null && restante > 0 && Math.abs(valorActual - restante) > 0.5
+                            return (
+                              <div key={m.id} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                <div className="g-split-av" style={{ background: m.color }}>
+                                  {m.nombre[0].toUpperCase()}
+                                </div>
+                                <span className="g-split-name">{m.nombre}</span>
+                                {puedeCompletar && (
+                                  <button
+                                    type="button"
+                                    onClick={() => setCustomSplits(prev => ({ ...prev, [m.id]: restante!.toFixed(2) }))}
+                                    style={{
+                                      padding: '3px 8px', borderRadius: 6, border: '1px solid rgba(192,90,59,0.3)',
+                                      background: 'rgba(192,90,59,0.08)', color: '#C05A3B',
+                                      fontSize: '0.68rem', fontWeight: 700, cursor: 'pointer',
+                                      fontFamily: 'var(--font-body), sans-serif', whiteSpace: 'nowrap' as const,
+                                    }}
+                                  >
+                                    {fmtUYU(Math.round(restante!))} ↵
+                                  </button>
+                                )}
+                                <input
+                                  className="g-split-input"
+                                  type="number"
+                                  min={0}
+                                  step="any"
+                                  placeholder="0"
+                                  value={customSplits[m.id] ?? ''}
+                                  onChange={e => setCustomSplits(prev => ({ ...prev, [m.id]: e.target.value }))}
+                                />
+                              </div>
+                            )
+                          })}
+                        </div>
+                        {/* Total de referencia opcional */}
+                        <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <span style={{ fontSize: '0.75rem', color: '#A07060', whiteSpace: 'nowrap' as const }}>
+                              Total a alcanzar:
+                            </span>
+                            <input
+                              className="g-input"
+                              type="number"
+                              placeholder="opcional — para el botón completar"
+                              min={0}
+                              step="any"
+                              value={form.importe}
+                              onChange={e => setForm(f => ({ ...f, importe: e.target.value }))}
+                              style={{ padding: '6px 10px', fontSize: '0.82rem' }}
+                            />
+                          </div>
+                          <div className="g-split-total">
+                            <span style={{ color: '#A07060' }}>
+                              Suma: <span style={{ color: ok ? '#2E7D52' : '#C05A3B', fontWeight: 700 }}>{fmtUYU(Math.round(sumaSplits))}</span>
+                            </span>
+                            <span style={{ color: ok ? '#2E7D52' : '#A07060' }}>
+                              {ok ? '✓ Cuadra' : importeNum > 0 ? `Restante: ${fmtUYU(Math.round(importeNum - sumaSplits))}` : ''}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </>
+                )
+              })()}
+
+              {/* Tipo */}
+              <div className="g-field">
+                <label className="g-label">Tipo</label>
+                <div className="g-toggle-row">
+                  <button
+                    type="button"
+                    className={`g-toggle-btn${form.tipo === 'fijo' ? ' active' : ''}`}
+                    onClick={() => setForm(f => ({ ...f, tipo: 'fijo' }))}
+                  >
+                    🔒 Fijo
+                  </button>
+                  <button
+                    type="button"
+                    className={`g-toggle-btn${form.tipo === 'variable' ? ' active' : ''}`}
+                    onClick={() => setForm(f => ({ ...f, tipo: 'variable' }))}
+                  >
+                    📊 Variable
+                  </button>
+                </div>
+              </div>
+
+              {/* ── ¿Quién pagó? (solo variable) ── */}
+              {form.tipo === 'variable' && (
+                <div className="g-field">
+                  <label className="g-label">
+                    ¿Quién pagó?
+                    <span style={{ fontSize: '0.65rem', color: '#B09080', fontWeight: 400, textTransform: 'none', letterSpacing: 0, marginLeft: 6 }}>
+                      Sin seleccionar → no genera deuda
+                    </span>
+                  </label>
+                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                    <button
+                      type="button"
+                      onClick={() => setForm(f => ({ ...f, pagadoPor: null }))}
+                      style={{
+                        padding: '6px 12px', borderRadius: 9, border: '1.5px solid',
+                        borderColor: form.pagadoPor === null ? '#C05A3B' : '#E0C8B8',
+                        background: form.pagadoPor === null ? 'rgba(192,90,59,0.08)' : 'white',
+                        color: form.pagadoPor === null ? '#C05A3B' : '#A07060',
+                        fontSize: '0.78rem', fontWeight: 600, cursor: 'pointer',
+                        fontFamily: 'var(--font-body), Nunito, sans-serif', transition: 'all 0.15s',
+                      }}
+                    >
+                      Ninguno
+                    </button>
+                    {miembros.map(m => (
+                      <button
+                        key={m.id}
+                        type="button"
+                        onClick={() => setForm(f => ({ ...f, pagadoPor: m.id }))}
+                        style={{
+                          display: 'flex', alignItems: 'center', gap: 6,
+                          padding: '6px 12px', borderRadius: 9, border: '1.5px solid',
+                          borderColor: form.pagadoPor === m.id ? m.color : '#E0C8B8',
+                          background: form.pagadoPor === m.id ? `${m.color}22` : 'white',
+                          color: form.pagadoPor === m.id ? m.color : '#6B4030',
+                          fontSize: '0.78rem', fontWeight: 600, cursor: 'pointer',
+                          fontFamily: 'var(--font-body), Nunito, sans-serif', transition: 'all 0.15s',
+                        }}
+                      >
+                        <div style={{
+                          width: 18, height: 18, borderRadius: '50%', background: m.color,
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          fontSize: '0.58rem', fontWeight: 700, color: 'white', flexShrink: 0,
+                        }}>
+                          {m.nombre[0].toUpperCase()}
+                        </div>
+                        {m.nombre}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Categoría */}
+              <div className="g-field">
+                <label className="g-label">Categoría</label>
+                <div className="g-cat-grid">
+                  {(Object.entries(CATEGORIA_META) as [Categoria, typeof CATEGORIA_META[Categoria]][]).map(([key, meta]) => (
+                    <button
+                      key={key}
+                      type="button"
+                      className={`g-cat-btn${form.categoria === key ? ' active' : ''}`}
+                      style={form.categoria === key ? {
+                        background: meta.bg,
+                        borderColor: meta.border,
+                        color: meta.color,
+                      } : undefined}
+                      onClick={() => setForm(f => ({ ...f, categoria: key }))}
+                    >
+                      <span className="g-cat-icon">{meta.icon}</span>
+                      {meta.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Fecha */}
+              <div className="g-field">
+                <label className="g-label">Fecha</label>
+                <CalendarioPicker
+                  value={form.fecha}
+                  onChange={v => setForm(f => ({ ...f, fecha: v }))}
+                />
+              </div>
+
+              {formError && (
+                <div className="g-error">
+                  <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
+                    <circle cx="6.5" cy="6.5" r="5.5" stroke="currentColor" strokeWidth="1.3" />
+                    <path d="M6.5 4v3" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+                    <circle cx="6.5" cy="9" r="0.6" fill="currentColor" />
+                  </svg>
+                  {formError}
+                </div>
+              )}
+
+              <button type="submit" className="g-submit" disabled={guardando}>
+                {guardando && <span className="g-spinner" />}
+                {guardando ? 'Guardando...' : editandoId ? 'Guardar cambios' : 'Añadir gasto'}
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}

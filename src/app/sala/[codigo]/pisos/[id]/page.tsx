@@ -1,0 +1,886 @@
+'use client'
+
+import { useEffect, useState, useCallback } from 'react'
+import { useParams, useRouter } from 'next/navigation'
+import { Fraunces, Nunito, DM_Mono } from 'next/font/google'
+import { createClient } from '@/lib/supabase'
+import { getSession } from '@/lib/session'
+import type { Piso, VotoPiso, Miembro } from '@/lib/types'
+
+const fraunces = Fraunces({
+  weight: 'variable',
+  subsets: ['latin'],
+  variable: '--font-serif',
+})
+const nunito = Nunito({
+  subsets: ['latin'],
+  weight: ['300', '400', '500', '600', '700'],
+  variable: '--font-body',
+})
+const dmMono = DM_Mono({
+  subsets: ['latin'],
+  weight: ['400', '500'],
+  variable: '--font-code',
+})
+
+export default function PisoDetallePage() {
+  const params = useParams()
+  const router = useRouter()
+  const codigo = params.codigo as string
+  const pisoId = params.id as string
+
+  const [session] = useState(getSession)
+  const [piso, setPiso] = useState<Piso | null>(null)
+  const [votos, setVotos] = useState<VotoPiso[]>([])
+  const [miembros, setMiembros] = useState<Miembro[]>([])
+  const [loading, setLoading] = useState(true)
+
+  // Voto del usuario actual
+  const [puntuacion, setPuntuacion] = useState(0)
+  const [hovered, setHovered] = useState(0)
+  const [comentario, setComentario] = useState('')
+  const [guardandoVoto, setGuardandoVoto] = useState(false)
+  const [votoGuardado, setVotoGuardado] = useState(false)
+  const [votoError, setVotoError] = useState('')
+
+  const [eliminando, setEliminando] = useState(false)
+
+  // Fotos
+  const [nuevaFotoUrl, setNuevaFotoUrl] = useState('')
+  const [guardandoFoto, setGuardandoFoto] = useState(false)
+  const [fotoActiva, setFotoActiva] = useState(0)
+  const [lightboxOpen, setLightboxOpen] = useState(false)
+
+  useEffect(() => {
+    if (!lightboxOpen || !piso) return
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') setLightboxOpen(false)
+      if (e.key === 'ArrowRight') setFotoActiva(i => (i + 1) % piso.fotos.length)
+      if (e.key === 'ArrowLeft') setFotoActiva(i => (i - 1 + piso.fotos.length) % piso.fotos.length)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [lightboxOpen, piso])
+
+  const cargarDatos = useCallback(async () => {
+    if (!session) return
+    const supabase = createClient()
+    const [{ data: pisoData }, { data: votosData }, { data: miembrosData }] = await Promise.all([
+      supabase.from('pisos').select().eq('id', pisoId).single(),
+      supabase.from('votos_piso').select().eq('piso_id', pisoId),
+      supabase.from('miembros').select().eq('sala_id', session.salaId),
+    ])
+    if (!pisoData) { router.replace(`/sala/${codigo}/pisos`); return }
+    setPiso(pisoData as Piso)
+    const v = (votosData as VotoPiso[]) ?? []
+    setVotos(v)
+    if (miembrosData) setMiembros(miembrosData as Miembro[])
+
+    // Pre-fill mi voto si existe
+    const miVoto = v.find(vt => vt.miembro_id === session.miembroId)
+    if (miVoto) {
+      setPuntuacion(miVoto.puntuacion)
+      setComentario(miVoto.comentario ?? '')
+    }
+    setLoading(false)
+  }, [session, pisoId, codigo, router])
+
+  useEffect(() => {
+    if (!session || session.salaCodigo !== codigo) { router.replace('/'); return }
+    cargarDatos()
+  }, [codigo, session, cargarDatos, router])
+
+  async function handleVotar(e: React.FormEvent) {
+    e.preventDefault()
+    if (puntuacion === 0) { setVotoError('Selecciona una puntuación'); return }
+    setVotoError('')
+    setGuardandoVoto(true)
+    const supabase = createClient()
+    const miVotoExistente = votos.find(v => v.miembro_id === session!.miembroId)
+
+    if (miVotoExistente) {
+      await supabase.from('votos_piso').update({
+        puntuacion,
+        comentario: comentario.trim() || null,
+      }).eq('id', miVotoExistente.id)
+    } else {
+      await supabase.from('votos_piso').insert({
+        piso_id: pisoId,
+        miembro_id: session!.miembroId,
+        puntuacion,
+        comentario: comentario.trim() || null,
+      })
+    }
+
+    setGuardandoVoto(false)
+    setVotoGuardado(true)
+    setTimeout(() => setVotoGuardado(false), 2500)
+    cargarDatos()
+  }
+
+  async function handleAgregarFoto(e: React.FormEvent) {
+    e.preventDefault()
+    const url = nuevaFotoUrl.trim()
+    if (!url || !piso) return
+    setGuardandoFoto(true)
+    const nuevasFotos = [...(piso.fotos ?? []), url]
+    const supabase = createClient()
+    await supabase.from('pisos').update({ fotos: nuevasFotos }).eq('id', pisoId)
+    setPiso({ ...piso, fotos: nuevasFotos })
+    setFotoActiva(nuevasFotos.length - 1)
+    setNuevaFotoUrl('')
+    setGuardandoFoto(false)
+  }
+
+  async function handleEliminarFoto(idx: number) {
+    if (!piso) return
+    const nuevasFotos = piso.fotos.filter((_, i) => i !== idx)
+    const supabase = createClient()
+    await supabase.from('pisos').update({ fotos: nuevasFotos }).eq('id', pisoId)
+    setPiso({ ...piso, fotos: nuevasFotos })
+    setFotoActiva(Math.min(fotoActiva, nuevasFotos.length - 1))
+  }
+
+  async function handleEliminarPiso() {
+    if (!confirm('¿Eliminar este apto? Esta acción no se puede deshacer.')) return
+    setEliminando(true)
+    const supabase = createClient()
+    await supabase.from('pisos').delete().eq('id', pisoId)
+    router.replace(`/sala/${codigo}/pisos`)
+  }
+
+  const promedio = votos.length > 0
+    ? votos.reduce((s, v) => s + v.puntuacion, 0) / votos.length
+    : null
+
+  if (!session) return null
+
+  return (
+    <div className={`${fraunces.variable} ${nunito.variable} ${dmMono.variable}`}>
+      <style>{`
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+        @keyframes d-spin    { to { transform: rotate(360deg); } }
+        @keyframes d-fadeup  { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes d-in      { from { opacity: 0; transform: translateX(-12px); } to { opacity: 1; transform: translateX(0); } }
+        @keyframes d-pop     { from { opacity: 0; transform: scale(0.92); } to { opacity: 1; transform: scale(1); } }
+        @keyframes d-check   { from { opacity: 0; transform: scale(0.7) rotate(-10deg); } to { opacity: 1; transform: scale(1) rotate(0deg); } }
+        @keyframes d-shimmer { from { background-position: -200% 0; } to { background-position: 200% 0; } }
+        @keyframes d-star    { 0% { transform: scale(1); } 50% { transform: scale(1.35); } 100% { transform: scale(1); } }
+
+        .d-root {
+          min-height: 100vh;
+          background: #FAF5EE;
+          font-family: var(--font-body), 'Nunito', system-ui, sans-serif;
+          color: #2A1A0E;
+          position: relative;
+        }
+        .d-bg {
+          position: fixed; inset: 0;
+          background-image:
+            radial-gradient(circle at 10% 15%, rgba(192,90,59,0.05) 0%, transparent 40%),
+            radial-gradient(circle at 90% 85%, rgba(90,136,105,0.04) 0%, transparent 40%);
+          pointer-events: none; z-index: 0;
+        }
+
+        .d-wrap {
+          position: relative; z-index: 1;
+          max-width: 720px; margin: 0 auto; padding: 0 1.5rem 5rem;
+        }
+
+        /* Header */
+        .d-header {
+          display: flex; align-items: center; justify-content: space-between;
+          padding: 1.75rem 0 1.5rem;
+          animation: d-in 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+        }
+        .d-header-left { display: flex; align-items: center; gap: 0.85rem; }
+        .d-back {
+          width: 36px; height: 36px; border-radius: 10px;
+          background: white; border: 1.5px solid #E8D5C0;
+          display: flex; align-items: center; justify-content: center;
+          cursor: pointer; transition: background 0.18s, border-color 0.18s;
+          color: #A07060; box-shadow: 0 1px 4px rgba(150,80,40,0.08);
+          flex-shrink: 0;
+        }
+        .d-back:hover { background: #FFF5EE; border-color: #C05A3B; color: #C05A3B; }
+        .d-breadcrumb { font-size: 0.72rem; color: #B09080; font-weight: 400; }
+        .d-breadcrumb span { color: #7A5040; font-weight: 600; }
+        .d-del-btn {
+          display: flex; align-items: center; gap: 5px;
+          padding: 7px 13px;
+          background: rgba(192,60,60,0.06); border: 1px solid rgba(192,60,60,0.15);
+          color: #B03030; border-radius: 9px;
+          font-size: 0.75rem; font-weight: 600;
+          font-family: var(--font-body), 'Nunito', sans-serif;
+          cursor: pointer; transition: background 0.18s, border-color 0.18s;
+        }
+        .d-del-btn:hover:not(:disabled) {
+          background: rgba(192,60,60,0.12); border-color: rgba(192,60,60,0.3);
+        }
+        .d-del-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+        /* Cards */
+        .d-card {
+          background: white; border: 1.5px solid #EAD8C8;
+          border-radius: 20px; padding: 1.75rem;
+          margin-bottom: 1.25rem;
+          box-shadow: 0 2px 12px rgba(150,80,40,0.06);
+        }
+        .d-main { animation: d-fadeup 0.5s 0.05s cubic-bezier(0.22, 1, 0.36, 1) both; }
+        .d-photos-card { animation: d-fadeup 0.5s 0.08s cubic-bezier(0.22, 1, 0.36, 1) both; }
+        .d-vote-card { animation: d-fadeup 0.5s 0.12s cubic-bezier(0.22, 1, 0.36, 1) both; }
+        .d-votes-card { animation: d-fadeup 0.5s 0.2s cubic-bezier(0.22, 1, 0.36, 1) both; }
+
+        .d-piso-title {
+          font-family: var(--font-serif), 'Georgia', serif;
+          font-size: 1.9rem; color: #2A1A0E;
+          letter-spacing: -0.03em; line-height: 1.2;
+          margin-bottom: 1.25rem; font-weight: 600;
+        }
+
+        .d-score-row {
+          display: flex; align-items: center; gap: 1rem;
+          margin-bottom: 1.5rem; padding-bottom: 1.5rem;
+          border-bottom: 1.5px solid #EAD8C8;
+        }
+        .d-big-score {
+          font-family: var(--font-code), monospace;
+          font-size: 3rem; font-weight: 500; color: #C8823A;
+          line-height: 1; letter-spacing: -0.03em;
+        }
+        .d-score-stars { display: flex; flex-direction: column; gap: 5px; }
+        .d-stars-row { display: flex; gap: 3px; }
+        .d-score-sub { font-size: 0.72rem; color: #B09080; }
+        .d-no-score { font-size: 0.85rem; color: #B09080; font-style: italic; }
+
+        .d-info-grid {
+          display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+          gap: 0.75rem; margin-bottom: 1.25rem;
+        }
+        .d-info-item {
+          background: #FBF6EF; border: 1.5px solid #EAD8C8;
+          border-radius: 12px; padding: 0.85rem 1rem;
+        }
+        .d-info-label {
+          font-size: 0.65rem; text-transform: uppercase;
+          letter-spacing: 0.09em; color: #B09080;
+          margin-bottom: 4px; font-weight: 600;
+        }
+        .d-info-val { font-size: 1rem; color: #2A1A0E; font-weight: 600; letter-spacing: -0.01em; }
+        .d-info-val-price { color: #5A8869; font-family: var(--font-code), monospace; font-size: 1.05rem; }
+        .d-info-val-m2 { color: #C05A3B; }
+        .d-info-val-zona { color: #9A6020; }
+
+        .d-url-btn {
+          display: inline-flex; align-items: center; gap: 7px;
+          padding: 9px 16px;
+          background: rgba(192,90,59,0.08); border: 1.5px solid rgba(192,90,59,0.2);
+          color: #C05A3B; border-radius: 10px;
+          font-size: 0.82rem; font-weight: 600; text-decoration: none;
+          transition: background 0.18s, border-color 0.18s;
+          cursor: pointer; margin-bottom: 1rem;
+        }
+        .d-url-btn:hover { background: rgba(192,90,59,0.14); border-color: rgba(192,90,59,0.35); }
+
+        .d-notas-box {
+          background: #FBF6EF; border: 1.5px solid #EAD8C8;
+          border-radius: 12px; padding: 1rem 1.1rem;
+        }
+        .d-notas-label {
+          font-size: 0.65rem; text-transform: uppercase;
+          letter-spacing: 0.09em; color: #B09080;
+          margin-bottom: 6px; font-weight: 600;
+        }
+        .d-notas-text { font-size: 0.87rem; color: #7A5040; line-height: 1.65; font-weight: 400; }
+
+        /* Section title */
+        .d-section-title {
+          font-family: var(--font-serif), 'Georgia', serif;
+          font-size: 1.2rem; color: #2A1A0E;
+          letter-spacing: -0.02em; margin-bottom: 1.5rem; font-weight: 600;
+        }
+        .d-section-title em { font-style: italic; color: #C05A3B; }
+
+        /* Vote form */
+        .d-star-selector {
+          display: flex; gap: 8px; margin-bottom: 1.25rem; justify-content: center;
+        }
+        .d-star-btn {
+          background: none; border: none; cursor: pointer;
+          padding: 4px; transition: transform 0.15s; display: flex;
+        }
+        .d-star-btn:hover { transform: scale(1.15); }
+        .d-star-btn.active { animation: d-star 0.25s ease; }
+
+        .d-comment-input {
+          width: 100%; padding: 11px 14px;
+          background: #FBF6EF; border: 1.5px solid #E0C8B8;
+          border-radius: 11px; font-size: 0.88rem;
+          font-family: var(--font-body), 'Nunito', sans-serif;
+          color: #2A1A0E; outline: none;
+          transition: border-color 0.18s, box-shadow 0.18s;
+          resize: vertical; min-height: 80px; margin-bottom: 1rem;
+        }
+        .d-comment-input::placeholder { color: #C8B0A0; }
+        .d-comment-input:focus { border-color: #C05A3B; box-shadow: 0 0 0 3px rgba(192,90,59,0.12); }
+
+        .d-vote-btn {
+          width: 100%; padding: 13px; background: #C05A3B; color: white; border: none;
+          border-radius: 12px; font-size: 0.9rem; font-weight: 700;
+          font-family: var(--font-body), 'Nunito', sans-serif; cursor: pointer;
+          transition: background 0.18s, transform 0.15s, box-shadow 0.18s;
+          display: flex; align-items: center; justify-content: center; gap: 8px;
+        }
+        .d-vote-btn:hover:not(:disabled) { background: #A04730; transform: translateY(-1.5px); box-shadow: 0 10px 28px rgba(192,90,59,0.35); }
+        .d-vote-btn:disabled { opacity: 0.55; cursor: not-allowed; }
+        .d-vote-btn.saved { background: #5A8869; }
+
+        .d-vote-err { font-size: 0.78rem; color: #C03030; text-align: center; margin-bottom: 0.75rem; }
+
+        .d-spinner {
+          width: 15px; height: 15px; border-radius: 50%;
+          border: 2px solid rgba(255,255,255,0.35); border-top-color: white;
+          animation: d-spin 0.7s linear infinite; flex-shrink: 0;
+        }
+        .d-check { display: inline-flex; animation: d-check 0.3s cubic-bezier(0.22, 1, 0.36, 1); }
+
+        /* Member votes */
+        .d-member-vote {
+          display: flex; align-items: flex-start; gap: 1rem;
+          padding: 1rem 0; border-bottom: 1.5px solid #EAD8C8;
+        }
+        .d-member-vote:last-child { border-bottom: none; padding-bottom: 0; }
+        .d-member-vote:first-child { padding-top: 0; }
+        .d-mv-avatar {
+          width: 36px; height: 36px; border-radius: 50%;
+          display: flex; align-items: center; justify-content: center;
+          font-size: 0.85rem; font-weight: 700; color: white; flex-shrink: 0;
+          box-shadow: 0 2px 6px rgba(0,0,0,0.12);
+        }
+        .d-mv-info { flex: 1; }
+        .d-mv-top { display: flex; align-items: center; gap: 0.75rem; margin-bottom: 5px; }
+        .d-mv-name { font-size: 0.87rem; font-weight: 600; color: #2A1A0E; }
+        .d-mv-you {
+          font-size: 0.65rem; color: #C05A3B;
+          background: rgba(192,90,59,0.1); padding: 2px 7px; border-radius: 999px;
+          border: 1px solid rgba(192,90,59,0.2);
+        }
+        .d-mv-stars { display: flex; gap: 2px; }
+        .d-mv-score { font-family: var(--font-code), monospace; font-size: 0.85rem; font-weight: 500; color: #C8823A; margin-left: 5px; }
+        .d-mv-comment { font-size: 0.82rem; color: #A07060; line-height: 1.55; margin-top: 5px; font-style: italic; }
+        .d-no-votes { text-align: center; padding: 2rem; font-size: 0.83rem; color: #B09080; font-style: italic; }
+
+        /* Skeleton */
+        .d-skeleton {
+          background: linear-gradient(90deg, #F0E8DF 25%, #E8DDD4 50%, #F0E8DF 75%);
+          background-size: 200% 100%; animation: d-shimmer 1.5s infinite; border-radius: 10px;
+        }
+
+        /* Gallery */
+        .d-gallery {
+          margin: -1.75rem -1.75rem 1.75rem;
+          position: relative; border-radius: 20px 20px 0 0;
+          overflow: hidden; background: #F0E8DF;
+        }
+        .d-gallery-img-wrap { position: relative; cursor: zoom-in; }
+        .d-gallery-img-wrap:hover .d-gallery-expand { opacity: 1; }
+        .d-gallery-main { width: 100%; height: 260px; object-fit: cover; display: block; }
+        .d-gallery-no-img {
+          width: 100%; height: 260px;
+          display: flex; align-items: center; justify-content: center;
+          background: #F0E8DF; color: #C8B0A0; font-size: 0.8rem;
+        }
+        .d-gallery-dots {
+          position: absolute; bottom: 10px; left: 50%; transform: translateX(-50%);
+          display: flex; gap: 5px;
+        }
+        .d-gallery-dot {
+          width: 6px; height: 6px; border-radius: 50%;
+          background: rgba(255,255,255,0.5); cursor: pointer;
+          transition: background 0.15s, transform 0.15s; border: none; padding: 0;
+        }
+        .d-gallery-dot.active { background: white; transform: scale(1.25); }
+        .d-gallery-nav {
+          position: absolute; top: 50%; transform: translateY(-50%);
+          width: 32px; height: 32px; border-radius: 50%;
+          background: rgba(42,26,14,0.4); border: 1px solid rgba(255,255,255,0.3);
+          display: flex; align-items: center; justify-content: center;
+          cursor: pointer; color: white; transition: background 0.15s;
+        }
+        .d-gallery-nav:hover { background: rgba(42,26,14,0.65); }
+        .d-gallery-nav.prev { left: 10px; }
+        .d-gallery-nav.next { right: 10px; }
+        .d-gallery-count {
+          position: absolute; top: 10px; right: 10px;
+          background: rgba(42,26,14,0.45); color: rgba(255,255,255,0.9);
+          font-size: 0.7rem; padding: 3px 8px; border-radius: 999px;
+          backdrop-filter: blur(4px);
+        }
+        .d-gallery-expand {
+          position: absolute; bottom: 10px; left: 10px;
+          background: rgba(42,26,14,0.5); color: rgba(255,255,255,0.9);
+          border-radius: 8px; padding: 5px 10px; font-size: 0.7rem;
+          display: flex; align-items: center; gap: 5px;
+          opacity: 0; transition: opacity 0.15s; pointer-events: none;
+          backdrop-filter: blur(4px);
+        }
+
+        /* Photos grid */
+        .d-photos-grid {
+          display: grid; grid-template-columns: repeat(auto-fill, minmax(90px, 1fr));
+          gap: 8px; margin-bottom: 1rem;
+        }
+        .d-photo-thumb {
+          position: relative; border-radius: 10px; overflow: hidden;
+          aspect-ratio: 1; background: #F0E8DF;
+          border: 1.5px solid #EAD8C8; cursor: pointer;
+          transition: border-color 0.15s, box-shadow 0.15s;
+        }
+        .d-photo-thumb.active-thumb { border-color: #C05A3B; box-shadow: 0 0 0 2px rgba(192,90,59,0.25); }
+        .d-photo-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+        .d-photo-del {
+          position: absolute; top: 4px; right: 4px;
+          width: 20px; height: 20px; border-radius: 50%;
+          background: rgba(42,26,14,0.65); border: 1px solid rgba(255,255,255,0.3);
+          display: flex; align-items: center; justify-content: center;
+          cursor: pointer; color: white; opacity: 0; transition: opacity 0.15s;
+        }
+        .d-photo-thumb:hover .d-photo-del { opacity: 1; }
+
+        .d-add-foto-row { display: flex; gap: 8px; align-items: stretch; }
+        .d-add-foto-input {
+          flex: 1; padding: 9px 12px;
+          background: #FBF6EF; border: 1.5px solid #E0C8B8;
+          border-radius: 10px; font-size: 0.84rem;
+          font-family: var(--font-body), 'Nunito', sans-serif;
+          color: #2A1A0E; outline: none;
+          transition: border-color 0.18s, box-shadow 0.18s;
+        }
+        .d-add-foto-input::placeholder { color: #C8B0A0; }
+        .d-add-foto-input:focus { border-color: #C05A3B; box-shadow: 0 0 0 3px rgba(192,90,59,0.12); }
+        .d-add-foto-btn {
+          padding: 9px 16px; background: rgba(192,90,59,0.1);
+          border: 1.5px solid rgba(192,90,59,0.25); color: #C05A3B;
+          border-radius: 10px; font-size: 0.82rem; font-weight: 600;
+          font-family: var(--font-body), 'Nunito', sans-serif;
+          cursor: pointer; transition: background 0.15s, border-color 0.15s;
+          white-space: nowrap; display: flex; align-items: center; gap: 5px;
+        }
+        .d-add-foto-btn:hover:not(:disabled) { background: rgba(192,90,59,0.18); border-color: rgba(192,90,59,0.45); }
+        .d-add-foto-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+        /* Lightbox */
+        @keyframes d-lb-in  { from { opacity: 0; } to { opacity: 1; } }
+        @keyframes d-lb-img { from { opacity: 0; transform: scale(0.93); } to { opacity: 1; transform: scale(1); } }
+
+        .d-lb-overlay {
+          position: fixed; inset: 0; z-index: 200;
+          background: rgba(0,0,0,0.9); backdrop-filter: blur(12px);
+          display: flex; align-items: center; justify-content: center;
+          animation: d-lb-in 0.2s ease both;
+        }
+        .d-lb-img {
+          max-width: 92vw; max-height: 88vh;
+          object-fit: contain; border-radius: 10px;
+          animation: d-lb-img 0.22s cubic-bezier(0.22, 1, 0.36, 1) both;
+          user-select: none;
+        }
+        .d-lb-close {
+          position: fixed; top: 18px; right: 18px;
+          width: 40px; height: 40px; border-radius: 50%;
+          background: rgba(255,255,255,0.12); border: 1px solid rgba(255,255,255,0.2);
+          display: flex; align-items: center; justify-content: center;
+          cursor: pointer; color: white; transition: background 0.15s; z-index: 201;
+        }
+        .d-lb-close:hover { background: rgba(255,255,255,0.22); }
+        .d-lb-nav {
+          position: fixed; top: 50%; transform: translateY(-50%);
+          width: 44px; height: 44px; border-radius: 50%;
+          background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.18);
+          display: flex; align-items: center; justify-content: center;
+          cursor: pointer; color: white; transition: background 0.15s; z-index: 201;
+        }
+        .d-lb-nav:hover { background: rgba(255,255,255,0.2); }
+        .d-lb-nav.lb-prev { left: 16px; }
+        .d-lb-nav.lb-next { right: 16px; }
+        .d-lb-counter {
+          position: fixed; bottom: 22px; left: 50%; transform: translateX(-50%);
+          background: rgba(0,0,0,0.5); color: rgba(255,255,255,0.75);
+          font-size: 0.78rem; padding: 5px 14px; border-radius: 999px;
+          backdrop-filter: blur(4px); z-index: 201;
+        }
+
+        @media (max-width: 640px) {
+          .d-wrap { padding: 0 1rem 5rem; }
+          .d-header { padding: 1.25rem 0 1.25rem; }
+          .d-piso-title { font-size: 1.5rem; }
+          .d-big-score { font-size: 2rem; }
+          .d-card { padding: 1.25rem; }
+          .d-info-grid { grid-template-columns: 1fr 1fr; }
+          .d-gallery { margin: -1.25rem -1.25rem 1.25rem; }
+          .d-gallery-main { height: 200px; }
+          .d-lb-nav.lb-prev { left: 8px; }
+          .d-lb-nav.lb-next { right: 8px; }
+        }
+        @media (max-width: 420px) {
+          .d-wrap { padding: 0 0.75rem 5rem; }
+          .d-card { padding: 1rem; }
+          .d-gallery { margin: -1rem -1rem 1rem; }
+          .d-piso-title { font-size: 1.3rem; }
+        }
+      `}</style>
+
+      <div className="d-root">
+        <div className="d-bg" />
+
+        <div className="d-wrap">
+
+          {/* ── HEADER ── */}
+          <div className="d-header">
+            <div className="d-header-left">
+              <button className="d-back" onClick={() => router.push(`/sala/${codigo}/pisos`)}>
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                  <path d="M10 12L6 8l4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </button>
+              <div className="d-breadcrumb">
+                Sala <span>{session.salaNombre}</span> &rsaquo; <span>Aptos</span>
+              </div>
+            </div>
+            <button className="d-del-btn" onClick={handleEliminarPiso} disabled={eliminando}>
+              <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                <path d="M1.5 3h9M4 3V2h4v1M5 5.5v3M7 5.5v3M2 3l.75 7.5h6.5L10 3" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+              Eliminar
+            </button>
+          </div>
+
+          {/* ── LOADING ── */}
+          {loading && (
+            <div className="d-card d-main">
+              <div className="d-skeleton" style={{ height: 36, width: '65%', marginBottom: 20 }} />
+              <div className="d-skeleton" style={{ height: 20, width: '40%', marginBottom: 12 }} />
+              <div className="d-skeleton" style={{ height: 20, width: '55%' }} />
+            </div>
+          )}
+
+          {/* ── PISO DETAIL ── */}
+          {!loading && piso && (
+            <>
+              <div className="d-card d-main">
+                {/* ── GALERÍA ── */}
+                {piso.fotos?.length > 0 && (
+                  <div className="d-gallery">
+                    <div className="d-gallery-img-wrap" onClick={() => setLightboxOpen(true)}>
+                      <img
+                        className="d-gallery-main"
+                        src={piso.fotos[fotoActiva]}
+                        alt={`Foto ${fotoActiva + 1}`}
+                        onError={e => { (e.target as HTMLImageElement).style.display = 'none' }}
+                      />
+                      <div className="d-gallery-expand">
+                        <svg width="11" height="11" viewBox="0 0 11 11" fill="none">
+                          <path d="M1 4V1h3M7 1h3v3M10 7v3H7M4 10H1V7" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
+                        </svg>
+                        Ver en grande
+                      </div>
+                    </div>
+                    {piso.fotos.length > 1 && (
+                      <>
+                        <div className="d-gallery-count">{fotoActiva + 1} / {piso.fotos.length}</div>
+                        <button className="d-gallery-nav prev" onClick={() => setFotoActiva(i => (i - 1 + piso.fotos.length) % piso.fotos.length)}>
+                          <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                            <path d="M8 10L4 6l4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                          </svg>
+                        </button>
+                        <button className="d-gallery-nav next" onClick={() => setFotoActiva(i => (i + 1) % piso.fotos.length)}>
+                          <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                            <path d="M4 2l4 4-4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                          </svg>
+                        </button>
+                        <div className="d-gallery-dots">
+                          {piso.fotos.map((_, i) => (
+                            <button key={i} className={`d-gallery-dot${i === fotoActiva ? ' active' : ''}`} onClick={() => setFotoActiva(i)} />
+                          ))}
+                        </div>
+                      </>
+                    )}
+                  </div>
+                )}
+
+                <div className="d-piso-title">{piso.titulo}</div>
+
+                {/* Score */}
+                <div className="d-score-row">
+                  {promedio !== null ? (
+                    <>
+                      <div className="d-big-score">{promedio.toFixed(1)}</div>
+                      <div className="d-score-stars">
+                        <div className="d-stars-row">
+                          {Array.from({ length: 5 }, (_, i) => (
+                            <svg key={i} width="18" height="18" viewBox="0 0 12 12"
+                              fill={i < Math.round(promedio) ? '#C8823A' : 'none'}
+                              stroke={i < Math.round(promedio) ? '#C8823A' : '#D0B8A8'}
+                              strokeWidth="1"
+                            >
+                              <path d="M6 1l1.35 2.73 3.01.44-2.18 2.12.51 3.01L6 7.9 3.31 9.3l.51-3.01L1.64 4.17l3.01-.44z" />
+                            </svg>
+                          ))}
+                        </div>
+                        <div className="d-score-sub">{votos.length} voto{votos.length !== 1 ? 's' : ''} · promedio</div>
+                      </div>
+                    </>
+                  ) : (
+                    <div className="d-no-score">Aún no hay votos — ¡sé el primero!</div>
+                  )}
+                </div>
+
+                {/* Info badges */}
+                <div className="d-info-grid">
+                  {piso.precio !== null && (
+                    <div className="d-info-item">
+                      <div className="d-info-label">Precio total/mes</div>
+                      <div className="d-info-val d-info-val-price">$ {piso.precio.toLocaleString('es-UY')}</div>
+                    </div>
+                  )}
+                  {piso.m2 !== null && (
+                    <div className="d-info-item">
+                      <div className="d-info-label">Superficie</div>
+                      <div className="d-info-val d-info-val-m2">{piso.m2} m²</div>
+                    </div>
+                  )}
+                  {piso.precio !== null && piso.m2 !== null && (
+                    <div className="d-info-item">
+                      <div className="d-info-label">$/m²</div>
+                      <div className="d-info-val" style={{ color: '#A07060' }}>$ {(piso.precio / piso.m2).toFixed(0)}</div>
+                    </div>
+                  )}
+                  {piso.zona && (
+                    <div className="d-info-item">
+                      <div className="d-info-label">Zona</div>
+                      <div className="d-info-val d-info-val-zona">{piso.zona}</div>
+                    </div>
+                  )}
+                </div>
+
+                {piso.url && (
+                  <a className="d-url-btn" href={piso.url} target="_blank" rel="noopener noreferrer">
+                    <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
+                      <path d="M5 2.5H2.5V10.5H10.5V8M7.5 2.5H10.5M10.5 2.5V5.5M10.5 2.5L5.5 7.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                    Ver anuncio
+                  </a>
+                )}
+
+                {piso.notas && (
+                  <div className="d-notas-box">
+                    <div className="d-notas-label">Notas</div>
+                    <div className="d-notas-text">{piso.notas}</div>
+                  </div>
+                )}
+              </div>
+
+              {/* ── FOTOS ── */}
+              <div className="d-card d-photos-card">
+                <div className="d-section-title">Fotos</div>
+
+                {piso.fotos?.length > 0 && (
+                  <div className="d-photos-grid">
+                    {piso.fotos.map((foto, i) => (
+                      <div
+                        key={i}
+                        className={`d-photo-thumb${i === fotoActiva ? ' active-thumb' : ''}`}
+                        onClick={() => setFotoActiva(i)}
+                      >
+                        <img src={foto} alt={`Foto ${i + 1}`} onError={e => { (e.target as HTMLImageElement).parentElement!.style.display = 'none' }} />
+                        <button
+                          className="d-photo-del"
+                          onClick={e => { e.stopPropagation(); handleEliminarFoto(i) }}
+                          title="Eliminar foto"
+                        >
+                          <svg width="8" height="8" viewBox="0 0 8 8" fill="none">
+                            <path d="M1 1l6 6M7 1L1 7" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+                          </svg>
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                <form className="d-add-foto-row" onSubmit={handleAgregarFoto}>
+                  <input
+                    className="d-add-foto-input"
+                    type="url"
+                    placeholder="Pegar URL de imagen..."
+                    value={nuevaFotoUrl}
+                    onChange={e => setNuevaFotoUrl(e.target.value)}
+                  />
+                  <button type="submit" className="d-add-foto-btn" disabled={!nuevaFotoUrl.trim() || guardandoFoto}>
+                    {guardandoFoto ? (
+                      <span style={{ width: 13, height: 13, borderRadius: '50%', border: '2px solid rgba(192,90,59,0.3)', borderTopColor: '#C05A3B', animation: 'd-spin 0.7s linear infinite', display: 'inline-block' }} />
+                    ) : (
+                      <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                        <path d="M6 1v10M1 6h10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+                      </svg>
+                    )}
+                    Añadir
+                  </button>
+                </form>
+              </div>
+
+              {/* ── VOTAR ── */}
+              <div className="d-card d-vote-card">
+                <div className="d-section-title">
+                  Tu voto, <em>{session.miembroNombre}</em>
+                </div>
+
+                <form onSubmit={handleVotar}>
+                  <div className="d-star-selector">
+                    {Array.from({ length: 5 }, (_, i) => {
+                      const val = i + 1
+                      const filled = val <= (hovered || puntuacion)
+                      return (
+                        <button
+                          key={val}
+                          type="button"
+                          className={`d-star-btn${puntuacion === val ? ' active' : ''}`}
+                          onMouseEnter={() => setHovered(val)}
+                          onMouseLeave={() => setHovered(0)}
+                          onClick={() => setPuntuacion(val)}
+                        >
+                          <svg width="32" height="32" viewBox="0 0 32 32"
+                            fill={filled ? '#C8823A' : 'none'}
+                            stroke={filled ? '#C8823A' : '#D0B8A8'}
+                            strokeWidth="1.5"
+                            style={{ transition: 'fill 0.12s, stroke 0.12s, filter 0.12s', filter: filled ? 'drop-shadow(0 0 6px rgba(200,130,58,0.45))' : 'none' }}
+                          >
+                            <path d="M16 3l3.6 7.3 8.1 1.2-5.85 5.7 1.38 8.05L16 21.4l-7.23 3.85 1.38-8.05L4.3 11.5l8.1-1.2z" />
+                          </svg>
+                        </button>
+                      )
+                    })}
+                  </div>
+
+                  {puntuacion > 0 && (
+                    <div style={{ textAlign: 'center', fontSize: '0.78rem', color: '#A07060', marginBottom: '1rem', letterSpacing: '0.04em' }}>
+                      {['', 'Descartado', 'Flojo', 'Interesante', 'Me gusta', '¡Perfecto!'][puntuacion]}
+                    </div>
+                  )}
+
+                  <textarea
+                    className="d-comment-input"
+                    placeholder="Deja un comentario (opcional)..."
+                    value={comentario}
+                    onChange={e => setComentario(e.target.value)}
+                  />
+
+                  {votoError && <div className="d-vote-err">{votoError}</div>}
+
+                  <button type="submit" className={`d-vote-btn${votoGuardado ? ' saved' : ''}`} disabled={guardandoVoto}>
+                    {guardandoVoto && <span className="d-spinner" />}
+                    {votoGuardado ? (
+                      <>
+                        <span className="d-check">
+                          <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                            <path d="M3 8l3.5 3.5L13 5" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                          </svg>
+                        </span>
+                        ¡Voto guardado!
+                      </>
+                    ) : (
+                      guardandoVoto ? 'Guardando...' : (votos.find(v => v.miembro_id === session.miembroId) ? 'Actualizar voto' : 'Guardar voto')
+                    )}
+                  </button>
+                </form>
+              </div>
+
+              {/* ── VOTOS DE TODOS ── */}
+              <div className="d-card d-votes-card">
+                <div className="d-section-title">Votos del grupo</div>
+                {votos.length === 0 ? (
+                  <div className="d-no-votes">Nadie ha votado todavía</div>
+                ) : (
+                  votos.map(voto => {
+                    const m = miembros.find(mb => mb.id === voto.miembro_id)
+                    if (!m) return null
+                    const esTuyo = voto.miembro_id === session.miembroId
+                    return (
+                      <div key={voto.id} className="d-member-vote">
+                        <div className="d-mv-avatar" style={{ background: m.color }}>
+                          {m.nombre[0].toUpperCase()}
+                        </div>
+                        <div className="d-mv-info">
+                          <div className="d-mv-top">
+                            <span className="d-mv-name">{m.nombre}</span>
+                            {esTuyo && <span className="d-mv-you">tú</span>}
+                            <div className="d-mv-stars">
+                              {Array.from({ length: 5 }, (_, i) => (
+                                <svg key={i} width="12" height="12" viewBox="0 0 12 12"
+                                  fill={i < voto.puntuacion ? '#C8823A' : 'none'}
+                                  stroke={i < voto.puntuacion ? '#C8823A' : '#D0B8A8'}
+                                  strokeWidth="1"
+                                >
+                                  <path d="M6 1l1.35 2.73 3.01.44-2.18 2.12.51 3.01L6 7.9 3.31 9.3l.51-3.01L1.64 4.17l3.01-.44z" />
+                                </svg>
+                              ))}
+                              <span className="d-mv-score">{voto.puntuacion}</span>
+                            </div>
+                          </div>
+                          {voto.comentario && (
+                            <div className="d-mv-comment">"{voto.comentario}"</div>
+                          )}
+                        </div>
+                      </div>
+                    )
+                  })
+                )}
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* ── LIGHTBOX ── */}
+      {lightboxOpen && piso && piso.fotos?.length > 0 && (
+        <div className="d-lb-overlay" onClick={() => setLightboxOpen(false)}>
+          <button className="d-lb-close" onClick={() => setLightboxOpen(false)}>
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+              <path d="M2 2l10 10M12 2L2 12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+            </svg>
+          </button>
+
+          <img
+            key={fotoActiva}
+            className="d-lb-img"
+            src={piso.fotos[fotoActiva]}
+            alt={`Foto ${fotoActiva + 1}`}
+            onClick={e => e.stopPropagation()}
+          />
+
+          {piso.fotos.length > 1 && (
+            <>
+              <button
+                className="d-lb-nav lb-prev"
+                onClick={e => { e.stopPropagation(); setFotoActiva(i => (i - 1 + piso.fotos.length) % piso.fotos.length) }}
+              >
+                <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                  <path d="M9 12L5 7l4-5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </button>
+              <button
+                className="d-lb-nav lb-next"
+                onClick={e => { e.stopPropagation(); setFotoActiva(i => (i + 1) % piso.fotos.length) }}
+              >
+                <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                  <path d="M5 2l4 5-4 5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </button>
+              <div className="d-lb-counter">{fotoActiva + 1} / {piso.fotos.length}</div>
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
