@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { Fraunces, Nunito, DM_Mono } from 'next/font/google'
 import { createClient } from '@/lib/supabase'
@@ -23,6 +23,40 @@ const dmMono = DM_Mono({
   variable: '--font-code',
 })
 
+function parseVideo(url: string): { tipo: 'youtube' | 'tiktok' | 'otro'; embedUrl?: string; id?: string } {
+  try {
+    if (url.includes('youtube.com/watch')) {
+      const id = new URL(url).searchParams.get('v')
+      if (id) return { tipo: 'youtube', id, embedUrl: `https://www.youtube.com/embed/${id}` }
+    }
+    if (url.includes('youtu.be/')) {
+      const id = url.split('youtu.be/')[1]?.split('?')[0]
+      if (id) return { tipo: 'youtube', id, embedUrl: `https://www.youtube.com/embed/${id}` }
+    }
+    if (url.includes('youtube.com/shorts/')) {
+      const id = url.split('/shorts/')[1]?.split('?')[0]
+      if (id) return { tipo: 'youtube', id, embedUrl: `https://www.youtube.com/embed/${id}` }
+    }
+    if (url.includes('tiktok.com')) {
+      const match = url.match(/\/video\/(\d+)/)
+      if (match) return { tipo: 'tiktok', id: match[1], embedUrl: `https://www.tiktok.com/embed/v2/${match[1]}` }
+    }
+  } catch {
+    // ignore
+  }
+  return { tipo: 'otro' }
+}
+
+async function subirArchivoStorage(salaId: string, file: File): Promise<string | null> {
+  const supabase = createClient()
+  const ext = file.name.split('.').pop() ?? 'jpg'
+  const path = `${salaId}/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`
+  const { error } = await supabase.storage.from('pisos').upload(path, file, { contentType: file.type })
+  if (error) return null
+  const { data } = supabase.storage.from('pisos').getPublicUrl(path)
+  return data.publicUrl
+}
+
 export default function PisoDetallePage() {
   const params = useParams()
   const router = useRouter()
@@ -35,7 +69,7 @@ export default function PisoDetallePage() {
   const [miembros, setMiembros] = useState<Miembro[]>([])
   const [loading, setLoading] = useState(true)
 
-  // Voto del usuario actual
+  // Voto
   const [puntuacion, setPuntuacion] = useState(0)
   const [hovered, setHovered] = useState(0)
   const [comentario, setComentario] = useState('')
@@ -48,8 +82,15 @@ export default function PisoDetallePage() {
   // Fotos
   const [nuevaFotoUrl, setNuevaFotoUrl] = useState('')
   const [guardandoFoto, setGuardandoFoto] = useState(false)
+  const [subiendoFoto, setSubiendoFoto] = useState(false)
   const [fotoActiva, setFotoActiva] = useState(0)
   const [lightboxOpen, setLightboxOpen] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
+  // Videos
+  const [nuevaVideoUrl, setNuevaVideoUrl] = useState('')
+  const [guardandoVideo, setGuardandoVideo] = useState(false)
+  const [videoActivo, setVideoActivo] = useState<number | null>(null)
 
   useEffect(() => {
     if (!lightboxOpen || !piso) return
@@ -77,7 +118,6 @@ export default function PisoDetallePage() {
     setVotos(v)
     if (miembrosData) setMiembros(miembrosData as Miembro[])
 
-    // Pre-fill mi voto si existe
     const miVoto = v.find(vt => vt.miembro_id === session.miembroId)
     if (miVoto) {
       setPuntuacion(miVoto.puntuacion)
@@ -119,7 +159,7 @@ export default function PisoDetallePage() {
     cargarDatos()
   }
 
-  async function handleAgregarFoto(e: React.FormEvent) {
+  async function handleAgregarFotoUrl(e: React.FormEvent) {
     e.preventDefault()
     const url = nuevaFotoUrl.trim()
     if (!url || !piso) return
@@ -133,6 +173,22 @@ export default function PisoDetallePage() {
     setGuardandoFoto(false)
   }
 
+  async function handleSubirFotoArchivo(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file || !piso || !session) return
+    setSubiendoFoto(true)
+    const url = await subirArchivoStorage(session.salaId, file)
+    if (url) {
+      const nuevasFotos = [...(piso.fotos ?? []), url]
+      const supabase = createClient()
+      await supabase.from('pisos').update({ fotos: nuevasFotos }).eq('id', pisoId)
+      setPiso({ ...piso, fotos: nuevasFotos })
+      setFotoActiva(nuevasFotos.length - 1)
+    }
+    setSubiendoFoto(false)
+    if (fileInputRef.current) fileInputRef.current.value = ''
+  }
+
   async function handleEliminarFoto(idx: number) {
     if (!piso) return
     const nuevasFotos = piso.fotos.filter((_, i) => i !== idx)
@@ -140,6 +196,29 @@ export default function PisoDetallePage() {
     await supabase.from('pisos').update({ fotos: nuevasFotos }).eq('id', pisoId)
     setPiso({ ...piso, fotos: nuevasFotos })
     setFotoActiva(Math.min(fotoActiva, nuevasFotos.length - 1))
+  }
+
+  async function handleAgregarVideo(e: React.FormEvent) {
+    e.preventDefault()
+    const url = nuevaVideoUrl.trim()
+    if (!url || !piso) return
+    setGuardandoVideo(true)
+    const nuevosVideos = [...(piso.videos ?? []), url]
+    const supabase = createClient()
+    await supabase.from('pisos').update({ videos: nuevosVideos }).eq('id', pisoId)
+    setPiso({ ...piso, videos: nuevosVideos })
+    setVideoActivo(nuevosVideos.length - 1)
+    setNuevaVideoUrl('')
+    setGuardandoVideo(false)
+  }
+
+  async function handleEliminarVideo(idx: number) {
+    if (!piso) return
+    const nuevosVideos = (piso.videos ?? []).filter((_, i) => i !== idx)
+    const supabase = createClient()
+    await supabase.from('pisos').update({ videos: nuevosVideos }).eq('id', pisoId)
+    setPiso({ ...piso, videos: nuevosVideos })
+    if (videoActivo !== null && videoActivo >= nuevosVideos.length) setVideoActivo(nuevosVideos.length > 0 ? nuevosVideos.length - 1 : null)
   }
 
   async function handleEliminarPiso() {
@@ -230,8 +309,10 @@ export default function PisoDetallePage() {
         }
         .d-main { animation: d-fadeup 0.5s 0.05s cubic-bezier(0.22, 1, 0.36, 1) both; }
         .d-photos-card { animation: d-fadeup 0.5s 0.08s cubic-bezier(0.22, 1, 0.36, 1) both; }
-        .d-vote-card { animation: d-fadeup 0.5s 0.12s cubic-bezier(0.22, 1, 0.36, 1) both; }
-        .d-votes-card { animation: d-fadeup 0.5s 0.2s cubic-bezier(0.22, 1, 0.36, 1) both; }
+        .d-map-card { animation: d-fadeup 0.5s 0.11s cubic-bezier(0.22, 1, 0.36, 1) both; }
+        .d-videos-card { animation: d-fadeup 0.5s 0.14s cubic-bezier(0.22, 1, 0.36, 1) both; }
+        .d-vote-card { animation: d-fadeup 0.5s 0.17s cubic-bezier(0.22, 1, 0.36, 1) both; }
+        .d-votes-card { animation: d-fadeup 0.5s 0.22s cubic-bezier(0.22, 1, 0.36, 1) both; }
 
         .d-piso-title {
           font-family: var(--font-serif), 'Georgia', serif;
@@ -471,6 +552,119 @@ export default function PisoDetallePage() {
         .d-add-foto-btn:hover:not(:disabled) { background: rgba(192,90,59,0.18); border-color: rgba(192,90,59,0.45); }
         .d-add-foto-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
+        .d-upload-foto-btn {
+          padding: 9px 14px; background: rgba(90,136,105,0.1);
+          border: 1.5px solid rgba(90,136,105,0.25); color: #3A7050;
+          border-radius: 10px; font-size: 0.82rem; font-weight: 600;
+          font-family: var(--font-body), 'Nunito', sans-serif;
+          cursor: pointer; transition: background 0.15s, border-color 0.15s;
+          white-space: nowrap; display: flex; align-items: center; gap: 5px;
+        }
+        .d-upload-foto-btn:hover:not(:disabled) { background: rgba(90,136,105,0.18); border-color: rgba(90,136,105,0.45); }
+        .d-upload-foto-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+        /* Map */
+        .d-map-container {
+          border-radius: 14px; overflow: hidden;
+          border: 1.5px solid #EAD8C8;
+          margin-bottom: 1rem;
+          position: relative;
+        }
+        .d-map-iframe { width: 100%; height: 280px; border: 0; display: block; }
+        .d-map-address {
+          display: flex; align-items: flex-start; gap: 8px;
+          padding: 10px 12px; background: #FBF6EF;
+          border-top: 1px solid #EAD8C8; font-size: 0.83rem; color: #7A5040;
+        }
+        .d-map-open-btn {
+          display: inline-flex; align-items: center; gap: 6px;
+          padding: 8px 14px; background: rgba(90,136,105,0.1);
+          border: 1.5px solid rgba(90,136,105,0.25); color: #3A7050;
+          border-radius: 9px; font-size: 0.8rem; font-weight: 600;
+          text-decoration: none; transition: background 0.15s, border-color 0.15s;
+          margin-top: 0.75rem; cursor: pointer;
+        }
+        .d-map-open-btn:hover { background: rgba(90,136,105,0.18); border-color: rgba(90,136,105,0.45); }
+
+        /* Videos */
+        .d-video-tabs {
+          display: flex; gap: 6px; margin-bottom: 1rem; flex-wrap: wrap;
+        }
+        .d-video-tab {
+          display: flex; align-items: center; gap: 5px;
+          padding: 6px 12px; border-radius: 999px;
+          font-size: 0.75rem; font-weight: 600; cursor: pointer;
+          transition: background 0.15s, border-color 0.15s;
+          border: 1.5px solid #EAD8C8; background: white; color: #7A5040;
+          font-family: var(--font-body), 'Nunito', sans-serif;
+        }
+        .d-video-tab.active { background: #2A1A0E; border-color: #2A1A0E; color: white; }
+        .d-video-tab:hover:not(.active) { background: #F5EDE4; border-color: #D4B8A0; }
+
+        .d-video-embed {
+          border-radius: 14px; overflow: hidden;
+          border: 1.5px solid #EAD8C8; background: #000;
+          margin-bottom: 1rem; position: relative;
+        }
+        .d-video-embed iframe { width: 100%; height: 380px; border: 0; display: block; }
+        .d-video-del-btn {
+          position: absolute; top: 8px; right: 8px;
+          background: rgba(0,0,0,0.65); border: 1px solid rgba(255,255,255,0.2);
+          color: white; border-radius: 6px; padding: 4px 8px;
+          font-size: 0.7rem; cursor: pointer; font-weight: 600;
+          font-family: var(--font-body), 'Nunito', sans-serif;
+          transition: background 0.15s; display: flex; align-items: center; gap: 4px;
+        }
+        .d-video-del-btn:hover { background: rgba(192,60,60,0.85); }
+
+        .d-tiktok-card {
+          display: flex; align-items: center; gap: 12px;
+          padding: 1rem; border-radius: 14px;
+          border: 1.5px solid #EAD8C8; background: #FBF6EF;
+          margin-bottom: 1rem;
+        }
+        .d-tiktok-icon {
+          width: 48px; height: 48px; border-radius: 12px;
+          background: #010101; display: flex; align-items: center; justify-content: center;
+          flex-shrink: 0;
+        }
+        .d-tiktok-info { flex: 1; min-width: 0; }
+        .d-tiktok-label { font-size: 0.72rem; color: #B09080; margin-bottom: 3px; }
+        .d-tiktok-url {
+          font-size: 0.8rem; color: #2A1A0E; font-weight: 500;
+          overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+        }
+        .d-tiktok-btn {
+          padding: 8px 14px; background: #010101; color: white; border: none;
+          border-radius: 8px; font-size: 0.78rem; font-weight: 700;
+          font-family: var(--font-body), 'Nunito', sans-serif; cursor: pointer;
+          text-decoration: none; white-space: nowrap; flex-shrink: 0;
+          transition: background 0.15s;
+        }
+        .d-tiktok-btn:hover { background: #333; }
+
+        .d-add-video-row { display: flex; gap: 8px; align-items: stretch; margin-top: 0.5rem; }
+        .d-add-video-input {
+          flex: 1; padding: 9px 12px;
+          background: #FBF6EF; border: 1.5px solid #E0C8B8;
+          border-radius: 10px; font-size: 0.84rem;
+          font-family: var(--font-body), 'Nunito', sans-serif;
+          color: #2A1A0E; outline: none;
+          transition: border-color 0.18s, box-shadow 0.18s;
+        }
+        .d-add-video-input::placeholder { color: #C8B0A0; }
+        .d-add-video-input:focus { border-color: #C05A3B; box-shadow: 0 0 0 3px rgba(192,90,59,0.12); }
+        .d-add-video-btn {
+          padding: 9px 16px; background: rgba(42,26,14,0.08);
+          border: 1.5px solid rgba(42,26,14,0.15); color: #4A3020;
+          border-radius: 10px; font-size: 0.82rem; font-weight: 600;
+          font-family: var(--font-body), 'Nunito', sans-serif;
+          cursor: pointer; transition: background 0.15s, border-color 0.15s;
+          white-space: nowrap; display: flex; align-items: center; gap: 5px;
+        }
+        .d-add-video-btn:hover:not(:disabled) { background: rgba(42,26,14,0.14); }
+        .d-add-video-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
         /* Lightbox */
         @keyframes d-lb-in  { from { opacity: 0; } to { opacity: 1; } }
         @keyframes d-lb-img { from { opacity: 0; transform: scale(0.93); } to { opacity: 1; transform: scale(1); } }
@@ -523,6 +717,9 @@ export default function PisoDetallePage() {
           .d-gallery-main { height: 200px; }
           .d-lb-nav.lb-prev { left: 8px; }
           .d-lb-nav.lb-next { right: 8px; }
+          .d-map-iframe { height: 220px; }
+          .d-video-embed iframe { height: 260px; }
+          .d-add-foto-row { flex-wrap: wrap; }
         }
         @media (max-width: 420px) {
           .d-wrap { padding: 0 0.75rem 5rem; }
@@ -531,6 +728,15 @@ export default function PisoDetallePage() {
           .d-piso-title { font-size: 1.3rem; }
         }
       `}</style>
+
+      {/* Hidden file input */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*"
+        style={{ display: 'none' }}
+        onChange={handleSubirFotoArchivo}
+      />
 
       <div className="d-root">
         <div className="d-bg" />
@@ -709,17 +915,197 @@ export default function PisoDetallePage() {
                   </div>
                 )}
 
-                <form className="d-add-foto-row" onSubmit={handleAgregarFoto}>
+                {/* Subir desde archivo */}
+                <div style={{ marginBottom: '0.75rem' }}>
+                  <button
+                    type="button"
+                    className="d-upload-foto-btn"
+                    disabled={subiendoFoto}
+                    onClick={() => fileInputRef.current?.click()}
+                  >
+                    {subiendoFoto ? (
+                      <span style={{ width: 13, height: 13, borderRadius: '50%', border: '2px solid rgba(58,112,80,0.3)', borderTopColor: '#3A7050', animation: 'd-spin 0.7s linear infinite', display: 'inline-block' }} />
+                    ) : (
+                      <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
+                        <path d="M6.5 1.5v8M3 5l3.5-3.5L10 5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
+                        <path d="M1.5 10.5h10" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/>
+                      </svg>
+                    )}
+                    {subiendoFoto ? 'Subiendo...' : 'Subir foto desde dispositivo'}
+                  </button>
+                </div>
+
+                {/* URL manual */}
+                <form className="d-add-foto-row" onSubmit={handleAgregarFotoUrl}>
                   <input
                     className="d-add-foto-input"
                     type="url"
-                    placeholder="Pegar URL de imagen..."
+                    placeholder="O pegar URL de imagen..."
                     value={nuevaFotoUrl}
                     onChange={e => setNuevaFotoUrl(e.target.value)}
                   />
                   <button type="submit" className="d-add-foto-btn" disabled={!nuevaFotoUrl.trim() || guardandoFoto}>
                     {guardandoFoto ? (
                       <span style={{ width: 13, height: 13, borderRadius: '50%', border: '2px solid rgba(192,90,59,0.3)', borderTopColor: '#C05A3B', animation: 'd-spin 0.7s linear infinite', display: 'inline-block' }} />
+                    ) : (
+                      <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                        <path d="M6 1v10M1 6h10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+                      </svg>
+                    )}
+                    Añadir
+                  </button>
+                </form>
+              </div>
+
+              {/* ── MAPA ── */}
+              {piso.direccion && (
+                <div className="d-card d-map-card">
+                  <div className="d-section-title">
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" style={{ display: 'inline', verticalAlign: 'middle', marginRight: 6, marginBottom: 2 }}>
+                      <path d="M8 1C5.79 1 4 2.79 4 5c0 3.25 4 10 4 10s4-6.75 4-10c0-2.21-1.79-4-4-4zm0 5.5a1.5 1.5 0 110-3 1.5 1.5 0 010 3z" fill="#C05A3B"/>
+                    </svg>
+                    Ubicación
+                  </div>
+                  <div className="d-map-container">
+                    <iframe
+                      className="d-map-iframe"
+                      src={`https://maps.google.com/maps?q=${encodeURIComponent(piso.direccion + ', Uruguay')}&output=embed&z=16`}
+                      loading="lazy"
+                      referrerPolicy="no-referrer-when-downgrade"
+                      title="Mapa de ubicación"
+                    />
+                    <div className="d-map-address">
+                      <svg width="13" height="13" viewBox="0 0 13 13" fill="none" style={{ marginTop: 1, flexShrink: 0 }}>
+                        <path d="M6.5 1C4.57 1 3 2.57 3 4.5c0 2.63 3.5 7.5 3.5 7.5S10 7.13 10 4.5C10 2.57 8.43 1 6.5 1zm0 4.5a1.5 1.5 0 110-3 1.5 1.5 0 010 3z" fill="#C05A3B"/>
+                      </svg>
+                      {piso.direccion}
+                    </div>
+                  </div>
+                  <a
+                    className="d-map-open-btn"
+                    href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(piso.direccion + ', Uruguay')}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                      <path d="M4 2H2V10H10V8M7 2h3M10 2v3M10 2L5 7" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                    Abrir en Google Maps
+                  </a>
+                </div>
+              )}
+
+              {/* ── VIDEOS ── */}
+              <div className="d-card d-videos-card">
+                <div className="d-section-title">Videos</div>
+
+                {/* Tabs */}
+                {piso.videos && piso.videos.length > 0 && (
+                  <div className="d-video-tabs">
+                    {piso.videos.map((url, i) => {
+                      const parsed = parseVideo(url)
+                      const label = parsed.tipo === 'youtube' ? `▶ YouTube ${i + 1}` : parsed.tipo === 'tiktok' ? `♪ TikTok ${i + 1}` : `🔗 Video ${i + 1}`
+                      return (
+                        <button
+                          key={i}
+                          className={`d-video-tab${videoActivo === i ? ' active' : ''}`}
+                          onClick={() => setVideoActivo(videoActivo === i ? null : i)}
+                        >
+                          {label}
+                        </button>
+                      )
+                    })}
+                  </div>
+                )}
+
+                {/* Video activo */}
+                {videoActivo !== null && piso.videos?.[videoActivo] && (() => {
+                  const url = piso.videos[videoActivo]
+                  const parsed = parseVideo(url)
+                  if (parsed.tipo === 'youtube' && parsed.embedUrl) {
+                    return (
+                      <div className="d-video-embed" style={{ position: 'relative' }}>
+                        <iframe
+                          src={parsed.embedUrl}
+                          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                          allowFullScreen
+                          title="YouTube video"
+                        />
+                        <button
+                          className="d-video-del-btn"
+                          onClick={() => { handleEliminarVideo(videoActivo); setVideoActivo(null) }}
+                        >
+                          <svg width="9" height="9" viewBox="0 0 9 9" fill="none">
+                            <path d="M1 1l7 7M8 1L1 8" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
+                          </svg>
+                          Eliminar
+                        </button>
+                      </div>
+                    )
+                  }
+                  if (parsed.tipo === 'tiktok' && parsed.embedUrl) {
+                    return (
+                      <div className="d-video-embed" style={{ position: 'relative', background: '#000' }}>
+                        <iframe
+                          src={parsed.embedUrl}
+                          allow="fullscreen"
+                          title="TikTok video"
+                          style={{ height: 580 }}
+                        />
+                        <button
+                          className="d-video-del-btn"
+                          onClick={() => { handleEliminarVideo(videoActivo); setVideoActivo(null) }}
+                        >
+                          <svg width="9" height="9" viewBox="0 0 9 9" fill="none">
+                            <path d="M1 1l7 7M8 1L1 8" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
+                          </svg>
+                          Eliminar
+                        </button>
+                      </div>
+                    )
+                  }
+                  // URL desconocida
+                  return (
+                    <div className="d-tiktok-card" style={{ position: 'relative' }}>
+                      <div style={{ width: 40, height: 40, borderRadius: 10, background: '#F0E8DF', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                        <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+                          <circle cx="9" cy="9" r="7.5" stroke="#C05A3B" strokeWidth="1.3"/>
+                          <path d="M7 6l5 3-5 3V6z" fill="#C05A3B"/>
+                        </svg>
+                      </div>
+                      <div className="d-tiktok-info">
+                        <div className="d-tiktok-label">Video</div>
+                        <div className="d-tiktok-url">{url}</div>
+                      </div>
+                      <a className="d-tiktok-btn" href={url} target="_blank" rel="noopener noreferrer">Abrir</a>
+                      <button
+                        onClick={() => { handleEliminarVideo(videoActivo); setVideoActivo(null) }}
+                        style={{ position: 'absolute', top: 8, right: 8, background: 'none', border: 'none', cursor: 'pointer', color: '#A07060', fontSize: '1.1rem', lineHeight: 1, padding: 4 }}
+                        title="Eliminar video"
+                      >×</button>
+                    </div>
+                  )
+                })()}
+
+                {/* Sin videos */}
+                {(!piso.videos || piso.videos.length === 0) && (
+                  <div style={{ textAlign: 'center', padding: '1.5rem 0', fontSize: '0.82rem', color: '#B09080', fontStyle: 'italic' }}>
+                    No hay videos — agregá un TikTok o YouTube del apto
+                  </div>
+                )}
+
+                {/* Agregar video */}
+                <form className="d-add-video-row" onSubmit={handleAgregarVideo}>
+                  <input
+                    className="d-add-video-input"
+                    type="url"
+                    placeholder="https://www.tiktok.com/... o https://youtu.be/..."
+                    value={nuevaVideoUrl}
+                    onChange={e => setNuevaVideoUrl(e.target.value)}
+                  />
+                  <button type="submit" className="d-add-video-btn" disabled={!nuevaVideoUrl.trim() || guardandoVideo}>
+                    {guardandoVideo ? (
+                      <span style={{ width: 13, height: 13, borderRadius: '50%', border: '2px solid rgba(74,48,32,0.25)', borderTopColor: '#4A3020', animation: 'd-spin 0.7s linear infinite', display: 'inline-block' }} />
                     ) : (
                       <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
                         <path d="M6 1v10M1 6h10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />

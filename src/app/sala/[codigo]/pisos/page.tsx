@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { Fraunces, Nunito, DM_Mono } from 'next/font/google'
 import { createClient } from '@/lib/supabase'
@@ -25,10 +25,20 @@ const dmMono = DM_Mono({
 
 type PisoConVotos = Piso & { votos: VotoPiso[]; promedio: number | null }
 
-const FORM_INIT = { titulo: '', url: '', alquiler: '', gastosCom: '', m2: '', zona: '', notas: '' }
+const FORM_INIT = { titulo: '', url: '', alquiler: '', gastosCom: '', m2: '', zona: '', notas: '', direccion: '' }
 
 function fmtUYU(n: number) {
   return `$ ${n.toLocaleString('es-UY')}`
+}
+
+async function subirArchivoStorage(salaId: string, file: File): Promise<string | null> {
+  const supabase = createClient()
+  const ext = file.name.split('.').pop() ?? 'jpg'
+  const path = `${salaId}/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`
+  const { error } = await supabase.storage.from('pisos').upload(path, file, { contentType: file.type })
+  if (error) return null
+  const { data } = supabase.storage.from('pisos').getPublicUrl(path)
+  return data.publicUrl
 }
 
 export default function PisosPage() {
@@ -44,8 +54,11 @@ export default function PisosPage() {
   const [guardando, setGuardando] = useState(false)
   const [form, setForm] = useState(FORM_INIT)
   const [fotosForm, setFotosForm] = useState<string[]>([''])
+  const [videosForm, setVideosForm] = useState<string[]>([''])
+  const [subiendoFoto, setSubiendoFoto] = useState(false)
   const [formError, setFormError] = useState('')
   const [pisosPag, setPisosPag] = useState(12)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   const cargarDatos = useCallback(async () => {
     if (!session) return
@@ -74,6 +87,28 @@ export default function PisosPage() {
     cargarDatos()
   }, [codigo, session, cargarDatos, router])
 
+  async function handleSubirFoto(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file || !session) return
+    setSubiendoFoto(true)
+    const url = await subirArchivoStorage(session.salaId, file)
+    if (url) {
+      setFotosForm(prev => {
+        const last = prev[prev.length - 1]
+        if (last.trim() === '') {
+          const next = [...prev]
+          next[prev.length - 1] = url
+          return next
+        }
+        return [...prev, url]
+      })
+    } else {
+      setFormError('Error al subir la imagen. Verificá que el bucket "pisos" exista en Supabase Storage.')
+    }
+    setSubiendoFoto(false)
+    if (fileInputRef.current) fileInputRef.current.value = ''
+  }
+
   async function handleAñadir(e: React.FormEvent) {
     e.preventDefault()
     setFormError('')
@@ -85,6 +120,7 @@ export default function PisosPage() {
 
     const supabase = createClient()
     const fotos = fotosForm.map(f => f.trim()).filter(Boolean)
+    const videos = videosForm.map(v => v.trim()).filter(Boolean)
 
     const { error } = await supabase.from('pisos').insert({
       sala_id: session!.salaId,
@@ -94,7 +130,9 @@ export default function PisosPage() {
       m2: form.m2 ? parseFloat(form.m2) : null,
       zona: form.zona.trim() || null,
       notas: form.notas.trim() || null,
+      direccion: form.direccion.trim() || null,
       fotos,
+      videos,
     })
 
     if (error) {
@@ -104,6 +142,7 @@ export default function PisosPage() {
     }
     setForm(FORM_INIT)
     setFotosForm([''])
+    setVideosForm([''])
     setModalOpen(false)
     setGuardando(false)
     cargarDatos()
@@ -112,6 +151,7 @@ export default function PisosPage() {
   function abrirModal() {
     setForm(FORM_INIT)
     setFotosForm([''])
+    setVideosForm([''])
     setFormError('')
     setModalOpen(true)
   }
@@ -350,6 +390,24 @@ export default function PisosPage() {
         .p-submit:disabled { opacity: 0.55; cursor: not-allowed; }
         .p-spinner { width: 15px; height: 15px; border-radius: 50%; border: 2px solid rgba(255,255,255,0.35); border-top-color: white; animation: p-spin 0.7s linear infinite; flex-shrink: 0; }
 
+        .p-upload-btn {
+          display: inline-flex; align-items: center; gap: 5px;
+          padding: 7px 12px; background: rgba(90,136,105,0.1);
+          border: 1.5px solid rgba(90,136,105,0.25); color: #3A7050;
+          border-radius: 8px; font-size: 0.78rem; font-weight: 600;
+          font-family: var(--font-body), 'Nunito', sans-serif;
+          cursor: pointer; transition: background 0.15s, border-color 0.15s;
+          white-space: nowrap; flex-shrink: 0;
+        }
+        .p-upload-btn:hover:not(:disabled) { background: rgba(90,136,105,0.18); border-color: rgba(90,136,105,0.4); }
+        .p-upload-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+        .p-section-sep {
+          display: flex; align-items: center; gap: 8px; margin: 1.25rem 0 1rem;
+        }
+        .p-section-sep-line { flex: 1; height: 1px; background: #EAD8C8; }
+        .p-section-sep-label { font-size: 0.65rem; font-weight: 700; color: #B09080; text-transform: uppercase; letter-spacing: 0.09em; white-space: nowrap; }
+
         @media (max-width: 640px) {
           .p-wrap { padding: 0 1rem 5rem; }
           .p-header { padding: 1.25rem 0 1.5rem; }
@@ -512,6 +570,11 @@ export default function PisosPage() {
                         {piso.zona}
                       </span>
                     )}
+                    {piso.videos?.length > 0 && (
+                      <span className="p-badge" style={{ background: 'rgba(0,0,0,0.06)', borderColor: 'rgba(0,0,0,0.12)', color: '#555' }}>
+                        ▶ {piso.videos.length} video{piso.videos.length > 1 ? 's' : ''}
+                      </span>
+                    )}
                   </div>
 
                   {piso.notas && <div className="p-card-notes">{piso.notas}</div>}
@@ -586,14 +649,39 @@ export default function PisosPage() {
                 <input className="p-input" type="url" placeholder="https://infocasas.com.uy/..." value={form.url} onChange={e => setForm(f => ({ ...f, url: e.target.value }))} />
               </div>
 
+              {/* ── FOTOS ── */}
               <div className="p-field">
-                <label className="p-label">Fotos <span className="p-label-hint">(URLs de imágenes)</span></label>
+                <label className="p-label" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <span>Fotos</span>
+                  <button
+                    type="button"
+                    className="p-upload-btn"
+                    disabled={subiendoFoto}
+                    onClick={() => fileInputRef.current?.click()}
+                  >
+                    {subiendoFoto ? (
+                      <span style={{ width: 11, height: 11, borderRadius: '50%', border: '2px solid rgba(58,112,80,0.3)', borderTopColor: '#3A7050', animation: 'p-spin 0.7s linear infinite', display: 'inline-block' }} />
+                    ) : (
+                      <svg width="11" height="11" viewBox="0 0 11 11" fill="none">
+                        <path d="M5.5 1v7M2 5l3.5-4L9 5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
+                      </svg>
+                    )}
+                    {subiendoFoto ? 'Subiendo...' : 'Subir desde dispositivo'}
+                  </button>
+                </label>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  style={{ display: 'none' }}
+                  onChange={handleSubirFoto}
+                />
                 {fotosForm.map((url, idx) => (
                   <div key={idx} style={{ display: 'flex', gap: 6, marginBottom: 6 }}>
                     <input
                       className="p-input"
                       type="url"
-                      placeholder="https://..."
+                      placeholder="https://... o pegar URL"
                       value={url}
                       onChange={e => {
                         const next = [...fotosForm]
@@ -663,9 +751,64 @@ export default function PisosPage() {
                 </div>
               </div>
 
+              {/* ── DIRECCIÓN ── */}
+              <div className="p-field">
+                <label className="p-label">
+                  Dirección
+                  <span className="p-label-hint"> — se mostrará en el mapa</span>
+                </label>
+                <input
+                  className="p-input"
+                  type="text"
+                  placeholder="Ej: Av. Brasil 2850, Pocitos, Montevideo"
+                  value={form.direccion}
+                  onChange={e => setForm(f => ({ ...f, direccion: e.target.value }))}
+                />
+              </div>
+
               <div className="p-field">
                 <label className="p-label">Notas</label>
                 <textarea className="p-input p-textarea" placeholder="Impresiones, pros, contras..." value={form.notas} onChange={e => setForm(f => ({ ...f, notas: e.target.value }))} />
+              </div>
+
+              {/* ── VIDEOS ── */}
+              <div className="p-section-sep">
+                <div className="p-section-sep-line" />
+                <span className="p-section-sep-label">Videos TikTok / YouTube</span>
+                <div className="p-section-sep-line" />
+              </div>
+              <div className="p-field">
+                <label className="p-label">Links de video <span className="p-label-hint">(TikTok, YouTube)</span></label>
+                {videosForm.map((url, idx) => (
+                  <div key={idx} style={{ display: 'flex', gap: 6, marginBottom: 6 }}>
+                    <input
+                      className="p-input"
+                      type="url"
+                      placeholder="https://www.tiktok.com/... o https://youtu.be/..."
+                      value={url}
+                      onChange={e => {
+                        const next = [...videosForm]
+                        next[idx] = e.target.value
+                        setVideosForm(next)
+                      }}
+                      style={{ flex: 1 }}
+                    />
+                    {videosForm.length > 1 && (
+                      <button
+                        type="button"
+                        onClick={() => setVideosForm(v => v.filter((_, i) => i !== idx))}
+                        style={{ padding: '0 10px', background: 'none', border: '1.5px solid #E0C8B8', borderRadius: 10, color: '#A07060', cursor: 'pointer', fontSize: '1rem', lineHeight: 1, flexShrink: 0 }}
+                      >×</button>
+                    )}
+                  </div>
+                ))}
+                {videosForm[videosForm.length - 1].trim() && (
+                  <button
+                    type="button"
+                    onClick={() => setVideosForm(v => [...v, ''])}
+                    style={{ fontSize: '0.78rem', color: '#C05A3B', background: 'none', border: 'none', cursor: 'pointer', padding: '3px 0', fontFamily: 'var(--font-body), Nunito, sans-serif', fontWeight: 600 }}
+                  >+ Añadir otro video</button>
+                )}
               </div>
 
               {formError && (

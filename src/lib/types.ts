@@ -63,6 +63,8 @@ export type Database = {
           zona: string | null
           notas: string | null
           fotos: string[]
+          direccion: string | null
+          videos: string[]
           creado_en: string
         }
         Insert: {
@@ -75,6 +77,8 @@ export type Database = {
           zona?: string | null
           notas?: string | null
           fotos?: string[]
+          direccion?: string | null
+          videos?: string[]
           creado_en?: string
         }
         Update: {
@@ -87,6 +91,8 @@ export type Database = {
           zona?: string | null
           notas?: string | null
           fotos?: string[]
+          direccion?: string | null
+          videos?: string[]
           creado_en?: string
         }
         Relationships: []
