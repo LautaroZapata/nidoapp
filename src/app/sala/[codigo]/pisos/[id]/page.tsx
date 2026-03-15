@@ -37,6 +37,12 @@ function parseVideo(url: string): { tipo: 'youtube' | 'tiktok' | 'otro'; embedUr
       const id = url.split('/shorts/')[1]?.split('?')[0]
       if (id) return { tipo: 'youtube', id, embedUrl: `https://www.youtube.com/embed/${id}` }
     }
+    // URLs ya resueltas (embed/v2) guardadas en DB
+    if (url.includes('tiktok.com/embed/v2/')) {
+      const id = url.split('/embed/v2/')[1]?.split('?')[0]
+      if (id) return { tipo: 'tiktok', id, embedUrl: url }
+    }
+    // URLs estándar con video ID visible
     if (url.includes('tiktok.com')) {
       const match = url.match(/\/video\/(\d+)/)
       if (match) return { tipo: 'tiktok', id: match[1], embedUrl: `https://www.tiktok.com/embed/v2/${match[1]}` }
@@ -45,6 +51,26 @@ function parseVideo(url: string): { tipo: 'youtube' | 'tiktok' | 'otro'; embedUr
     // ignore
   }
   return { tipo: 'otro' }
+}
+
+async function resolverVideoUrl(url: string): Promise<string> {
+  if (!url.includes('tiktok.com')) return url
+  // Si ya es un embed URL, devolver tal cual
+  if (url.includes('tiktok.com/embed/v2/')) return url
+  // Si ya tiene el video ID, construir embed directo
+  const matchDirecto = url.match(/\/video\/(\d+)/)
+  if (matchDirecto) return `https://www.tiktok.com/embed/v2/${matchDirecto[1]}`
+  // URL corta o sin ID: resolver via API
+  try {
+    const res = await fetch(`/api/tiktok-oembed?url=${encodeURIComponent(url)}`)
+    if (res.ok) {
+      const data = await res.json()
+      if (data.embedUrl) return data.embedUrl
+    }
+  } catch {
+    // si falla, guardar la URL original
+  }
+  return url
 }
 
 async function subirArchivoStorage(salaId: string, file: File): Promise<string | null> {
@@ -90,6 +116,7 @@ export default function PisoDetallePage() {
   // Videos
   const [nuevaVideoUrl, setNuevaVideoUrl] = useState('')
   const [guardandoVideo, setGuardandoVideo] = useState(false)
+  const [videoError, setVideoError] = useState('')
   const [videoActivo, setVideoActivo] = useState<number | null>(null)
 
   useEffect(() => {
@@ -202,8 +229,15 @@ export default function PisoDetallePage() {
     e.preventDefault()
     const url = nuevaVideoUrl.trim()
     if (!url || !piso) return
+    setVideoError('')
     setGuardandoVideo(true)
-    const nuevosVideos = [...(piso.videos ?? []), url]
+    const urlResuelta = await resolverVideoUrl(url)
+    if (urlResuelta === url && url.includes('tiktok.com') && !url.includes('/video/') && !url.includes('/embed/')) {
+      setVideoError('No se pudo reconocer el video de TikTok. Probá con la URL completa del perfil.')
+      setGuardandoVideo(false)
+      return
+    }
+    const nuevosVideos = [...(piso.videos ?? []), urlResuelta]
     const supabase = createClient()
     await supabase.from('pisos').update({ videos: nuevosVideos }).eq('id', pisoId)
     setPiso({ ...piso, videos: nuevosVideos })
@@ -1095,24 +1129,36 @@ export default function PisoDetallePage() {
                 )}
 
                 {/* Agregar video */}
-                <form className="d-add-video-row" onSubmit={handleAgregarVideo}>
-                  <input
-                    className="d-add-video-input"
-                    type="url"
-                    placeholder="https://www.tiktok.com/... o https://youtu.be/..."
-                    value={nuevaVideoUrl}
-                    onChange={e => setNuevaVideoUrl(e.target.value)}
-                  />
-                  <button type="submit" className="d-add-video-btn" disabled={!nuevaVideoUrl.trim() || guardandoVideo}>
-                    {guardandoVideo ? (
-                      <span style={{ width: 13, height: 13, borderRadius: '50%', border: '2px solid rgba(74,48,32,0.25)', borderTopColor: '#4A3020', animation: 'd-spin 0.7s linear infinite', display: 'inline-block' }} />
-                    ) : (
+                <form onSubmit={handleAgregarVideo}>
+                  <div className="d-add-video-row">
+                    <input
+                      className="d-add-video-input"
+                      type="url"
+                      placeholder="https://www.tiktok.com/... o https://youtu.be/..."
+                      value={nuevaVideoUrl}
+                      onChange={e => { setNuevaVideoUrl(e.target.value); setVideoError('') }}
+                    />
+                    <button type="submit" className="d-add-video-btn" disabled={!nuevaVideoUrl.trim() || guardandoVideo}>
+                      {guardandoVideo ? (
+                        <span style={{ width: 13, height: 13, borderRadius: '50%', border: '2px solid rgba(74,48,32,0.25)', borderTopColor: '#4A3020', animation: 'd-spin 0.7s linear infinite', display: 'inline-block' }} />
+                      ) : (
+                        <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                          <path d="M6 1v10M1 6h10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+                        </svg>
+                      )}
+                      {guardandoVideo ? 'Reconociendo...' : 'Añadir'}
+                    </button>
+                  </div>
+                  {videoError && (
+                    <div style={{ marginTop: 6, fontSize: '0.78rem', color: '#B03A1A', display: 'flex', alignItems: 'center', gap: 5 }}>
                       <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-                        <path d="M6 1v10M1 6h10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+                        <circle cx="6" cy="6" r="5" stroke="currentColor" strokeWidth="1.2"/>
+                        <path d="M6 3.5v3" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
+                        <circle cx="6" cy="8.5" r="0.5" fill="currentColor"/>
                       </svg>
-                    )}
-                    Añadir
-                  </button>
+                      {videoError}
+                    </div>
+                  )}
                 </form>
               </div>
 

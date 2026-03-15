@@ -31,6 +31,21 @@ function fmtUYU(n: number) {
   return `$ ${n.toLocaleString('es-UY')}`
 }
 
+async function resolverVideoUrl(url: string): Promise<string> {
+  if (!url.includes('tiktok.com')) return url
+  if (url.includes('tiktok.com/embed/v2/')) return url
+  const matchDirecto = url.match(/\/video\/(\d+)/)
+  if (matchDirecto) return `https://www.tiktok.com/embed/v2/${matchDirecto[1]}`
+  try {
+    const res = await fetch(`/api/tiktok-oembed?url=${encodeURIComponent(url)}`)
+    if (res.ok) {
+      const data = await res.json()
+      if (data.embedUrl) return data.embedUrl
+    }
+  } catch { /* guardar url original si falla */ }
+  return url
+}
+
 async function subirArchivoStorage(salaId: string, file: File): Promise<string | null> {
   const supabase = createClient()
   const ext = file.name.split('.').pop() ?? 'jpg'
@@ -120,7 +135,9 @@ export default function PisosPage() {
 
     const supabase = createClient()
     const fotos = fotosForm.map(f => f.trim()).filter(Boolean)
-    const videos = videosForm.map(v => v.trim()).filter(Boolean)
+    const videos = await Promise.all(
+      videosForm.map(v => v.trim()).filter(Boolean).map(v => resolverVideoUrl(v))
+    )
 
     const { error } = await supabase.from('pisos').insert({
       sala_id: session!.salaId,
