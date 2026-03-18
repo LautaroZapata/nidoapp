@@ -7,18 +7,36 @@ export type Database = {
           codigo: string
           nombre: string
           creado_en: string
+          plan_type: 'free' | 'pro'
+          owner_user_id: string | null
+          stripe_customer_id: string | null
+          stripe_subscription_id: string | null
+          subscription_status: string | null
+          subscription_end: string | null
         }
         Insert: {
           id?: string
           codigo: string
           nombre: string
           creado_en?: string
+          plan_type?: 'free' | 'pro'
+          owner_user_id?: string | null
+          stripe_customer_id?: string | null
+          stripe_subscription_id?: string | null
+          subscription_status?: string | null
+          subscription_end?: string | null
         }
         Update: {
           id?: string
           codigo?: string
           nombre?: string
           creado_en?: string
+          plan_type?: 'free' | 'pro'
+          owner_user_id?: string | null
+          stripe_customer_id?: string | null
+          stripe_subscription_id?: string | null
+          subscription_status?: string | null
+          subscription_end?: string | null
         }
         Relationships: []
       }

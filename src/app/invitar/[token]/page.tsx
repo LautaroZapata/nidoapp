@@ -158,6 +158,20 @@ export default function InvitarPage() {
       return
     }
 
+    // Verificar límite de miembros según el plan del nido (server-side via API)
+    const planRes = await fetch(`/api/billing/plan?salaId=${invite.sala.id}`)
+    if (planRes.ok) {
+      const planData = await planRes.json()
+      const { data: todosCheck } = await supabase
+        .from('miembros').select('id').eq('sala_id', invite.sala.id)
+      const cantMiembros = todosCheck?.length ?? 0
+      const maxMiembros = planData.limites?.maxMiembros ?? 4
+      if (maxMiembros !== null && cantMiembros >= maxMiembros) {
+        setJoinError(`Este nido ya alcanzó el límite de ${maxMiembros} miembros del plan Free. El dueño del nido debe upgradear a Pro para agregar más.`)
+        setJoining(false); return
+      }
+    }
+
     // Get color based on member count
     const { data: todos } = await supabase.from('miembros').select('id').eq('sala_id', invite.sala.id)
     const colorIndex = ((todos?.length ?? 0)) % COLORES.length

@@ -116,11 +116,22 @@ export default function Dashboard() {
     setCLoading(true)
 
     const supabase = createClient()
+
+    // Verificar límite Free: máximo 1 nido creado
+    const { data: nidosPropios } = await supabase
+      .from('salas').select('id, plan_type').eq('owner_user_id', user!.id)
+    const nidosExistentes = nidosPropios ?? []
+    const tieneProActivo = nidosExistentes.some(s => s.plan_type === 'pro')
+    if (!tieneProActivo && nidosExistentes.length >= 1) {
+      setCError('Con el plan Free solo podés tener 1 nido. Upgrade a Pro para crear más.')
+      setCLoading(false); return
+    }
+
     const { data: existe } = await supabase.from('salas').select('id').eq('codigo', cCodigo.trim()).single()
     if (existe) { setCError('Esa contraseña ya está en uso. Elegí otra.'); setCLoading(false); return }
 
     const { data: sala, error: sErr } = await supabase
-      .from('salas').insert({ codigo: cCodigo.trim(), nombre: cNombreNido.trim() })
+      .from('salas').insert({ codigo: cCodigo.trim(), nombre: cNombreNido.trim(), owner_user_id: user!.id })
       .select().single() as DbResult<Sala>
     if (sErr || !sala) { setCError('Error al crear el nido'); setCLoading(false); return }
 
@@ -248,7 +259,12 @@ export default function Dashboard() {
                   <div className="d-sala-info">
                     <div className="d-sala-av">🏠</div>
                     <div>
-                      <div className="d-sala-name">{m.salas.nombre}</div>
+                      <div style={{ display:'flex', alignItems:'center', gap:6 }}>
+                        <div className="d-sala-name">{m.salas.nombre}</div>
+                        {m.salas.plan_type === 'pro' && (
+                          <span style={{ fontSize:'0.6rem', fontWeight:700, background:'linear-gradient(135deg,#C8823A,#C05A3B)', color:'white', padding:'2px 7px', borderRadius:20, letterSpacing:'0.05em', flexShrink:0 }}>PRO</span>
+                        )}
+                      </div>
                       <div className="d-sala-meta">Como <strong>{m.nombre}</strong></div>
                     </div>
                   </div>

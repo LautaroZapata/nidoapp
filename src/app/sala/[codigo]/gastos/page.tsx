@@ -263,6 +263,8 @@ export default function GastosPage() {
   const [expandedDebt, setExpandedDebt] = useState<string | null>(null)
   const [editandoMonto, setEditandoMonto] = useState(false)
   const [notaAbierta, setNotaAbierta] = useState(false)
+  const [planSala, setPlanSala] = useState<'free' | 'pro'>('free')
+  const [historialLimitado, setHistorialLimitado] = useState(false)
 
   const { addNotif } = useNotif()
 
@@ -270,12 +272,36 @@ export default function GastosPage() {
     if (!session) return
     const supabase = createClient()
     setLoading(true)
+
+    // Obtener el plan del nido para aplicar filtros de historial
+    let plan: 'free' | 'pro' = 'free'
+    try {
+      const planRes = await fetch(`/api/billing/plan?salaId=${session.salaId}`)
+      if (planRes.ok) {
+        const planData = await planRes.json()
+        plan = planData.plan ?? 'free'
+        setPlanSala(plan)
+      }
+    } catch { /* si falla, asumimos free */ }
+
+    // En plan Free: solo últimos 3 meses de historial
+    let gastosQuery = supabase.from('gastos').select().eq('sala_id', session.salaId).order('fecha', { ascending: false })
+    if (plan === 'free') {
+      const hace3Meses = new Date()
+      hace3Meses.setMonth(hace3Meses.getMonth() - 3)
+      gastosQuery = gastosQuery.gte('fecha', hace3Meses.toISOString().slice(0, 10))
+    }
+
     const [{ data: gastosData }, { data: miembrosData }, { data: pagosData }] = await Promise.all([
-      supabase.from('gastos').select().eq('sala_id', session.salaId).order('fecha', { ascending: false }),
+      gastosQuery,
       supabase.from('miembros').select().eq('sala_id', session.salaId),
       supabase.from('pagos').select().eq('sala_id', session.salaId).order('creado_en', { ascending: false }),
     ])
-    if (gastosData) setGastos(gastosData as Gasto[])
+    if (gastosData) {
+      setGastos(gastosData as Gasto[])
+      // Si es Free y hay gastos, indicar que el historial puede estar truncado
+      setHistorialLimitado(plan === 'free')
+    }
     if (miembrosData) { setMiembros(miembrosData as Miembro[]); miembrosRef.current = miembrosData as Miembro[] }
     if (pagosData) setPagos(pagosData as Pago[])
     setLoading(false)
@@ -1120,6 +1146,39 @@ export default function GastosPage() {
               )}
             </button>
           </div>
+
+          {/* ── BANNER: Historial limitado (plan Free) ── */}
+          {!loading && historialLimitado && planSala === 'free' && (
+            <div style={{
+              background: 'linear-gradient(135deg, rgba(192,90,59,0.08), rgba(200,130,58,0.06))',
+              border: '1.5px solid rgba(192,90,59,0.2)',
+              borderRadius: 14, padding: '0.85rem 1.1rem',
+              marginBottom: 12,
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10,
+            }}>
+              <div>
+                <div style={{ fontSize: '0.82rem', fontWeight: 700, color: '#2A1A0E', marginBottom: 2 }}>
+                  📅 Historial de los últimos 3 meses
+                </div>
+                <div style={{ fontSize: '0.75rem', color: '#8A5A40', lineHeight: 1.4 }}>
+                  Con Nido Pro accedés a todo el historial sin límite.
+                </div>
+              </div>
+              <a
+                href={`/sala/${codigo}?upgrade=1`}
+                style={{
+                  flexShrink: 0, padding: '6px 14px',
+                  background: '#C05A3B', color: 'white',
+                  border: 'none', borderRadius: 10,
+                  fontSize: '0.75rem', fontWeight: 700,
+                  textDecoration: 'none', cursor: 'pointer',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                Ver Pro →
+              </a>
+            </div>
+          )}
 
           {/* ── TAB: GASTOS ── */}
           {tab === 'gastos' && (
