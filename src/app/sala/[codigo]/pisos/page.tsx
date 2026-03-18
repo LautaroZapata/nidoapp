@@ -171,6 +171,15 @@ export default function PisosPage() {
     }
   }, [session, cargarDatos])
 
+  useEffect(() => {
+    if (modalOpen) {
+      document.body.style.overflow = 'hidden'
+    } else {
+      document.body.style.overflow = ''
+    }
+    return () => { document.body.style.overflow = '' }
+  }, [modalOpen])
+
   async function handleSubirFoto(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     if (!file || !session) return
@@ -408,7 +417,7 @@ export default function PisosPage() {
 
         .p-overlay {
           position: fixed; inset: 0; background: rgba(42,26,14,0.5);
-          backdrop-filter: blur(6px); z-index: 100;
+          backdrop-filter: blur(6px); z-index: 300;
           display: flex; align-items: flex-end; justify-content: center;
           animation: p-overlay 0.2s ease both;
         }
@@ -417,11 +426,20 @@ export default function PisosPage() {
         .p-modal {
           background: #FFF8F2; border: 1.5px solid #EAD8C8;
           border-radius: 24px 24px 0 0; width: 100%; max-width: 520px;
-          padding: 2rem; animation: p-modal 0.3s cubic-bezier(0.22, 1, 0.36, 1) both;
+          padding: 2rem 2rem 0; animation: p-modal 0.3s cubic-bezier(0.22, 1, 0.36, 1) both;
           max-height: 90vh; overflow-y: auto;
+          overscroll-behavior: contain; -webkit-overflow-scrolling: touch;
           box-shadow: 0 -8px 40px rgba(150,80,40,0.12);
+          display: flex; flex-direction: column;
         }
         @media (min-width: 600px) { .p-modal { border-radius: 20px; box-shadow: 0 20px 60px rgba(150,80,40,0.15); } }
+        .p-modal form { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+        .p-submit-wrap {
+          position: sticky; bottom: 0;
+          background: #FFF8F2;
+          padding: 0.75rem 0 max(1rem, env(safe-area-inset-bottom, 1rem));
+          margin-top: auto;
+        }
 
         .p-modal-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.75rem; }
         .p-modal-title { font-family: var(--font-serif), serif; font-size: 1.5rem; color: #2A1A0E; letter-spacing: -0.025em; font-weight: 600; }
@@ -990,10 +1008,12 @@ export default function PisosPage() {
                 </div>
               )}
 
-              <button type="submit" className="p-submit" disabled={guardando}>
-                {guardando && <span className="p-spinner" />}
-                {guardando ? 'Guardando...' : 'Añadir apto'}
-              </button>
+              <div className="p-submit-wrap">
+                <button type="submit" className="p-submit" disabled={guardando}>
+                  {guardando && <span className="p-spinner" />}
+                  {guardando ? 'Guardando...' : 'Añadir apto'}
+                </button>
+              </div>
             </form>
           </div>
         </div>
