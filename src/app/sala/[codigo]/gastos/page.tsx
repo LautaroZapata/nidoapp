@@ -249,6 +249,7 @@ export default function GastosPage() {
   const [session] = useState(getSession)
   const [gastos, setGastos] = useState<Gasto[]>([])
   const [miembros, setMiembros] = useState<Miembro[]>([])
+  const miembrosRef = useRef<Miembro[]>([])
   const [pagos, setPagos] = useState<Pago[]>([])
   const [loading, setLoading] = useState(true)
   const [tab, setTab] = useState<'gastos' | 'balance' | 'historial'>('gastos')
@@ -290,7 +291,7 @@ export default function GastosPage() {
       supabase.from('pagos').select().eq('sala_id', session.salaId).order('creado_en', { ascending: false }),
     ])
     if (gastosData) setGastos(gastosData as Gasto[])
-    if (miembrosData) setMiembros(miembrosData as Miembro[])
+    if (miembrosData) { setMiembros(miembrosData as Miembro[]); miembrosRef.current = miembrosData as Miembro[] }
     if (pagosData) setPagos(pagosData as Pago[])
     setLoading(false)
   }, [session])
@@ -302,6 +303,15 @@ export default function GastosPage() {
     }
     cargarDatos()
   }, [codigo, session, cargarDatos, router])
+
+  useEffect(() => {
+    if (modalOpen || !!modalLiquidar) {
+      document.body.style.overflow = 'hidden'
+    } else {
+      document.body.style.overflow = ''
+    }
+    return () => { document.body.style.overflow = '' }
+  }, [modalOpen, modalLiquidar])
 
   useEffect(() => {
     if (!session) return
@@ -317,8 +327,11 @@ export default function GastosPage() {
         { event: '*', schema: 'public', table: 'gastos', filter: `sala_id=eq.${session.salaId}` },
         (payload) => {
           if (payload.eventType === 'INSERT') {
-            setGastos(prev => [payload.new as Gasto, ...prev])
-            addNotif(`Nuevo gasto: ${(payload.new as Gasto).descripcion}`, '💸')
+            const gasto = payload.new as Gasto
+            setGastos(prev => [gasto, ...prev])
+            const pagador = miembrosRef.current.find(m => m.id === gasto.pagado_por)
+            const quien = pagador ? pagador.nombre : 'Alguien'
+            addNotif(`${quien} añadió: ${gasto.descripcion} ($${gasto.importe.toLocaleString('es-UY')})`, '💸')
           } else if (payload.eventType === 'UPDATE') {
             setGastos(prev => prev.map(g => g.id === payload.new.id ? payload.new as Gasto : g))
           } else if (payload.eventType === 'DELETE') {
@@ -335,8 +348,15 @@ export default function GastosPage() {
         { event: '*', schema: 'public', table: 'pagos', filter: `sala_id=eq.${session.salaId}` },
         (payload) => {
           if (payload.eventType === 'INSERT') {
-            setPagos(prev => [payload.new as Pago, ...prev])
-            addNotif('Pago registrado entre miembros', '💰')
+            const pago = payload.new as Pago
+            setPagos(prev => [pago, ...prev])
+            const ms = miembrosRef.current
+            const fromM = ms.find(m => m.id === pago.de_id)
+            const toM   = ms.find(m => m.id === pago.a_id)
+            const texto = fromM && toM
+              ? `${fromM.nombre} le pagó $${pago.importe.toLocaleString('es-UY')} a ${toM.nombre}`
+              : 'Pago registrado entre miembros'
+            addNotif(texto, '💰')
           } else if (payload.eventType === 'DELETE') {
             setPagos(prev => prev.filter(p => p.id !== payload.old.id))
           }
@@ -870,7 +890,7 @@ export default function GastosPage() {
         /* ── Modal ── */
         .g-overlay {
           position: fixed; inset: 0; background: rgba(42,26,14,0.5);
-          backdrop-filter: blur(6px); z-index: 100;
+          backdrop-filter: blur(6px); z-index: 300;
           display: flex; align-items: flex-end; justify-content: center;
           animation: g-overlay 0.2s ease both;
         }

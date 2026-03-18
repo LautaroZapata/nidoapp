@@ -15,8 +15,11 @@ export const metadata: Metadata = {
     title: 'Nido',
   },
   icons: {
-    icon: '/nido-icon.png',
-    apple: '/nido-icon.png',
+    icon: [
+      { url: '/nido-icon-192.png', sizes: '192x192', type: 'image/png' },
+      { url: '/nido-icon-512.png', sizes: '512x512', type: 'image/png' },
+    ],
+    apple: '/nido-icon-512.png',
   },
 }
 
