@@ -7,6 +7,10 @@ import { createClient } from '@/lib/supabase'
 import { getSession, clearSession } from '@/lib/session'
 import type { Miembro, Invitacion } from '@/lib/types'
 import type { PostgrestError } from '@supabase/supabase-js'
+import dynamic from 'next/dynamic'
+import { registrarPush, estadoPush } from '@/lib/push'
+
+const OnboardingModal = dynamic(() => import('@/components/OnboardingModal'), { ssr: false })
 
 type DbResult<T> = { data: T | null; error: PostgrestError | null }
 
@@ -41,6 +45,11 @@ export default function SalaPage() {
   const [wppLoading, setWppLoading] = useState(false)
   const [wppCopiado, setWppCopiado] = useState(false)
 
+  // Onboarding + Push
+  const [showOnboarding, setShowOnboarding] = useState(false)
+  const [pushStatus, setPushStatus] = useState<'granted' | 'denied' | 'default' | 'unsupported'>('unsupported')
+  const [pushLoading, setPushLoading] = useState(false)
+
   useEffect(() => {
     const s = getSession()
     if (!s || s.salaCodigo !== codigo) { router.replace('/'); return }
@@ -56,6 +65,15 @@ export default function SalaPage() {
     supabase.from('miembros').select().eq('sala_id', s.salaId).then(({ data }) => {
       if (data) setMiembros(data as Miembro[])
     })
+
+    // Mostrar onboarding si es la primera vez
+    const onboardedKey = `nido_onboarded_${s.miembroId}`
+    if (!localStorage.getItem(onboardedKey)) {
+      setTimeout(() => setShowOnboarding(true), 600)
+    }
+
+    // Estado de notificaciones push
+    estadoPush().then(setPushStatus)
   }, [codigo, router])
 
   // Close menu on outside click
@@ -294,6 +312,27 @@ export default function SalaPage() {
                       <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M7 1.5C3.96 1.5 1.5 3.96 1.5 7c0 .94.24 1.83.66 2.6L1.5 12.5l2.98-.64A5.47 5.47 0 007 12.5c3.04 0 5.5-2.46 5.5-5.5S10.04 1.5 7 1.5z" stroke="#25D366" strokeWidth="1.3" strokeLinejoin="round"/><path d="M5 5.5s.5 1 1.5 2 2 1.5 2 1.5" stroke="#25D366" strokeWidth="1.3" strokeLinecap="round"/></svg>
                       Conectar WhatsApp
                     </button>
+                    {pushStatus !== 'unsupported' && (
+                      <button
+                        className="s-dropdown-item"
+                        disabled={pushLoading || pushStatus === 'denied'}
+                        onClick={async () => {
+                          setMenuOpen(false)
+                          if (pushStatus === 'granted') return
+                          setPushLoading(true)
+                          const ok = await registrarPush(session.miembroId, session.salaId)
+                          if (ok) setPushStatus('granted')
+                          setPushLoading(false)
+                        }}
+                      >
+                        <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                          <path d="M7 1.5v1M7 11.5v1M2.5 7h-1M12.5 7h-1" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
+                          <path d="M3.5 7c0-1.93 1.57-3.5 3.5-3.5S10.5 5.07 10.5 7v2.5H3.5V7z" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round"/>
+                          <path d="M5.5 9.5c0 .83.67 1.5 1.5 1.5s1.5-.67 1.5-1.5" stroke="currentColor" strokeWidth="1.3"/>
+                        </svg>
+                        {pushStatus === 'granted' ? '✓ Notificaciones activas' : pushStatus === 'denied' ? 'Notificaciones bloqueadas' : pushLoading ? 'Activando...' : 'Activar notificaciones'}
+                      </button>
+                    )}
                     <div className="s-dropdown-sep"/>
                     <button className="s-dropdown-item danger" onClick={() => { setMenuOpen(false); setShowLeave(true) }}>
                       <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M5 7h7M9.5 4.5L12 7l-2.5 2.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/><path d="M5 2H3a1 1 0 00-1 1v8a1 1 0 001 1h2" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/></svg>
@@ -412,6 +451,16 @@ export default function SalaPage() {
             <button className="s-modal-close" onClick={() => setShowWpp(false)}>Cerrar</button>
           </div>
         </div>
+      )}
+
+      {/* Onboarding */}
+      {showOnboarding && session && miembros.length > 0 && (
+        <OnboardingModal
+          salaNombre={session.salaNombre}
+          miembros={miembros}
+          miembroId={session.miembroId}
+          onClose={() => setShowOnboarding(false)}
+        />
       )}
 
       {/* Leave confirmation */}

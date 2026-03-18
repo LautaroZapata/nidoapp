@@ -295,6 +295,36 @@ export type Database = {
         }
         Relationships: []
       }
+      push_subscriptions: {
+        Row: {
+          id: string
+          miembro_id: string
+          sala_id: string
+          endpoint: string
+          p256dh: string
+          auth: string
+          creado_en: string
+        }
+        Insert: {
+          id?: string
+          miembro_id: string
+          sala_id: string
+          endpoint: string
+          p256dh: string
+          auth: string
+          creado_en?: string
+        }
+        Update: {
+          id?: string
+          miembro_id?: string
+          sala_id?: string
+          endpoint?: string
+          p256dh?: string
+          auth?: string
+          creado_en?: string
+        }
+        Relationships: []
+      }
       whatsapp_pending_confirmations: {
         Row: {
           id: string

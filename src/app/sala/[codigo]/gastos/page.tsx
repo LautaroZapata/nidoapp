@@ -6,6 +6,9 @@ import { Fraunces, Nunito, DM_Mono } from 'next/font/google'
 import { createClient } from '@/lib/supabase'
 import { getSession } from '@/lib/session'
 import type { Gasto, Miembro, Pago } from '@/lib/types'
+import { calcularBalance, desglosarDeuda, EPS } from '@/lib/balance'
+import type { Debt } from '@/lib/balance'
+import { notificarSala } from '@/lib/push'
 
 const fraunces = Fraunces({
   weight: 'variable',
@@ -55,99 +58,7 @@ function fmtFecha(iso: string) {
   return d.toLocaleDateString('es-UY', { day: 'numeric', month: 'short' })
 }
 
-// ─── Balance types ────────────────────────────────────────────────────────────
-type Debt = { from: string; to: string; amount: number }
-
-// ─── Desglose de deuda: qué gastos generan la deuda de `fromId` a `toId` ─────
-function desglosarDeuda(
-  fromId: string,
-  toId: string,
-  gastos: Gasto[],
-  miembros: Miembro[],
-): Array<{ gasto: Gasto; monto: number }> {
-  const n = miembros.length || 1
-  const result: Array<{ gasto: Gasto; monto: number }> = []
-  for (const g of gastos) {
-    if (g.tipo === 'fijo') continue
-    if (g.pagado_por !== toId) continue        // solo gastos que el acreedor pagó
-    let monto: number
-    if (!g.splits) {
-      monto = g.importe / n                    // partes iguales
-    } else {
-      monto = (g.splits as Record<string, number>)[fromId] ?? 0
-      if (monto <= 0) continue                 // no participa
-    }
-    result.push({ gasto: g, monto })
-  }
-  return result.sort((a, b) => b.gasto.fecha.localeCompare(a.gasto.fecha))
-}
-
-// Epsilon de 0.5 peso: absorbe residuos de redondeo al entero más cercano.
-// Sin esto, un pago de $500 contra una deuda de $499.67 deja un residuo de
-// -$0.33 que vuelve a aparecer como deuda fantasma.
-const EPS = 0.5
-
-function calcularBalance(
-  gastos: Gasto[],
-  miembros: Miembro[],
-  pagos: Pago[],
-): { debts: Debt[]; net: Record<string, number> } {
-  const net: Record<string, number> = {}
-  miembros.forEach(m => { net[m.id] = 0 })
-
-  gastos.forEach(g => {
-    if (g.tipo === 'fijo') return           // fijos no generan deuda
-    if (!g.pagado_por) return              // sin pagador, no hay deuda que distribuir
-
-    const payer = g.pagado_por
-
-    if (!g.splits) {
-      // ── Partes iguales: el pagador adelantó el total, todos le deben su cuota ──
-      const share = g.importe / (miembros.length || 1)
-      net[payer] = (net[payer] ?? 0) + g.importe - share
-      miembros.forEach(m => {
-        if (m.id !== payer) net[m.id] = (net[m.id] ?? 0) - share
-      })
-    } else {
-      // ── Personalizado: splits[id] = cuánto debe esa persona. 0 = no participa ──
-      const splits = g.splits as Record<string, number>
-      miembros.forEach(m => {
-        if (m.id === payer) return           // el pagador ya puso el dinero
-        const owes = splits[m.id] ?? 0
-        if (owes <= 0) return               // no participa en este gasto
-        net[m.id]  = (net[m.id]  ?? 0) - owes
-        net[payer] = (net[payer] ?? 0) + owes
-      })
-    }
-  })
-
-  // ── Pagos directos (liquidaciones) ──
-  pagos.forEach(p => {
-    net[p.de_id] = (net[p.de_id] ?? 0) + p.importe
-    net[p.a_id]  = (net[p.a_id]  ?? 0) - p.importe
-  })
-
-  // ── Derivar deudas mínimas ──
-  const debts: Debt[] = []
-  const debtors   = miembros.filter(m => net[m.id] < -EPS).map(m => ({ id: m.id, amt: net[m.id] }))
-  const creditors = miembros.filter(m => net[m.id] >  EPS).map(m => ({ id: m.id, amt: net[m.id] }))
-
-  let i = 0, j = 0
-  while (i < debtors.length && j < creditors.length) {
-    const d = debtors[i]
-    const c = creditors[j]
-    const transfer = Math.min(-d.amt, c.amt)
-    if (transfer > EPS) {
-      debts.push({ from: d.id, to: c.id, amount: Math.round(transfer) })
-    }
-    d.amt += transfer
-    c.amt -= transfer
-    if (Math.abs(d.amt) < EPS) i++
-    if (Math.abs(c.amt) < EPS) j++
-  }
-
-  return { debts, net }
-}
+// calcularBalance, desglosarDeuda, EPS, Debt importados desde @/lib/balance
 
 const FORM_INIT = {
   descripcion: '',
@@ -320,7 +231,7 @@ export default function GastosPage() {
   const [miembros, setMiembros] = useState<Miembro[]>([])
   const [pagos, setPagos] = useState<Pago[]>([])
   const [loading, setLoading] = useState(true)
-  const [tab, setTab] = useState<'gastos' | 'balance'>('gastos')
+  const [tab, setTab] = useState<'gastos' | 'balance' | 'historial'>('gastos')
   const [modalOpen, setModalOpen] = useState(false)
   const [guardando, setGuardando] = useState(false)
   const [form, setForm] = useState(FORM_INIT)
@@ -333,8 +244,8 @@ export default function GastosPage() {
   const [customSplits, setCustomSplits] = useState<Record<string, string>>({})
   const [fijosPag, setFijosPag] = useState(8)
   const [variablesPag, setVariablesPag] = useState(10)
-  const [liquidandoPendiente, setLiquidandoPendiente] = useState<string | null>(null)
-  const [liquidandoNota, setLiquidandoNota] = useState('')
+  const [modalLiquidar, setModalLiquidar] = useState<{ debt: Debt; importe: string; nota: string } | null>(null)
+  const [liquidandoOk, setLiquidandoOk] = useState<string | null>(null)
   const [expandedDebt, setExpandedDebt] = useState<string | null>(null)
 
 
@@ -364,7 +275,11 @@ export default function GastosPage() {
   useEffect(() => {
     if (!session) return
     const supabase = createClient()
-    const channel = supabase
+    let gastosOk = false
+    let pagosOk  = false
+    const updateStatus = () => setRealtimeOk(gastosOk && pagosOk)
+
+    const chGastos = supabase
       .channel(`gastos_${session.salaId}`)
       .on(
         'postgres_changes',
@@ -379,10 +294,27 @@ export default function GastosPage() {
           }
         }
       )
-      .subscribe((status) => {
-        setRealtimeOk(status === 'SUBSCRIBED')
-      })
-    return () => { supabase.removeChannel(channel) }
+      .subscribe(status => { gastosOk = status === 'SUBSCRIBED'; updateStatus() })
+
+    const chPagos = supabase
+      .channel(`pagos_${session.salaId}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'pagos', filter: `sala_id=eq.${session.salaId}` },
+        (payload) => {
+          if (payload.eventType === 'INSERT') {
+            setPagos(prev => [payload.new as Pago, ...prev])
+          } else if (payload.eventType === 'DELETE') {
+            setPagos(prev => prev.filter(p => p.id !== payload.old.id))
+          }
+        }
+      )
+      .subscribe(status => { pagosOk = status === 'SUBSCRIBED'; updateStatus() })
+
+    return () => {
+      supabase.removeChannel(chGastos)
+      supabase.removeChannel(chPagos)
+    }
   }, [session])
 
   const miId = session?.miembroId ?? ''
@@ -490,6 +422,15 @@ export default function GastosPage() {
     } else {
       const { error } = await supabase.from('gastos').insert({ sala_id: session!.salaId, ...payload })
       if (error) { setFormError('Error al guardar el gasto'); setGuardando(false); return }
+      // Notificar a los demás miembros
+      const quien = miembros.find(m => m.id === session!.miembroId)?.nombre ?? 'Alguien'
+      notificarSala({
+        salaId: session!.salaId,
+        excluirMiembroId: session!.miembroId,
+        titulo: '💸 Nuevo gasto',
+        cuerpo: `${quien} agregó: ${payload.descripcion} (${fmtUYU(importeFinal)})`,
+        url: `/sala/${session!.salaCodigo}/gastos`,
+      })
     }
 
     setModalOpen(false)
@@ -498,27 +439,44 @@ export default function GastosPage() {
     cargarDatos()
   }
 
-  async function handleLiquidar(d: Debt, nota: string) {
+  async function handleLiquidar() {
+    if (!modalLiquidar) return
+    const { debt: d, importe, nota } = modalLiquidar
+    const importeNum = parseFloat(importe)
+    if (!importeNum || importeNum <= 0) return
     const key = `${d.from}-${d.to}`
     setLiquidando(key)
-    setLiquidandoPendiente(null)
-    setLiquidandoNota('')
     const { error } = await createClient()
       .from('pagos')
       .insert({
         sala_id: session!.salaId,
         de_id: d.from,
         a_id: d.to,
-        importe: Math.round(d.amount),
+        importe: Math.round(importeNum),
         nota: nota.trim() || null,
       })
     if (error) {
       console.error('Error liquidar:', error)
       alert(`Error: ${error.message}`)
     } else {
+      setLiquidandoOk(key)
+      setTimeout(() => setLiquidandoOk(null), 3000)
+      // Notificar al acreedor
+      const fromM = miembros.find(m => m.id === d.from)
+      const toM   = miembros.find(m => m.id === d.to)
+      if (fromM && toM) {
+        notificarSala({
+          salaId: session!.salaId,
+          excluirMiembroId: d.from,
+          titulo: '💸 Pago registrado',
+          cuerpo: `${fromM.nombre} le pagó ${fmtUYU(Math.round(importeNum))} a ${toM.nombre}`,
+          url: `/sala/${session!.salaCodigo}/gastos`,
+        })
+      }
       await cargarDatos()
     }
     setLiquidando(null)
+    setModalLiquidar(null)
   }
 
   async function handleEliminarPago(id: string) {
@@ -1115,6 +1073,14 @@ export default function GastosPage() {
           <div className="g-tabs">
             <button className={`g-tab${tab === 'gastos' ? ' active' : ''}`} onClick={() => setTab('gastos')}>Gastos</button>
             <button className={`g-tab${tab === 'balance' ? ' active' : ''}`} onClick={() => setTab('balance')}>Balance</button>
+            <button className={`g-tab${tab === 'historial' ? ' active' : ''}`} onClick={() => setTab('historial')}>
+              Historial
+              {pagos.length > 0 && tab !== 'historial' && (
+                <span style={{ marginLeft: 5, background: 'rgba(192,90,59,0.15)', color: '#C05A3B', borderRadius: 999, fontSize: '0.65rem', fontWeight: 700, padding: '1px 6px' }}>
+                  {pagos.length}
+                </span>
+              )}
+            </button>
           </div>
 
           {/* ── TAB: GASTOS ── */}
@@ -1272,6 +1238,87 @@ export default function GastosPage() {
             </>
           )}
 
+          {/* ── TAB: HISTORIAL ── */}
+          {tab === 'historial' && (
+            <>
+              {loading && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {[1,2,3].map(i => (
+                    <div key={i} style={{ borderRadius: 14, padding: '1rem 1.2rem', border: '1.5px solid #EAD8C8', background: 'white', display: 'flex', gap: '1rem', alignItems: 'center' }}>
+                      <div className="g-skeleton" style={{ width: 36, height: 36, borderRadius: '50%' }} />
+                      <div style={{ flex: 1 }}>
+                        <div className="g-skeleton" style={{ height: 14, width: '60%', marginBottom: 7 }} />
+                        <div className="g-skeleton" style={{ height: 11, width: '35%' }} />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {!loading && pagos.length === 0 && (
+                <div className="g-empty">
+                  <div className="g-empty-icon">📋</div>
+                  <div className="g-empty-title">Sin pagos aún</div>
+                  <p className="g-empty-sub">Cuando alguien liquide una deuda aparecerá acá.</p>
+                </div>
+              )}
+              {!loading && pagos.length > 0 && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  {pagos.map((p, idx) => {
+                    const deM = miembros.find(m => m.id === p.de_id)
+                    const aM  = miembros.find(m => m.id === p.a_id)
+                    if (!deM || !aM) return null
+                    const esMio = p.de_id === miId || p.a_id === miId
+                    return (
+                      <div
+                        key={p.id}
+                        className="g-item"
+                        style={{ animationDelay: `${idx * 0.04}s`, borderLeft: esMio ? '3px solid rgba(90,136,105,0.5)' : undefined }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+                          <div className="g-debt-av" style={{ background: deM.color, width: 32, height: 32, fontSize: '0.72rem' }}>
+                            {deM.nombre[0].toUpperCase()}
+                          </div>
+                          <span style={{ color: '#C0A898', fontSize: '1rem' }}>→</span>
+                          <div className="g-debt-av" style={{ background: aM.color, width: 32, height: 32, fontSize: '0.72rem' }}>
+                            {aM.nombre[0].toUpperCase()}
+                          </div>
+                        </div>
+                        <div className="g-item-body">
+                          <div style={{ fontSize: '0.87rem', fontWeight: 600, color: '#2A1A0E' }}>
+                            <span style={{ color: deM.color }}>{deM.nombre}</span>
+                            {' '}pagó a{' '}
+                            <span style={{ color: aM.color }}>{aM.nombre}</span>
+                          </div>
+                          <div className="g-item-meta">
+                            {fmtFecha(p.fecha)}
+                            {p.nota && <><span style={{ color: '#D0B8A8', margin: '0 5px' }}>·</span>📌 {p.nota}</>}
+                          </div>
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+                          <span style={{ fontFamily: 'var(--font-code), monospace', fontSize: '1rem', fontWeight: 600, color: '#5A8869' }}>
+                            {fmtUYU(p.importe)}
+                          </span>
+                          <button className="g-pago-del-btn" onClick={() => handleEliminarPago(p.id)} title="Deshacer pago">
+                            <svg width="11" height="11" viewBox="0 0 11 11" fill="none">
+                              <path d="M1.5 1.5l8 8M9.5 1.5l-8 8" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/>
+                            </svg>
+                          </button>
+                        </div>
+                      </div>
+                    )
+                  })}
+                  {/* Resumen total */}
+                  <div style={{ marginTop: 8, padding: '0.85rem 1.2rem', background: 'white', border: '1.5px solid #EAD8C8', borderRadius: 14, display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.82rem' }}>
+                    <span style={{ color: '#8A6A58', fontWeight: 600 }}>{pagos.length} pago{pagos.length !== 1 ? 's' : ''} en total</span>
+                    <span style={{ fontFamily: 'var(--font-code), monospace', fontWeight: 700, color: '#5A8869' }}>
+                      {fmtUYU(pagos.reduce((s, p) => s + p.importe, 0))} liquidados
+                    </span>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+
           {/* ── TAB: BALANCE ── */}
           {tab === 'balance' && (
             <>
@@ -1372,9 +1419,9 @@ export default function GastosPage() {
                     const toM = miembros.find(m => m.id === d.to)
                     if (!fromM || !toM) return null
                     const key = `${d.from}-${d.to}`
-                    const isPending  = liquidandoPendiente === key
                     const isSaving   = liquidando === key
                     const isExpanded = expandedDebt === key
+                    const isOk       = liquidandoOk === key
                     const desglose   = desglosarDeuda(d.from, d.to, gastosCompartidos, miembros)
                     const totalBruto = desglose.reduce((s, x) => s + x.monto, 0)
                     return (
@@ -1409,21 +1456,27 @@ export default function GastosPage() {
                               )}
                             </div>
                           </div>
-                          {!isPending && d.from === miId && (
-                            <button
-                              className="g-liquidar-btn"
-                              onClick={() => { setLiquidandoPendiente(key); setLiquidandoNota('') }}
-                              disabled={isSaving}
-                            >
-                              {isSaving ? (
-                                <div style={{ width: 10, height: 10, borderRadius: '50%', border: '1.5px solid #5A8869', borderTopColor: 'transparent', animation: 'g-spin 0.7s linear infinite' }} />
-                              ) : (
-                                <svg width="11" height="11" viewBox="0 0 11 11" fill="none">
-                                  <path d="M1.5 5.5L4.5 8.5L9.5 2.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
-                                </svg>
-                              )}
-                              {isSaving ? 'Guardando...' : 'Liquidar'}
-                            </button>
+                          {d.from === miId && (
+                            isOk ? (
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '6px 12px', borderRadius: 8, background: 'rgba(46,125,82,0.12)', border: '1.5px solid rgba(46,125,82,0.3)', color: '#2E7D52', fontSize: '0.75rem', fontWeight: 700 }}>
+                                ✓ ¡Pago registrado!
+                              </div>
+                            ) : (
+                              <button
+                                className="g-liquidar-btn"
+                                onClick={() => setModalLiquidar({ debt: d, importe: String(d.amount), nota: '' })}
+                                disabled={isSaving}
+                              >
+                                {isSaving ? (
+                                  <div style={{ width: 10, height: 10, borderRadius: '50%', border: '1.5px solid #5A8869', borderTopColor: 'transparent', animation: 'g-spin 0.7s linear infinite' }} />
+                                ) : (
+                                  <svg width="11" height="11" viewBox="0 0 11 11" fill="none">
+                                    <path d="M1.5 5.5L4.5 8.5L9.5 2.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
+                                  </svg>
+                                )}
+                                {isSaving ? 'Guardando...' : 'Liquidar'}
+                              </button>
+                            )
                           )}
                         </div>
 
@@ -1482,31 +1535,6 @@ export default function GastosPage() {
                           </div>
                         )}
 
-                        {/* ── Confirmación con nota ── */}
-                        {isPending && d.from === miId && (
-                          <div className="g-nota-form">
-                            <input
-                              className="g-nota-input"
-                              type="text"
-                              placeholder="Concepto del pago (opcional)"
-                              value={liquidandoNota}
-                              onChange={e => setLiquidandoNota(e.target.value)}
-                              autoFocus
-                              onKeyDown={e => { if (e.key === 'Enter') handleLiquidar(d, liquidandoNota) }}
-                            />
-                            <div className="g-nota-actions">
-                              <button className="g-nota-cancel" type="button" onClick={() => setLiquidandoPendiente(null)}>
-                                Cancelar
-                              </button>
-                              <button className="g-nota-confirm" type="button" onClick={() => handleLiquidar(d, liquidandoNota)} disabled={isSaving}>
-                                <svg width="11" height="11" viewBox="0 0 11 11" fill="none">
-                                  <path d="M1.5 5.5L4.5 8.5L9.5 2.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
-                                </svg>
-                                Confirmar pago
-                              </button>
-                            </div>
-                          </div>
-                        )}
                       </div>
                     )
                   })}
@@ -1606,6 +1634,93 @@ export default function GastosPage() {
 
         </div>
       </div>
+
+      {/* ── MODAL: LIQUIDAR DEUDA ── */}
+      {modalLiquidar && (() => {
+        const { debt: d, importe, nota } = modalLiquidar
+        const fromM = miembros.find(m => m.id === d.from)
+        const toM   = miembros.find(m => m.id === d.to)
+        if (!fromM || !toM) return null
+        const importeNum = parseFloat(importe) || 0
+        const isSaving = liquidando === `${d.from}-${d.to}`
+        return (
+          <div className="g-overlay" onClick={e => { if (e.target === e.currentTarget && !isSaving) setModalLiquidar(null) }}>
+            <div className="g-modal" style={{ maxWidth: 400 }}>
+              <div className="g-modal-header">
+                <div className="g-modal-title">Registrar pago</div>
+                <button className="g-modal-close" onClick={() => !isSaving && setModalLiquidar(null)} disabled={isSaving}>
+                  <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M2 2l10 10M12 2L2 12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>
+                </button>
+              </div>
+
+              {/* Quién paga a quién */}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 16, padding: '1rem 0 1.4rem', marginBottom: '0.5rem', borderBottom: '1px solid #EAD8C8' }}>
+                <div style={{ textAlign: 'center' }}>
+                  <div className="g-debt-av" style={{ background: fromM.color, margin: '0 auto 6px', width: 48, height: 48, fontSize: '1rem' }}>
+                    {fromM.nombre[0].toUpperCase()}
+                  </div>
+                  <div style={{ fontSize: '0.8rem', fontWeight: 700, color: '#2A1A0E' }}>{fromM.nombre}</div>
+                  <div style={{ fontSize: '0.7rem', color: '#A07060' }}>paga</div>
+                </div>
+                <svg width="32" height="16" viewBox="0 0 32 16" fill="none" style={{ flexShrink: 0, color: '#C05A3B' }}>
+                  <path d="M2 8h28M22 2l8 6-8 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+                <div style={{ textAlign: 'center' }}>
+                  <div className="g-debt-av" style={{ background: toM.color, margin: '0 auto 6px', width: 48, height: 48, fontSize: '1rem' }}>
+                    {toM.nombre[0].toUpperCase()}
+                  </div>
+                  <div style={{ fontSize: '0.8rem', fontWeight: 700, color: '#2A1A0E' }}>{toM.nombre}</div>
+                  <div style={{ fontSize: '0.7rem', color: '#A07060' }}>recibe</div>
+                </div>
+              </div>
+
+              {/* Importe */}
+              <div className="g-field" style={{ marginTop: '1.2rem' }}>
+                <label className="g-label">Importe</label>
+                <input
+                  className="g-input"
+                  type="number"
+                  min={1}
+                  step="any"
+                  value={importe}
+                  onChange={e => setModalLiquidar(prev => prev ? { ...prev, importe: e.target.value } : null)}
+                  autoFocus
+                />
+                {d.amount !== importeNum && importeNum > 0 && (
+                  <div style={{ marginTop: 5, fontSize: '0.72rem', color: '#9A7060' }}>
+                    Deuda total: {fmtUYU(d.amount)} · Registrando pago parcial de {fmtUYU(Math.round(importeNum))}
+                  </div>
+                )}
+              </div>
+
+              {/* Nota */}
+              <div className="g-field">
+                <label className="g-label">Concepto (opcional)</label>
+                <input
+                  className="g-input"
+                  type="text"
+                  placeholder="Ej: transferencia, efectivo..."
+                  value={nota}
+                  onChange={e => setModalLiquidar(prev => prev ? { ...prev, nota: e.target.value } : null)}
+                  onKeyDown={e => { if (e.key === 'Enter' && !isSaving) handleLiquidar() }}
+                />
+              </div>
+
+              <button
+                className="g-submit"
+                style={{ background: '#5A8869' }}
+                onClick={handleLiquidar}
+                disabled={isSaving || importeNum <= 0}
+              >
+                {isSaving ? <><span className="g-spinner"/>Guardando...</> : <>
+                  <svg width="13" height="13" viewBox="0 0 13 13" fill="none"><path d="M1.5 6.5L5.5 10.5L11.5 2.5" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                  Confirmar pago de {fmtUYU(Math.round(importeNum || 0))}
+                </>}
+              </button>
+            </div>
+          </div>
+        )
+      })()}
 
       {/* ── MODAL: AÑADIR GASTO ── */}
       {modalOpen && (

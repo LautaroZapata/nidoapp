@@ -6,6 +6,7 @@ import { Fraunces, Nunito } from 'next/font/google'
 import { createClient } from '@/lib/supabase'
 import { getSession } from '@/lib/session'
 import type { ItemCompra, Miembro } from '@/lib/types'
+import { notificarSala } from '@/lib/push'
 
 const fraunces = Fraunces({
   weight: 'variable',
@@ -97,6 +98,14 @@ export default function ComprasPage() {
       añadido_por: session!.miembroId,
     })
     if (error) { setFormError('Error al añadir el ítem'); setGuardando(false); return }
+    const quien = miembros.find(m => m.id === session!.miembroId)?.nombre ?? 'Alguien'
+    notificarSala({
+      salaId: session!.salaId,
+      excluirMiembroId: session!.miembroId,
+      titulo: '🛒 Nueva compra',
+      cuerpo: `${quien} agregó: ${form.nombre.trim()}${form.cantidad > 1 ? ` (x${form.cantidad})` : ''}`,
+      url: `/sala/${codigo}/compras`,
+    })
     setModalOpen(false)
     setGuardando(false)
     setForm(FORM_INIT)
