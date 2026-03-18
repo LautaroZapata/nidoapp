@@ -83,7 +83,7 @@ export default function InvitarPage() {
         .from('invitaciones')
         .select()
         .eq('token', token)
-        .is('usado_por', null)
+        .is('usado_en', null)
         .gt('expires_at', now)
         .single() as { data: Invitacion | null }
 
@@ -177,7 +177,7 @@ export default function InvitarPage() {
     }
 
     // Mark invite as used
-    await supabase.from('invitaciones').update({ usado_por: miembro.id }).eq('id', invite.invitacion.id as string)
+    await supabase.from('invitaciones').update({ usado_en: new Date().toISOString() }).eq('id', invite.invitacion.id as string)
 
     setSession({
       salaId: invite.sala.id, salaCodigo: invite.sala.codigo, salaNombre: invite.sala.nombre,

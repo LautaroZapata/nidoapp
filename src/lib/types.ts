@@ -67,7 +67,7 @@ export type Database = {
           sala_id: string
           token: string
           creado_por: string | null
-          usado_por: string | null
+          usado_en: string | null
           creado_en: string
           expires_at: string
         }
@@ -76,7 +76,7 @@ export type Database = {
           sala_id: string
           token?: string
           creado_por?: string | null
-          usado_por?: string | null
+          usado_en?: string | null
           creado_en?: string
           expires_at?: string
         }
@@ -85,7 +85,7 @@ export type Database = {
           sala_id?: string
           token?: string
           creado_por?: string | null
-          usado_por?: string | null
+          usado_en?: string | null
           creado_en?: string
           expires_at?: string
         }
