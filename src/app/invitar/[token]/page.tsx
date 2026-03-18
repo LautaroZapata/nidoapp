@@ -238,6 +238,16 @@ export default function InvitarPage() {
         .i-err-sub { font-size:0.85rem; color:#A07060; line-height:1.5; }
 
         .i-user-info { display:flex; align-items:center; gap:8px; background:rgba(90,136,105,0.08); border:1px solid rgba(90,136,105,0.2); border-radius:10px; padding:8px 12px; margin-bottom:1.25rem; font-size:0.82rem; color:#3A7050; }
+
+        @media (max-width: 420px) {
+          .i-root { padding: 1rem 0.75rem; align-items: flex-start; padding-top: 2rem; }
+          .i-card { padding: 1.75rem 1.25rem; border-radius: 18px; }
+          .i-title { font-size: 1.4rem; }
+          .i-sala-chip { padding: 6px 10px; }
+          .i-sala-chip-name { font-size: 0.9rem; max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+          .i-google-btn { padding: 11px 16px; font-size: 0.88rem; }
+          .i-btn { padding: 12px 16px; }
+        }
       `}</style>
 
       <div className="i-bg"/>

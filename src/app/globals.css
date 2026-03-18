@@ -11,17 +11,30 @@
   --font-sans: var(--font-nunito);
 }
 
+html {
+  /* Safe-area para iOS standalone PWA (notch / Dynamic Island / home indicator) */
+  padding-top: env(safe-area-inset-top);
+}
+
 body {
   background: var(--color-bg);
   color: var(--color-text);
   font-family: var(--font-sans), system-ui, sans-serif;
-  /* Evita el bounce scroll de iOS en la página, lo dejamos por scroll container */
   overscroll-behavior: none;
+  overflow-x: hidden;
+  padding-bottom: env(safe-area-inset-bottom);
 }
 
 /* Tap highlight transparente en toda la app */
 * {
   -webkit-tap-highlight-color: transparent;
+}
+
+/* iOS: evitar zoom automático al enfocar inputs (requiere font-size ≥ 16px) */
+@media (hover: none) and (pointer: coarse) {
+  input, select, textarea {
+    font-size: 16px !important;
+  }
 }
 
 /* Scrollbar sutil en desktop */

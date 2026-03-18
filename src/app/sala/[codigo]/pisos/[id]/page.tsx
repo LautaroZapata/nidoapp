@@ -896,12 +896,14 @@ export default function PisoDetallePage() {
           .d-map-iframe { height: 220px; }
           .d-video-embed iframe { height: 260px; }
           .d-add-foto-row { flex-wrap: wrap; }
+          .d-row2 { grid-template-columns: 1fr; }
         }
         @media (max-width: 420px) {
           .d-wrap { padding: 0 0.75rem 5rem; }
           .d-card { padding: 1rem; }
           .d-gallery { margin: -1rem -1rem 1rem; }
           .d-piso-title { font-size: 1.3rem; }
+          .d-info-grid { grid-template-columns: 1fr; }
         }
       `}</style>
 

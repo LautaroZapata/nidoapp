@@ -11,12 +11,12 @@ export const metadata: Metadata = {
   manifest: '/manifest.webmanifest',
   appleWebApp: {
     capable: true,
-    statusBarStyle: 'black-translucent',
+    statusBarStyle: 'default',
     title: 'Nido',
   },
   icons: {
-    icon: '/icon.svg',
-    apple: '/icon.svg',
+    icon: '/nido-icon.png',
+    apple: '/nido-icon.png',
   },
 }
 
@@ -24,8 +24,6 @@ export const viewport: Viewport = {
   themeColor: '#2A1A0E',
   width: 'device-width',
   initialScale: 1,
-  maximumScale: 1,
-  userScalable: false,
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

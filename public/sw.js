@@ -1,7 +1,7 @@
-const CACHE = 'nido-v1'
+const CACHE = 'nido-v2'
 
 // Archivos que se cachean al instalar
-const PRECACHE = ['/dashboard', '/']
+const PRECACHE = ['/', '/dashboard']
 
 self.addEventListener('install', e => {
   e.waitUntil(
@@ -18,13 +18,16 @@ self.addEventListener('activate', e => {
 })
 
 self.addEventListener('fetch', e => {
-  // Solo cachear GETs, ignorar API calls y rutas de auth
   const url = new URL(e.request.url)
+
+  // Solo interceptar GETs del mismo origen
   if (e.request.method !== 'GET') return
+  if (url.origin !== self.location.origin) return   // ← excluye Supabase, CDNs externos
   if (url.pathname.startsWith('/api/')) return
   if (url.pathname.startsWith('/auth/')) return
+  if (url.pathname.startsWith('/_next/')) return    // Next.js chunks ya tienen cache-busting en URL
 
-  // Network-first para páginas dinámicas, fallback a cache
+  // Network-first → cache fallback → offline page
   e.respondWith(
     fetch(e.request)
       .then(res => {
@@ -34,7 +37,19 @@ self.addEventListener('fetch', e => {
         }
         return res
       })
-      .catch(() => caches.match(e.request))
+      .catch(async () => {
+        const cached = await caches.match(e.request)
+        if (cached) return cached
+        // Para navegación, devolver la página raíz cacheada
+        if (e.request.mode === 'navigate') {
+          const root = await caches.match('/')
+          if (root) return root
+        }
+        return new Response('Sin conexión', {
+          status: 503,
+          headers: { 'Content-Type': 'text/plain; charset=utf-8' },
+        })
+      })
   )
 })
 
@@ -72,7 +87,6 @@ self.addEventListener('notificationclick', e => {
 
   e.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true }).then(windowClients => {
-      // Si ya hay una ventana abierta de la app, enfocarla y navegar
       for (const client of windowClients) {
         if (client.url.includes(self.location.origin)) {
           client.focus()
@@ -80,7 +94,6 @@ self.addEventListener('notificationclick', e => {
           return
         }
       }
-      // Si no, abrir nueva ventana
       clients.openWindow(url)
     })
   )

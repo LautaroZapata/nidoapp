@@ -248,7 +248,7 @@ export default function LandingPage() {
 
         .l-hero-stats {
           display: flex; gap: 2rem; margin-top: 2.5rem;
-          padding-top: 2rem;
+          padding-top: 2rem; flex-wrap: wrap;
           border-top: 1px solid rgba(192,90,59,0.15);
         }
         .l-stat-val { font-family: var(--font-mono), monospace; font-size: 1.6rem; font-weight: 500; color: #C05A3B; }
@@ -397,6 +397,18 @@ export default function LandingPage() {
           .l-wpp-inner { grid-template-columns: 1fr; gap: 2.5rem; }
           .l-step-line { display: none; }
           .l-nav-login { display: none; }
+        }
+        @media (max-width: 420px) {
+          .l-hero { padding: 5rem 1rem 2rem; }
+          .l-nav { padding: 0.75rem 1rem; }
+          .l-hero-title { font-size: clamp(2rem, 9vw, 2.8rem); }
+          .l-hero-sub { font-size: 0.92rem; }
+          .l-hero-stats { gap: 1.25rem; }
+          .l-stat-val { font-size: 1.3rem; }
+          .l-features { padding: 4rem 1rem; }
+          .l-wpp-banner { padding: 4rem 1rem; }
+          .l-steps { padding: 4rem 1rem; }
+          .l-cta { padding: 4rem 1rem; }
         }
       `}</style>
 
