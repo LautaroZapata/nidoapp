@@ -1006,6 +1006,7 @@ export default function GastosPage() {
         .g-submit-wrap {
           position: sticky; bottom: 0;
           padding-top: 12px; margin-top: 0.25rem;
+          padding-bottom: max(0.75rem, env(safe-area-inset-bottom));
           background: linear-gradient(to bottom, transparent, #FFF8F2 35%);
         }
         .g-submit {
