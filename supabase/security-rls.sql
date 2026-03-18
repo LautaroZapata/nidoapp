@@ -198,8 +198,8 @@ CREATE POLICY "whatsapp_pending_confirmations: sin acceso cliente" ON whatsapp_p
 
 CREATE INDEX IF NOT EXISTS idx_miembros_sala_id       ON miembros(sala_id);
 CREATE INDEX IF NOT EXISTS idx_miembros_user_id       ON miembros(user_id);
-CREATE INDEX IF NOT EXISTS idx_miembros_telefono      ON miembros(telefono) WHERE telefono IS NOT NULL;
-CREATE INDEX IF NOT EXISTS idx_miembros_tel_sala       ON miembros(telefono, sala_id) WHERE telefono IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_miembros_whatsapp       ON miembros(whatsapp_phone) WHERE whatsapp_phone IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_miembros_wp_sala        ON miembros(whatsapp_phone, sala_id) WHERE whatsapp_phone IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_gastos_sala_id         ON gastos(sala_id);
 CREATE INDEX IF NOT EXISTS idx_gastos_fecha           ON gastos(fecha DESC);
 CREATE INDEX IF NOT EXISTS idx_items_compra_sala_id   ON items_compra(sala_id);
