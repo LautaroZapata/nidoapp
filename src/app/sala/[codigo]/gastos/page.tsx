@@ -9,6 +9,7 @@ import type { Gasto, Miembro, Pago } from '@/lib/types'
 import { calcularBalance, desglosarDeuda, EPS } from '@/lib/balance'
 import type { Debt } from '@/lib/balance'
 import { notificarSala } from '@/lib/push'
+import { useNotif } from '@/lib/notif-context'
 
 const fraunces = Fraunces({
   weight: 'variable',
@@ -27,14 +28,6 @@ const dmMono = DM_Mono({
 })
 
 type Categoria = Gasto['categoria']
-type Notif = { id: string; text: string; ts: number; icon: string }
-
-function fmtTimeAgo(ts: number) {
-  const diff = (Date.now() - ts) / 1000
-  if (diff < 60) return 'ahora'
-  if (diff < 3600) return `${Math.floor(diff / 60)}m`
-  return `${Math.floor(diff / 3600)}h`
-}
 
 const CATEGORIA_META: Record<Categoria, { label: string; icon: string; color: string; bg: string; border: string }> = {
   alquiler:    { label: 'Alquiler',    icon: '🏠', color: '#2E7D52', bg: 'rgba(46,125,82,0.1)',   border: 'rgba(46,125,82,0.25)'   },
@@ -268,18 +261,10 @@ export default function GastosPage() {
   const [modalLiquidar, setModalLiquidar] = useState<{ debt: Debt; importe: string; nota: string } | null>(null)
   const [liquidandoOk, setLiquidandoOk] = useState<string | null>(null)
   const [expandedDebt, setExpandedDebt] = useState<string | null>(null)
-  const [notifs, setNotifs] = useState<Notif[]>([])
-  const [bellOpen, setBellOpen] = useState(false)
-  const [toasts, setToasts] = useState<Notif[]>([])
-  const [unreadCount, setUnreadCount] = useState(0)
+  const [editandoMonto, setEditandoMonto] = useState(false)
+  const [notaAbierta, setNotaAbierta] = useState(false)
 
-  function addNotif(text: string, icon: string) {
-    const n: Notif = { id: Math.random().toString(36).slice(2), text, ts: Date.now(), icon }
-    setNotifs(prev => [n, ...prev].slice(0, 30))
-    setUnreadCount(c => c + 1)
-    setToasts(prev => [...prev, n])
-    setTimeout(() => setToasts(prev => prev.filter(t => t.id !== n.id)), 5000)
-  }
+  const { addNotif } = useNotif()
 
   const cargarDatos = useCallback(async () => {
     if (!session) return
@@ -327,17 +312,12 @@ export default function GastosPage() {
         { event: '*', schema: 'public', table: 'gastos', filter: `sala_id=eq.${session.salaId}` },
         (payload) => {
           if (payload.eventType === 'INSERT') {
-            const gasto = payload.new as Gasto
-            setGastos(prev => [gasto, ...prev])
-            const pagador = miembrosRef.current.find(m => m.id === gasto.pagado_por)
-            const quien = pagador ? pagador.nombre : 'Alguien'
-            addNotif(`${quien} añadió: ${gasto.descripcion} ($${gasto.importe.toLocaleString('es-UY')})`, '💸')
+            setGastos(prev => [payload.new as Gasto, ...prev])
           } else if (payload.eventType === 'UPDATE') {
             setGastos(prev => prev.map(g => g.id === payload.new.id ? payload.new as Gasto : g))
           } else if (payload.eventType === 'DELETE') {
             const old = payload.old as Partial<Gasto>
             setGastos(prev => prev.filter(g => g.id !== old.id))
-            if (old.descripcion) addNotif(`Gasto eliminado: ${old.descripcion}`, '🗑️')
           }
         }
       )
@@ -350,15 +330,7 @@ export default function GastosPage() {
         { event: '*', schema: 'public', table: 'pagos', filter: `sala_id=eq.${session.salaId}` },
         (payload) => {
           if (payload.eventType === 'INSERT') {
-            const pago = payload.new as Pago
-            setPagos(prev => [pago, ...prev])
-            const ms = miembrosRef.current
-            const fromM = ms.find(m => m.id === pago.de_id)
-            const toM   = ms.find(m => m.id === pago.a_id)
-            const texto = fromM && toM
-              ? `${fromM.nombre} le pagó $${pago.importe.toLocaleString('es-UY')} a ${toM.nombre}`
-              : 'Pago registrado entre miembros'
-            addNotif(texto, '💰')
+            setPagos(prev => [payload.new as Pago, ...prev])
           } else if (payload.eventType === 'DELETE') {
             const old = payload.old as Partial<Pago>
             setPagos(prev => prev.filter(p => p.id !== old.id))
@@ -541,9 +513,12 @@ export default function GastosPage() {
   }
 
   async function handleEliminar(id: string) {
+    if (!confirm('¿Eliminar este gasto? También se borrarán los pagos registrados de la sala para mantener el balance consistente.')) return
     setBorrando(id)
     setGastos(prev => prev.filter(g => g.id !== id))
     const supabase = createClient()
+    await supabase.from('pagos').delete().eq('sala_id', session!.salaId)
+    setPagos([])
     await supabase.from('gastos').delete().eq('id', id)
     setBorrando(null)
   }
@@ -910,62 +885,6 @@ export default function GastosPage() {
         }
         @media (min-width: 600px) { .g-modal { border-radius: 20px; box-shadow: 0 20px 60px rgba(150,80,40,0.15); } }
 
-        /* ── Bell ── */
-        .g-bell-btn {
-          position: relative; width: 36px; height: 36px; border-radius: 10px;
-          background: white; border: 1.5px solid #E8D5C0;
-          display: flex; align-items: center; justify-content: center;
-          cursor: pointer; color: #A07060;
-          transition: background 0.18s, border-color 0.18s, color 0.18s;
-        }
-        .g-bell-btn:hover { background: #FFF5EE; border-color: #C05A3B; color: #C05A3B; }
-        .g-bell-badge {
-          position: absolute; top: -5px; right: -5px;
-          background: #C05A3B; color: white;
-          border-radius: 999px; font-size: 0.55rem; font-weight: 700;
-          padding: 2px 4px; min-width: 16px; text-align: center;
-          border: 1.5px solid #FAF5EE; pointer-events: none;
-        }
-        .g-notif-panel {
-          position: fixed; top: 66px; right: 1rem;
-          width: min(320px, calc(100vw - 1.5rem));
-          background: white; border: 1.5px solid #EAD8C8;
-          border-radius: 18px; box-shadow: 0 8px 32px rgba(150,80,40,0.15);
-          z-index: 300; overflow: hidden;
-          animation: g-fadeup 0.2s cubic-bezier(0.22,1,0.36,1) both;
-        }
-        .g-notif-hdr {
-          display: flex; align-items: center; justify-content: space-between;
-          padding: 12px 14px; border-bottom: 1px solid #EAD8C8;
-        }
-        .g-notif-title { font-family: var(--font-serif), serif; font-size: 0.95rem; font-weight: 600; color: #2A1A0E; }
-        .g-notif-clear { background: none; border: none; font-size: 0.72rem; color: #C05A3B; font-weight: 600; cursor: pointer; font-family: var(--font-body), sans-serif; }
-        .g-notif-list { max-height: 300px; overflow-y: auto; }
-        .g-notif-item {
-          display: flex; align-items: flex-start; gap: 9px;
-          padding: 9px 14px; border-bottom: 1px solid #F5EDE4; font-size: 0.81rem;
-        }
-        .g-notif-item:last-child { border-bottom: none; }
-        .g-notif-text { flex: 1; color: #4A3020; line-height: 1.4; }
-        .g-notif-time { font-size: 0.68rem; color: #C0A898; flex-shrink: 0; margin-top: 2px; }
-        .g-notif-empty { padding: 1.5rem; text-align: center; color: #B09080; font-size: 0.83rem; }
-
-        /* ── Toasts ── */
-        .g-toasts {
-          position: fixed; bottom: 1.5rem; left: 50%; transform: translateX(-50%);
-          display: flex; flex-direction: column; gap: 8px; align-items: center;
-          z-index: 500; pointer-events: none;
-          width: min(360px, calc(100vw - 2rem));
-        }
-        .g-toast {
-          background: #2A1A0E; color: white; border-radius: 14px; padding: 11px 16px;
-          display: flex; align-items: center; gap: 10px; width: 100%;
-          font-size: 0.83rem; font-weight: 500; line-height: 1.4;
-          box-shadow: 0 8px 24px rgba(42,26,14,0.25);
-          animation: g-toast-in 0.3s cubic-bezier(0.22,1,0.36,1) both;
-        }
-        @keyframes g-toast-in { from { opacity:0; transform:translateY(14px) scale(0.96); } to { opacity:1; transform:translateY(0) scale(1); } }
-
         .g-modal-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.75rem; }
         .g-modal-title { font-family: var(--font-serif), serif; font-size: 1.5rem; color: #2A1A0E; letter-spacing: -0.025em; font-weight: 600; }
         .g-modal-close {
@@ -1141,13 +1060,6 @@ export default function GastosPage() {
                   En vivo
                 </div>
               )}
-              <button className="g-bell-btn" onClick={() => { setBellOpen(o => !o); setUnreadCount(0) }}>
-                <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-                  <path d="M8 1.5A4.5 4.5 0 003.5 6v3l-1 1.5h11L12.5 9V6A4.5 4.5 0 008 1.5z" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round"/>
-                  <path d="M6.5 13a1.5 1.5 0 003 0" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/>
-                </svg>
-                {unreadCount > 0 && <span className="g-bell-badge">{unreadCount > 9 ? '9+' : unreadCount}</span>}
-              </button>
               <div className="g-avatar" style={{ background: session.miembroColor }}>
                 {session.miembroNombre[0].toUpperCase()}
               </div>
@@ -1590,7 +1502,7 @@ export default function GastosPage() {
                             ) : (
                               <button
                                 className="g-liquidar-btn"
-                                onClick={() => setModalLiquidar({ debt: d, importe: String(d.amount), nota: '' })}
+                                onClick={() => { setModalLiquidar({ debt: d, importe: String(d.amount), nota: '' }); setEditandoMonto(false); setNotaAbierta(false) }}
                                 disabled={isSaving}
                               >
                                 {isSaving ? (
@@ -1769,9 +1681,15 @@ export default function GastosPage() {
         if (!fromM || !toM) return null
         const importeNum = parseFloat(importe) || 0
         const isSaving = liquidando === `${d.from}-${d.to}`
+        const ajustar = (delta: number) => {
+          const nuevo = Math.max(0, importeNum + delta)
+          setModalLiquidar(prev => prev ? { ...prev, importe: String(nuevo) } : null)
+        }
         return (
           <div className="g-overlay" onClick={e => { if (e.target === e.currentTarget && !isSaving) setModalLiquidar(null) }}>
-            <div className="g-modal" style={{ maxWidth: 400 }}>
+            <div className="g-modal" style={{ maxWidth: 420, paddingBottom: 'max(1.5rem, env(safe-area-inset-bottom))' }}>
+
+              {/* Header */}
               <div className="g-modal-header">
                 <div className="g-modal-title">Registrar pago</div>
                 <button className="g-modal-close" onClick={() => !isSaving && setModalLiquidar(null)} disabled={isSaving}>
@@ -1780,11 +1698,9 @@ export default function GastosPage() {
               </div>
 
               {/* Quién paga a quién */}
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 16, padding: '1rem 0 1.4rem', marginBottom: '0.5rem', borderBottom: '1px solid #EAD8C8' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 16, padding: '0.75rem 0 1.25rem' }}>
                 <div style={{ textAlign: 'center' }}>
-                  <div className="g-debt-av" style={{ background: fromM.color, margin: '0 auto 6px', width: 48, height: 48, fontSize: '1rem' }}>
-                    {fromM.nombre[0].toUpperCase()}
-                  </div>
+                  <div className="g-debt-av" style={{ background: fromM.color, margin: '0 auto 6px', width: 48, height: 48, fontSize: '1rem' }}>{fromM.nombre[0].toUpperCase()}</div>
                   <div style={{ fontSize: '0.8rem', fontWeight: 700, color: '#2A1A0E' }}>{fromM.nombre}</div>
                   <div style={{ fontSize: '0.7rem', color: '#A07060' }}>paga</div>
                 </div>
@@ -1792,46 +1708,72 @@ export default function GastosPage() {
                   <path d="M2 8h28M22 2l8 6-8 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                 </svg>
                 <div style={{ textAlign: 'center' }}>
-                  <div className="g-debt-av" style={{ background: toM.color, margin: '0 auto 6px', width: 48, height: 48, fontSize: '1rem' }}>
-                    {toM.nombre[0].toUpperCase()}
-                  </div>
+                  <div className="g-debt-av" style={{ background: toM.color, margin: '0 auto 6px', width: 48, height: 48, fontSize: '1rem' }}>{toM.nombre[0].toUpperCase()}</div>
                   <div style={{ fontSize: '0.8rem', fontWeight: 700, color: '#2A1A0E' }}>{toM.nombre}</div>
                   <div style={{ fontSize: '0.7rem', color: '#A07060' }}>recibe</div>
                 </div>
               </div>
 
-              {/* Importe */}
-              <div className="g-field" style={{ marginTop: '1.2rem' }}>
-                <label className="g-label">Importe</label>
-                <input
-                  className="g-input"
-                  type="number"
-                  min={1}
-                  step="any"
-                  value={importe}
-                  onChange={e => setModalLiquidar(prev => prev ? { ...prev, importe: e.target.value } : null)}
-                  autoFocus
-                />
-                {d.amount !== importeNum && importeNum > 0 && (
-                  <div style={{ marginTop: 5, fontSize: '0.72rem', color: '#9A7060' }}>
-                    Deuda total: {fmtUYU(d.amount)} · Registrando pago parcial de {fmtUYU(Math.round(importeNum))}
+              {/* Monto — display grande + ajuste sin teclado */}
+              <div style={{ background: 'rgba(90,136,105,0.07)', border: '1.5px solid rgba(90,136,105,0.2)', borderRadius: 16, padding: '1.25rem', marginBottom: '1rem' }}>
+                {!editandoMonto ? (
+                  <div style={{ textAlign: 'center' }}>
+                    <div style={{ fontFamily: 'var(--font-code), monospace', fontSize: '2.2rem', fontWeight: 600, color: '#2E7D52', lineHeight: 1.1, marginBottom: 4 }}>
+                      ${importeNum.toLocaleString('es-UY')}
+                    </div>
+                    {d.amount !== importeNum && importeNum > 0 && (
+                      <div style={{ fontSize: '0.7rem', color: '#7A9A88', marginBottom: 10 }}>Deuda total: ${d.amount.toLocaleString('es-UY')}</div>
+                    )}
+                    <div style={{ display: 'flex', gap: 6, justifyContent: 'center', flexWrap: 'wrap', marginBottom: 10 }}>
+                      {[-500, -100, +100, +500].map(delta => (
+                        <button key={delta} onClick={() => ajustar(delta)} style={{
+                          padding: '6px 12px', borderRadius: 8, border: '1.5px solid rgba(90,136,105,0.3)',
+                          background: 'white', color: delta < 0 ? '#B03A1A' : '#2E7D52',
+                          fontSize: '0.78rem', fontWeight: 700, cursor: 'pointer',
+                          fontFamily: 'var(--font-body), Nunito, sans-serif',
+                        }}>
+                          {delta > 0 ? `+${delta}` : delta}
+                        </button>
+                      ))}
+                    </div>
+                    <button onClick={() => setEditandoMonto(true)} style={{ fontSize: '0.75rem', color: '#7A9A88', background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'var(--font-body), Nunito, sans-serif', textDecoration: 'underline' }}>
+                      Ingresar monto exacto
+                    </button>
+                  </div>
+                ) : (
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.68rem', fontWeight: 700, color: '#5A8869', textTransform: 'uppercase', letterSpacing: '0.09em', marginBottom: 6 }}>Monto</label>
+                    <input
+                      className="g-input"
+                      inputMode="decimal"
+                      value={importe}
+                      onChange={e => setModalLiquidar(prev => prev ? { ...prev, importe: e.target.value } : null)}
+                      style={{ fontSize: '1.4rem', fontFamily: 'var(--font-code), monospace', textAlign: 'center', letterSpacing: '0.04em' }}
+                    />
                   </div>
                 )}
               </div>
 
-              {/* Nota */}
-              <div className="g-field">
-                <label className="g-label">Concepto (opcional)</label>
-                <input
-                  className="g-input"
-                  type="text"
-                  placeholder="Ej: transferencia, efectivo..."
-                  value={nota}
-                  onChange={e => setModalLiquidar(prev => prev ? { ...prev, nota: e.target.value } : null)}
-                  onKeyDown={e => { if (e.key === 'Enter' && !isSaving) handleLiquidar() }}
-                />
-              </div>
+              {/* Nota — colapsada por defecto */}
+              {!notaAbierta ? (
+                <button onClick={() => setNotaAbierta(true)} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.78rem', color: '#A07060', background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'var(--font-body), Nunito, sans-serif', marginBottom: '1rem', padding: 0 }}>
+                  <svg width="13" height="13" viewBox="0 0 13 13" fill="none"><path d="M6.5 1.5v5M4 4.5h5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/><circle cx="6.5" cy="6.5" r="5.5" stroke="currentColor" strokeWidth="1.2"/></svg>
+                  Añadir nota (opcional)
+                </button>
+              ) : (
+                <div className="g-field" style={{ marginBottom: '1rem' }}>
+                  <label className="g-label">Nota (opcional)</label>
+                  <input
+                    className="g-input"
+                    type="text"
+                    placeholder="Ej: transferencia, efectivo..."
+                    value={nota}
+                    onChange={e => setModalLiquidar(prev => prev ? { ...prev, nota: e.target.value } : null)}
+                  />
+                </div>
+              )}
 
+              {/* Botón confirmar */}
               <button
                 className="g-submit"
                 style={{ background: '#5A8869' }}
@@ -1840,51 +1782,14 @@ export default function GastosPage() {
               >
                 {isSaving ? <><span className="g-spinner"/>Guardando...</> : <>
                   <svg width="13" height="13" viewBox="0 0 13 13" fill="none"><path d="M1.5 6.5L5.5 10.5L11.5 2.5" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>
-                  Confirmar pago de {fmtUYU(Math.round(importeNum || 0))}
+                  Confirmar pago de ${importeNum ? importeNum.toLocaleString('es-UY') : '0'}
                 </>}
               </button>
+
             </div>
           </div>
         )
       })()}
-
-      {/* ── BELL DROPDOWN ── */}
-      {bellOpen && (
-        <>
-          <div style={{ position: 'fixed', inset: 0, zIndex: 299 }} onClick={() => setBellOpen(false)} />
-          <div className="g-notif-panel">
-            <div className="g-notif-hdr">
-              <span className="g-notif-title">Actividad reciente</span>
-              {notifs.length > 0 && (
-                <button className="g-notif-clear" onClick={() => setNotifs([])}>Limpiar</button>
-              )}
-            </div>
-            <div className="g-notif-list">
-              {notifs.length === 0 ? (
-                <div className="g-notif-empty">Sin actividad aún</div>
-              ) : notifs.map(n => (
-                <div key={n.id} className="g-notif-item">
-                  <span style={{ fontSize: '1rem', flexShrink: 0 }}>{n.icon}</span>
-                  <span className="g-notif-text">{n.text}</span>
-                  <span className="g-notif-time">{fmtTimeAgo(n.ts)}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        </>
-      )}
-
-      {/* ── TOASTS ── */}
-      {toasts.length > 0 && (
-        <div className="g-toasts">
-          {toasts.map(t => (
-            <div key={t.id} className="g-toast">
-              <span style={{ fontSize: '1.1rem', flexShrink: 0 }}>{t.icon}</span>
-              <span>{t.text}</span>
-            </div>
-          ))}
-        </div>
-      )}
 
       {/* ── MODAL: AÑADIR GASTO ── */}
       {modalOpen && (
