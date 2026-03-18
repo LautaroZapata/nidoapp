@@ -1,0 +1,811 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>nido — Brand Guide</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&display=swap" rel="stylesheet"/>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --terra:   #C05A3B;
+    --terra-d: #A04730;
+    --night:   #1C0E06;
+    --brown:   #2A1A0E;
+    --brown-m: #6B4226;
+    --cream:   #FAF5EE;
+    --cream-d: #F0E6D8;
+    --sage:    #5A8869;
+    --amber:   #C8823A;
+  }
+  html { scroll-behavior: smooth; }
+  body {
+    font-family: 'DM Sans', system-ui, sans-serif;
+    background: var(--cream);
+    color: var(--brown);
+    line-height: 1.6;
+  }
+
+  /* ── COVER ── */
+  .cover {
+    min-height: 100vh;
+    background: var(--night);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    overflow: hidden;
+    padding: 4rem 2rem;
+  }
+  .cover-grain {
+    position: absolute; inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    background-size: 200px;
+    opacity: 0.04; pointer-events: none;
+  }
+  .cover-bg {
+    position: absolute; inset: 0; pointer-events: none;
+    background: radial-gradient(ellipse 70% 60% at 30% 40%, rgba(192,90,59,0.15) 0%, transparent 60%),
+                radial-gradient(ellipse 50% 50% at 75% 70%, rgba(200,130,58,0.08) 0%, transparent 55%);
+  }
+  .cover-logo {
+    position: relative; z-index: 1;
+    margin-bottom: 3rem;
+  }
+  .cover-title {
+    font-family: 'Syne', sans-serif;
+    font-size: clamp(0.7rem, 1.5vw, 0.9rem);
+    font-weight: 500;
+    letter-spacing: 0.3em;
+    text-transform: uppercase;
+    color: rgba(250,245,238,0.35);
+    margin-bottom: 1rem;
+    position: relative; z-index: 1;
+  }
+  .cover-headline {
+    font-family: 'Syne', sans-serif;
+    font-size: clamp(3rem, 8vw, 7rem);
+    font-weight: 800;
+    color: var(--cream);
+    line-height: 0.9;
+    letter-spacing: -0.04em;
+    text-align: center;
+    position: relative; z-index: 1;
+    margin-bottom: 0.5rem;
+  }
+  .cover-headline span {
+    color: var(--terra);
+  }
+  .cover-sub {
+    font-size: clamp(0.9rem, 2vw, 1.1rem);
+    color: rgba(250,245,238,0.4);
+    position: relative; z-index: 1;
+    letter-spacing: 0.01em;
+  }
+  .cover-scroll {
+    position: absolute; bottom: 2.5rem;
+    display: flex; flex-direction: column; align-items: center; gap: 8px;
+    color: rgba(250,245,238,0.25); font-size: 0.75rem; letter-spacing: 0.1em; text-transform: uppercase;
+    z-index: 1;
+  }
+  .cover-scroll-line {
+    width: 1px; height: 40px; background: linear-gradient(to bottom, rgba(192,90,59,0.5), transparent);
+  }
+
+  /* ── SECTIONS ── */
+  .section { padding: 6rem 2rem; max-width: 1100px; margin: 0 auto; }
+  .section-label {
+    font-family: 'Syne', sans-serif;
+    font-size: 0.7rem; font-weight: 600;
+    letter-spacing: 0.25em; text-transform: uppercase;
+    color: var(--terra); margin-bottom: 1rem;
+  }
+  .section-title {
+    font-family: 'Syne', sans-serif;
+    font-size: clamp(2rem, 5vw, 3.5rem);
+    font-weight: 800; line-height: 1.0;
+    letter-spacing: -0.03em;
+    color: var(--brown); margin-bottom: 1rem;
+  }
+  .section-desc {
+    font-size: 1.05rem; color: var(--brown-m);
+    max-width: 540px; line-height: 1.7; margin-bottom: 3rem;
+  }
+  .divider { height: 1px; background: var(--cream-d); margin: 0; }
+
+  /* ── LOGO SECTION ── */
+  .logo-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.5rem;
+    margin-bottom: 3rem;
+  }
+  .logo-box {
+    border-radius: 20px;
+    padding: 3rem 2rem;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 1.5rem;
+    min-height: 220px;
+  }
+  .logo-box-light { background: var(--cream-d); border: 1.5px solid #E0CDB8; }
+  .logo-box-dark  { background: var(--night); }
+  .logo-box-terra { background: var(--terra); }
+  .logo-box-label {
+    font-size: 0.7rem; font-weight: 600; letter-spacing: 0.15em;
+    text-transform: uppercase; opacity: 0.45;
+  }
+  .logo-box-light .logo-box-label { color: var(--brown); }
+  .logo-box-dark  .logo-box-label { color: var(--cream); }
+  .logo-box-terra .logo-box-label { color: var(--cream); }
+
+  /* Rules */
+  .rules-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.5rem; }
+  .rule-card {
+    background: white; border-radius: 16px;
+    border: 1.5px solid var(--cream-d);
+    padding: 1.5rem;
+  }
+  .rule-card-title {
+    font-family: 'Syne', sans-serif;
+    font-size: 0.85rem; font-weight: 700;
+    margin-bottom: 0.5rem;
+    color: var(--brown);
+  }
+  .rule-card-desc { font-size: 0.84rem; color: var(--brown-m); line-height: 1.5; }
+
+  /* ── COLORS ── */
+  .colors-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+    gap: 1.5rem;
+  }
+  .color-card { border-radius: 16px; overflow: hidden; box-shadow: 0 4px 20px rgba(42,26,14,0.08); }
+  .color-swatch { height: 100px; }
+  .color-info { padding: 1rem; background: white; }
+  .color-name {
+    font-family: 'Syne', sans-serif;
+    font-size: 0.85rem; font-weight: 700;
+    color: var(--brown); margin-bottom: 3px;
+  }
+  .color-hex { font-size: 0.78rem; color: var(--brown-m); font-family: 'DM Mono', monospace; }
+  .color-use { font-size: 0.72rem; color: var(--brown-m); margin-top: 4px; opacity: 0.7; }
+
+  /* ── TYPOGRAPHY ── */
+  .type-specimen { margin-bottom: 3rem; }
+  .type-label {
+    font-size: 0.7rem; font-weight: 600; letter-spacing: 0.15em;
+    text-transform: uppercase; color: var(--brown-m);
+    margin-bottom: 1.5rem; border-top: 1px solid var(--cream-d); padding-top: 1.5rem;
+  }
+  .type-display {
+    font-family: 'Syne', sans-serif;
+    font-size: clamp(3rem, 7vw, 6rem);
+    font-weight: 800;
+    line-height: 1.0; letter-spacing: -0.04em;
+    color: var(--brown);
+  }
+  .type-heading {
+    font-family: 'Syne', sans-serif;
+    font-size: 2.2rem; font-weight: 700;
+    line-height: 1.15; color: var(--brown);
+  }
+  .type-subheading {
+    font-family: 'Syne', sans-serif;
+    font-size: 1.1rem; font-weight: 600;
+    color: var(--brown); letter-spacing: -0.01em;
+  }
+  .type-body { font-size: 1rem; color: var(--brown-m); line-height: 1.7; max-width: 560px; }
+  .type-caption { font-size: 0.8rem; color: var(--brown-m); letter-spacing: 0.02em; }
+  .type-overline {
+    font-size: 0.68rem; font-weight: 700; letter-spacing: 0.2em;
+    text-transform: uppercase; color: var(--terra);
+  }
+  .type-pair {
+    background: white; border-radius: 20px;
+    border: 1.5px solid var(--cream-d);
+    padding: 2.5rem; margin-bottom: 1.5rem;
+    display: flex; align-items: flex-start;
+    justify-content: space-between; gap: 2rem;
+  }
+  .type-pair-info { flex: 0 0 160px; }
+  .type-pair-name {
+    font-family: 'Syne', sans-serif; font-size: 0.85rem;
+    font-weight: 700; color: var(--brown); margin-bottom: 4px;
+  }
+  .type-pair-detail { font-size: 0.75rem; color: var(--brown-m); line-height: 1.5; }
+  .type-pair-sample { flex: 1; }
+
+  /* ── VOICE ── */
+  .voice-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: 3rem; }
+  .voice-card {
+    background: white; border-radius: 20px;
+    border: 1.5px solid var(--cream-d);
+    padding: 2rem;
+  }
+  .voice-card-icon { font-size: 2rem; margin-bottom: 1rem; }
+  .voice-card-title {
+    font-family: 'Syne', sans-serif;
+    font-size: 1.1rem; font-weight: 700;
+    color: var(--brown); margin-bottom: 0.5rem;
+  }
+  .voice-card-desc { font-size: 0.88rem; color: var(--brown-m); line-height: 1.6; }
+  .examples-row { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; }
+  .example-card {
+    border-radius: 16px; padding: 1.5rem;
+  }
+  .example-card.good { background: rgba(90,136,105,0.08); border: 1.5px solid rgba(90,136,105,0.2); }
+  .example-card.bad  { background: rgba(220,60,60,0.06);  border: 1.5px solid rgba(220,60,60,0.15); }
+  .example-badge {
+    font-size: 0.65rem; font-weight: 700; letter-spacing: 0.12em;
+    text-transform: uppercase; margin-bottom: 0.75rem;
+    display: inline-block; padding: 3px 10px; border-radius: 999px;
+  }
+  .good .example-badge { background: rgba(90,136,105,0.15); color: #3A6B50; }
+  .bad  .example-badge { background: rgba(220,60,60,0.12);  color: #B03030; }
+  .example-text { font-size: 0.92rem; color: var(--brown); line-height: 1.6; font-style: italic; }
+
+  /* ── KEYWORDS ── */
+  .keyword-cloud { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 3rem; }
+  .keyword {
+    padding: 8px 18px; border-radius: 999px;
+    font-family: 'Syne', sans-serif;
+    font-weight: 600; font-size: 0.9rem;
+    border: 1.5px solid;
+  }
+  .keyword-1 { background: rgba(192,90,59,0.08); border-color: rgba(192,90,59,0.25); color: var(--terra-d); }
+  .keyword-2 { background: rgba(42,26,14,0.06);  border-color: rgba(42,26,14,0.15);  color: var(--brown); }
+  .keyword-3 { background: rgba(90,136,105,0.08); border-color: rgba(90,136,105,0.2); color: #3A6B50; }
+
+  /* ── ELEMENTS ── */
+  .elements-section { background: var(--night); padding: 6rem 2rem; }
+  .elements-inner { max-width: 1100px; margin: 0 auto; }
+  .elements-section .section-title { color: var(--cream); }
+  .elements-section .section-label { color: var(--terra); }
+  .elements-section .section-desc  { color: rgba(250,245,238,0.5); }
+  .mockup-chat {
+    background: #E8E0D8;
+    border-radius: 20px;
+    padding: 1.5rem;
+    max-width: 360px;
+    margin: 0 auto;
+  }
+  .chat-header {
+    display: flex; align-items: center; gap: 10px;
+    padding-bottom: 1rem; border-bottom: 1px solid rgba(0,0,0,0.08);
+    margin-bottom: 1rem;
+  }
+  .chat-avatar {
+    width: 38px; height: 38px; border-radius: 50%;
+    background: var(--terra); display: flex; align-items: center;
+    justify-content: center; font-size: 1rem;
+  }
+  .chat-name { font-weight: 600; font-size: 0.9rem; color: #111; }
+  .chat-status { font-size: 0.72rem; color: #5A8869; }
+  .bubble {
+    max-width: 80%; padding: 10px 14px;
+    border-radius: 18px; margin-bottom: 8px;
+    font-size: 0.88rem; line-height: 1.5;
+  }
+  .bubble-in  { background: white; color: #1C1C1E; border-radius: 4px 18px 18px 18px; }
+  .bubble-out { background: #C05A3B; color: white; border-radius: 18px 4px 18px 18px; margin-left: auto; }
+  .bubble-bot { background: #1C0E06; color: #FAF5EE; border-radius: 4px 18px 18px 18px; }
+
+  /* Pill components */
+  .components-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.5rem; }
+  .component-card {
+    background: rgba(255,255,255,0.05); border-radius: 16px;
+    border: 1px solid rgba(250,245,238,0.1); padding: 1.5rem;
+    display: flex; flex-direction: column; gap: 1rem;
+  }
+  .component-label { font-size: 0.68rem; font-weight: 600; letter-spacing: 0.15em; text-transform: uppercase; color: rgba(250,245,238,0.35); }
+  .btn-primary {
+    display: inline-flex; align-items: center; justify-content: center;
+    padding: 12px 24px; background: var(--terra); color: white;
+    border-radius: 12px; font-weight: 600; font-size: 0.9rem;
+    font-family: 'DM Sans', sans-serif; border: none; cursor: pointer;
+    width: 100%;
+  }
+  .btn-secondary {
+    display: inline-flex; align-items: center; justify-content: center;
+    padding: 12px 24px; background: transparent; color: var(--cream);
+    border-radius: 12px; font-weight: 600; font-size: 0.9rem;
+    font-family: 'DM Sans', sans-serif; border: 1.5px solid rgba(250,245,238,0.2);
+    cursor: pointer; width: 100%;
+  }
+  .tag { display: inline-flex; align-items: center; gap: 6px; padding: 5px 12px; border-radius: 999px; font-size: 0.78rem; font-weight: 600; }
+  .tag-terra  { background: rgba(192,90,59,0.2); color: #FF8A6A; border: 1px solid rgba(192,90,59,0.3); }
+  .tag-sage   { background: rgba(90,136,105,0.2); color: #7DC99A; border: 1px solid rgba(90,136,105,0.3); }
+  .tag-amber  { background: rgba(200,130,58,0.2); color: #E8A860; border: 1px solid rgba(200,130,58,0.3); }
+
+  /* ── DONTS ── */
+  .donts-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 1.5rem; }
+  .dont-card {
+    border-radius: 16px; overflow: hidden;
+    border: 1.5px solid rgba(220,60,60,0.2);
+  }
+  .dont-header {
+    background: rgba(220,60,60,0.08);
+    padding: 1rem 1.25rem;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .dont-x { color: #C03A1A; font-weight: 700; font-size: 1rem; }
+  .dont-title { font-size: 0.85rem; font-weight: 600; color: var(--brown); }
+  .dont-body { padding: 1.25rem; background: white; }
+  .dont-desc { font-size: 0.84rem; color: var(--brown-m); line-height: 1.5; }
+
+  /* ── TAGLINES ── */
+  .taglines-section { background: var(--terra); padding: 6rem 2rem; }
+  .taglines-inner { max-width: 1100px; margin: 0 auto; }
+  .taglines-section .section-label { color: rgba(255,255,255,0.6); }
+  .taglines-section .section-title { color: white; }
+  .taglines-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.5rem; }
+  .tagline-card {
+    background: rgba(255,255,255,0.12);
+    border: 1px solid rgba(255,255,255,0.2);
+    border-radius: 16px; padding: 1.75rem;
+  }
+  .tagline-main {
+    font-family: 'Syne', sans-serif;
+    font-size: 1.3rem; font-weight: 800;
+    color: white; margin-bottom: 0.5rem;
+    line-height: 1.2;
+  }
+  .tagline-use { font-size: 0.78rem; color: rgba(255,255,255,0.55); }
+  .tagline-star { font-size: 0.65rem; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: rgba(255,255,255,0.5); margin-bottom: 0.5rem; }
+
+  /* ── FOOTER ── */
+  .footer {
+    background: var(--night); padding: 3rem 2rem;
+    text-align: center;
+  }
+  .footer-text { font-size: 0.8rem; color: rgba(250,245,238,0.2); letter-spacing: 0.04em; }
+
+  /* Responsive */
+  @media (max-width: 700px) {
+    .logo-grid, .voice-grid, .examples-row, .rules-grid,
+    .donts-grid, .taglines-grid, .components-grid { grid-template-columns: 1fr; }
+    .type-pair { flex-direction: column; }
+    .type-pair-info { flex: none; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ══════════════════════════════════════════════════
+     COVER
+══════════════════════════════════════════════════ -->
+<section class="cover">
+  <div class="cover-grain"></div>
+  <div class="cover-bg"></div>
+
+  <!-- Logo real -->
+  <div class="cover-logo" style="display:flex;flex-direction:column;align-items:center;gap:1.5rem;">
+    <img src="Gemini_Generated_Image_g7vbjug7vbjug7vb.png" width="120" height="120"
+      style="filter:brightness(0) invert(1) sepia(1) saturate(3) hue-rotate(330deg) brightness(0.85);"
+      alt="nido icon"/>
+    <span style="font-family:'Syne',sans-serif;font-weight:800;font-size:2.8rem;color:#FAF5EE;letter-spacing:-0.04em;line-height:1;">nido</span>
+  </div>
+
+  <div class="cover-title">Brand Guidelines · 2025</div>
+  <h1 class="cover-headline">Vivir juntos,<br/><span>sin dramas.</span></h1>
+  <p class="cover-sub">Identidad visual, voz y tono para nido</p>
+
+  <div class="cover-scroll">
+    <div class="cover-scroll-line"></div>
+    scroll
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════
+     LOGO
+══════════════════════════════════════════════════ -->
+<section class="section">
+  <div class="section-label">01 — Logo</div>
+  <h2 class="section-title">El símbolo del nido</h2>
+  <p class="section-desc">El logo combina tres arcos concéntricos que forman un nido — símbolo de hogar, comunidad y protección — con el wordmark en Syne Bold. Juntos transmiten calidez con carácter.</p>
+
+  <div class="logo-grid">
+
+    <!-- Principal: terracota sobre crema -->
+    <div class="logo-box logo-box-light">
+      <div style="display:flex;align-items:center;gap:1.2rem;">
+        <img src="Gemini_Generated_Image_g7vbjug7vbjug7vb.png" width="72" height="72" alt="nido"/>
+        <span style="font-family:'Syne',sans-serif;font-weight:800;font-size:2.2rem;color:#1C0E06;letter-spacing:-0.04em;">nido</span>
+      </div>
+      <div class="logo-box-label">Principal · Fondo claro</div>
+    </div>
+
+    <!-- Negativo: blanco sobre oscuro -->
+    <div class="logo-box logo-box-dark">
+      <div style="display:flex;align-items:center;gap:1.2rem;">
+        <img src="Gemini_Generated_Image_g7vbjug7vbjug7vb.png" width="72" height="72"
+          style="filter:brightness(0) invert(1);" alt="nido"/>
+        <span style="font-family:'Syne',sans-serif;font-weight:800;font-size:2.2rem;color:#FAF5EE;letter-spacing:-0.04em;">nido</span>
+      </div>
+      <div class="logo-box-label">Negativo · Fondo oscuro</div>
+    </div>
+
+    <!-- Sobre terracota: blanco -->
+    <div class="logo-box logo-box-terra">
+      <div style="display:flex;align-items:center;gap:1.2rem;">
+        <img src="Gemini_Generated_Image_g7vbjug7vbjug7vb.png" width="72" height="72"
+          style="filter:brightness(0) invert(1);" alt="nido"/>
+        <span style="font-family:'Syne',sans-serif;font-weight:800;font-size:2.2rem;color:white;letter-spacing:-0.04em;">nido</span>
+      </div>
+      <div class="logo-box-label" style="color:rgba(255,255,255,0.6)">Blanco · Fondo terracota</div>
+    </div>
+
+    <!-- App icon + solo icono -->
+    <div class="logo-box" style="background:#FAF5EE;border:1.5px solid #E0CDB8;flex-direction:row;gap:2.5rem;">
+      <!-- App icon (cuadrado redondeado) -->
+      <div style="display:flex;flex-direction:column;align-items:center;gap:0.75rem;">
+        <div style="width:72px;height:72px;background:#FAF5EE;border-radius:18px;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 16px rgba(42,26,14,0.15);">
+          <img src="Gemini_Generated_Image_g7vbjug7vbjug7vb.png" width="52" height="52" alt="nido app icon"/>
+        </div>
+        <div class="logo-box-label" style="color:var(--brown)">App icon</div>
+      </div>
+      <!-- Solo icono oscuro -->
+      <div style="display:flex;flex-direction:column;align-items:center;gap:0.75rem;">
+        <div style="width:72px;height:72px;background:#1C0E06;border-radius:18px;display:flex;align-items:center;justify-content:center;">
+          <img src="Gemini_Generated_Image_g7vbjug7vbjug7vb.png" width="48" height="48"
+            style="filter:brightness(0) invert(1);" alt="nido icon dark"/>
+        </div>
+        <div class="logo-box-label" style="color:var(--brown)">Dark icon</div>
+      </div>
+      <!-- Solo icono -->
+      <div style="display:flex;flex-direction:column;align-items:center;gap:0.75rem;">
+        <img src="Gemini_Generated_Image_g7vbjug7vbjug7vb.png" width="64" height="64" alt="nido icon"/>
+        <div class="logo-box-label" style="color:var(--brown)">Ícono solo</div>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="rules-grid">
+    <div class="rule-card">
+      <div class="rule-card-title">✅ Espacio mínimo</div>
+      <div class="rule-card-desc">Siempre dejá un espacio alrededor del logo equivalente a la altura de la letra "n". Nunca comprimas el logo ni lo pongas en espacios apretados.</div>
+    </div>
+    <div class="rule-card">
+      <div class="rule-card-title">✅ Tamaño mínimo</div>
+      <div class="rule-card-desc">El logo completo no debe usarse menor a 120px de ancho. Para tamaños pequeños (&lt;48px) usá solo el ícono de tres arcos.</div>
+    </div>
+    <div class="rule-card">
+      <div class="rule-card-title">✅ Fondos permitidos</div>
+      <div class="rule-card-desc">Crema (#FAF5EE), oscuro (#1C0E06), terracota (#C05A3B), o blanco puro. Nunca sobre fotos sin un overlay de color sólido detrás.</div>
+    </div>
+  </div>
+</section>
+
+<div class="divider"></div>
+
+<!-- ══════════════════════════════════════════════════
+     COLORS
+══════════════════════════════════════════════════ -->
+<section class="section">
+  <div class="section-label">02 — Colores</div>
+  <h2 class="section-title">La paleta del nido</h2>
+  <p class="section-desc">Colores cálidos y tierra, con la terracota como protagonista. Transmiten hogar, confianza y energía sin ser corporativos.</p>
+
+  <div class="colors-grid">
+    <div class="color-card">
+      <div class="color-swatch" style="background:#C05A3B;"></div>
+      <div class="color-info">
+        <div class="color-name">Terracota</div>
+        <div class="color-hex">#C05A3B</div>
+        <div class="color-use">Principal · CTAs · Acentos</div>
+      </div>
+    </div>
+    <div class="color-card">
+      <div class="color-swatch" style="background:#1C0E06;"></div>
+      <div class="color-info">
+        <div class="color-name">Noche</div>
+        <div class="color-hex">#1C0E06</div>
+        <div class="color-use">Headers · Fondos oscuros</div>
+      </div>
+    </div>
+    <div class="color-card">
+      <div class="color-swatch" style="background:#2A1A0E;"></div>
+      <div class="color-info">
+        <div class="color-name">Espresso</div>
+        <div class="color-hex">#2A1A0E</div>
+        <div class="color-use">Texto principal</div>
+      </div>
+    </div>
+    <div class="color-card">
+      <div class="color-swatch" style="background:#FAF5EE;border:1px solid #E0CDB8;"></div>
+      <div class="color-info">
+        <div class="color-name">Crema</div>
+        <div class="color-hex">#FAF5EE</div>
+        <div class="color-use">Fondo · Superficies</div>
+      </div>
+    </div>
+    <div class="color-card">
+      <div class="color-swatch" style="background:#5A8869;"></div>
+      <div class="color-info">
+        <div class="color-name">Salvia</div>
+        <div class="color-hex">#5A8869</div>
+        <div class="color-use">Éxito · Positivo</div>
+      </div>
+    </div>
+    <div class="color-card">
+      <div class="color-swatch" style="background:#C8823A;"></div>
+      <div class="color-info">
+        <div class="color-name">Ámbar</div>
+        <div class="color-hex">#C8823A</div>
+        <div class="color-use">Alertas · Énfasis</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div class="divider"></div>
+
+<!-- ══════════════════════════════════════════════════
+     TYPOGRAPHY
+══════════════════════════════════════════════════ -->
+<section class="section">
+  <div class="section-label">03 — Tipografía</div>
+  <h2 class="section-title">Las letras del nido</h2>
+  <p class="section-desc">Dos fuentes que se complementan: Syne para la personalidad, DM Sans para la claridad.</p>
+
+  <div class="type-pair">
+    <div class="type-pair-info">
+      <div class="type-pair-name">Syne</div>
+      <div class="type-pair-detail">Display · Títulos · Wordmark<br/>Weights: 700, 800<br/>Google Fonts</div>
+    </div>
+    <div class="type-pair-sample">
+      <div class="type-display">Sin drama<br/>en casa.</div>
+    </div>
+  </div>
+
+  <div class="type-pair">
+    <div class="type-pair-info">
+      <div class="type-pair-name">DM Sans</div>
+      <div class="type-pair-detail">Cuerpo · UI · Botones<br/>Weights: 300, 400, 500, 600<br/>Google Fonts</div>
+    </div>
+    <div class="type-pair-sample">
+      <div class="type-overline" style="margin-bottom:0.75rem;">Para los que comparten piso</div>
+      <div class="type-heading" style="margin-bottom:0.75rem;">Organizá tu piso sin peleas</div>
+      <div class="type-body">nido es la app que te ayuda a dividir gastos, coordinar compras y convivir mejor con tus compañeros. Todo en un lugar, con un bot de WhatsApp que te entiende.</div>
+    </div>
+  </div>
+
+  <div class="type-specimen">
+    <div class="type-label">Escala tipográfica</div>
+    <div style="display:grid;gap:1.5rem;">
+      <div style="display:flex;align-items:baseline;gap:2rem;padding:1rem 0;border-bottom:1px solid var(--cream-d);">
+        <div style="font-size:0.72rem;color:var(--brown-m);width:80px;flex-shrink:0;">Display<br/>Syne 800</div>
+        <div style="font-family:'Syne',sans-serif;font-weight:800;font-size:3rem;letter-spacing:-0.04em;color:var(--brown);">Nido</div>
+      </div>
+      <div style="display:flex;align-items:baseline;gap:2rem;padding:1rem 0;border-bottom:1px solid var(--cream-d);">
+        <div style="font-size:0.72rem;color:var(--brown-m);width:80px;flex-shrink:0;">H1<br/>Syne 700</div>
+        <div style="font-family:'Syne',sans-serif;font-weight:700;font-size:2rem;letter-spacing:-0.03em;color:var(--brown);">Gastos del mes</div>
+      </div>
+      <div style="display:flex;align-items:baseline;gap:2rem;padding:1rem 0;border-bottom:1px solid var(--cream-d);">
+        <div style="font-size:0.72rem;color:var(--brown-m);width:80px;flex-shrink:0;">H2<br/>Syne 700</div>
+        <div style="font-family:'Syne',sans-serif;font-weight:700;font-size:1.4rem;color:var(--brown);">¿Cómo estamos?</div>
+      </div>
+      <div style="display:flex;align-items:baseline;gap:2rem;padding:1rem 0;border-bottom:1px solid var(--cream-d);">
+        <div style="font-size:0.72rem;color:var(--brown-m);width:80px;flex-shrink:0;">Body<br/>DM Sans 400</div>
+        <div style="font-size:1rem;color:var(--brown-m);line-height:1.6;">Lautaro pagó $1.200 de super. ¿Dividimos entre todos?</div>
+      </div>
+      <div style="display:flex;align-items:baseline;gap:2rem;padding:1rem 0;">
+        <div style="font-size:0.72rem;color:var(--brown-m);width:80px;flex-shrink:0;">Caption<br/>DM Sans 500</div>
+        <div style="font-size:0.78rem;color:var(--brown-m);letter-spacing:0.18em;text-transform:uppercase;font-weight:600;">Hace 2 días · Comida</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div class="divider"></div>
+
+<!-- ══════════════════════════════════════════════════
+     VOICE & TONE
+══════════════════════════════════════════════════ -->
+<section class="section">
+  <div class="section-label">04 — Voz & Tono</div>
+  <h2 class="section-title">Cómo habla nido</h2>
+  <p class="section-desc">nido habla como un amigo que sabe de organización. Directo, cálido, con humor liviano. Nunca corporativo, nunca condescendiente.</p>
+
+  <div class="keyword-cloud">
+    <span class="keyword keyword-1">Directo</span>
+    <span class="keyword keyword-2">Cálido</span>
+    <span class="keyword keyword-1">Sin dramas</span>
+    <span class="keyword keyword-3">Confiable</span>
+    <span class="keyword keyword-2">Joven</span>
+    <span class="keyword keyword-1">Con humor</span>
+    <span class="keyword keyword-3">Honesto</span>
+    <span class="keyword keyword-2">Claro</span>
+    <span class="keyword keyword-1">Humano</span>
+    <span class="keyword keyword-3">Para vos</span>
+  </div>
+
+  <div class="voice-grid" style="margin-bottom:2rem;">
+    <div class="voice-card">
+      <div class="voice-card-icon">💬</div>
+      <div class="voice-card-title">Usa "vos", no "usted"</div>
+      <div class="voice-card-desc">nido habla como hablan los usuarios entre sí. Cercano, sin formalidades innecesarias. El tono formal aleja, el tono de amigo construye confianza.</div>
+    </div>
+    <div class="voice-card">
+      <div class="voice-card-icon">⚡</div>
+      <div class="voice-card-title">Frases cortas</div>
+      <div class="voice-card-desc">Los mensajes del bot y la app son concisos. Sin relleno, sin explicaciones largas. Si podés decirlo en 5 palabras, no uses 15.</div>
+    </div>
+    <div class="voice-card">
+      <div class="voice-card-icon">😅</div>
+      <div class="voice-card-title">Humor ligero, nunca forzado</div>
+      <div class="voice-card-desc">Un emoji en el momento justo, una referencia que baje la tensión cuando hay deudas. Pero nunca chistes en momentos donde el usuario está frustrado.</div>
+    </div>
+    <div class="voice-card">
+      <div class="voice-card-icon">🎯</div>
+      <div class="voice-card-title">Enfocado en la acción</div>
+      <div class="voice-card-desc">Los mensajes siempre llevan a algún lado. Confirmaciones claras, errores con solución, no solo descripciones de problemas.</div>
+    </div>
+  </div>
+
+  <div class="examples-row">
+    <div class="example-card good">
+      <span class="example-badge">✓ Así sí</span>
+      <div class="example-text">"Anotado ✅ Lautaro pagó $1.200 de super. Quedó dividido entre todos."</div>
+    </div>
+    <div class="example-card bad">
+      <span class="example-badge">✗ Así no</span>
+      <div class="example-text">"El gasto ha sido registrado exitosamente en el sistema de gestión compartida."</div>
+    </div>
+    <div class="example-card good">
+      <span class="example-badge">✓ Así sí</span>
+      <div class="example-text">"😬 Debés $800. Si ya lo pagaste, escribime 'liquidé mis deudas'."</div>
+    </div>
+    <div class="example-card bad">
+      <span class="example-badge">✗ Así no</span>
+      <div class="example-text">"Usted presenta un saldo deudor de $800 pesos en el registro de gastos compartidos."</div>
+    </div>
+    <div class="example-card good">
+      <span class="example-badge">✓ Así sí</span>
+      <div class="example-text">"¿Confirmo pizza $500 entre todos? Respondé sí o no."</div>
+    </div>
+    <div class="example-card bad">
+      <span class="example-badge">✗ Así no</span>
+      <div class="example-text">"Por favor confirme si desea registrar el mencionado gasto en el sistema."</div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════
+     ELEMENTS (dark section)
+══════════════════════════════════════════════════ -->
+<div class="elements-section">
+  <div class="elements-inner">
+    <div class="section-label">05 — Elementos UI</div>
+    <h2 class="section-title" style="color:var(--cream);">Componentes del sistema</h2>
+    <p class="section-desc">Los elementos visuales mantienen la paleta y la personalidad en toda la app.</p>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:3rem;align-items:start;">
+      <!-- Chat mockup -->
+      <div>
+        <div style="font-size:0.7rem;font-weight:600;letter-spacing:0.15em;text-transform:uppercase;color:rgba(250,245,238,0.35);margin-bottom:1rem;">Bot WhatsApp</div>
+        <div class="mockup-chat">
+          <div class="chat-header">
+            <div class="chat-avatar">🏠</div>
+            <div>
+              <div class="chat-name">nido bot</div>
+              <div class="chat-status">● en línea</div>
+            </div>
+          </div>
+          <div class="bubble bubble-in">Gasté 800 en supermercado</div>
+          <div class="bubble bubble-bot">¿Confirmo que Juli pagó $800 de supermercado entre todos? Respondé <strong>si</strong> o <strong>no</strong></div>
+          <div class="bubble bubble-out">si</div>
+          <div class="bubble bubble-bot">✅ Anotado. $200 para cada uno.</div>
+        </div>
+      </div>
+
+      <!-- Componentes -->
+      <div>
+        <div style="font-size:0.7rem;font-weight:600;letter-spacing:0.15em;text-transform:uppercase;color:rgba(250,245,238,0.35);margin-bottom:1rem;">Botones & Tags</div>
+        <div style="display:flex;flex-direction:column;gap:1rem;">
+          <button class="btn-primary">Entrar al nido →</button>
+          <button class="btn-secondary">Ver gastos</button>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:0.5rem;">
+            <span class="tag tag-terra">💰 Comida</span>
+            <span class="tag tag-sage">✅ Al día</span>
+            <span class="tag tag-amber">⚠️ Pendiente</span>
+          </div>
+          <div style="background:rgba(255,255,255,0.06);border:1px solid rgba(250,245,238,0.1);border-radius:12px;padding:1rem;margin-top:0.5rem;">
+            <div style="font-size:0.65rem;font-weight:600;letter-spacing:0.15em;text-transform:uppercase;color:rgba(250,245,238,0.3);margin-bottom:0.5rem;">Card de gasto</div>
+            <div style="display:flex;justify-content:space-between;align-items:center;">
+              <div>
+                <div style="color:var(--cream);font-weight:600;font-size:0.9rem;">🍕 Pizza</div>
+                <div style="color:rgba(250,245,238,0.4);font-size:0.75rem;">Lautaro · hace 2 días</div>
+              </div>
+              <div style="color:#C05A3B;font-weight:700;font-family:'Syne',sans-serif;">$1.200</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════
+     TAGLINES
+══════════════════════════════════════════════════ -->
+<div class="taglines-section">
+  <div class="taglines-inner">
+    <div class="section-label">06 — Copy</div>
+    <h2 class="section-title">Frases del nido</h2>
+    <div class="taglines-grid" style="margin-top:2.5rem;">
+      <div class="tagline-card">
+        <div class="tagline-star">★ Principal</div>
+        <div class="tagline-main">Vivir juntos, sin dramas.</div>
+        <div class="tagline-use">Tagline principal · Hero · OG tags</div>
+      </div>
+      <div class="tagline-card">
+        <div class="tagline-star">Hero secundario</div>
+        <div class="tagline-main">Tu piso. Organizado.</div>
+        <div class="tagline-use">Variante corta · Stories · Banners</div>
+      </div>
+      <div class="tagline-card">
+        <div class="tagline-star">WhatsApp</div>
+        <div class="tagline-main">Decile al bot, él se encarga.</div>
+        <div class="tagline-use">Feature del bot · Onboarding</div>
+      </div>
+      <div class="tagline-card">
+        <div class="tagline-star">Gastos</div>
+        <div class="tagline-main">Dividido, sin discusiones.</div>
+        <div class="tagline-use">Módulo de gastos</div>
+      </div>
+      <div class="tagline-card">
+        <div class="tagline-star">Gratis</div>
+        <div class="tagline-main">100% gratis. Para siempre.</div>
+        <div class="tagline-use">Propuesta de valor · CTAs</div>
+      </div>
+      <div class="tagline-card">
+        <div class="tagline-star">Comunidad</div>
+        <div class="tagline-main">El nido que te merecés.</div>
+        <div class="tagline-use">Emotional · Redes sociales</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════
+     DON'TS
+══════════════════════════════════════════════════ -->
+<section class="section">
+  <div class="section-label">07 — Lo que no</div>
+  <h2 class="section-title">Evitar siempre</h2>
+  <p class="section-desc">El logo y la marca de nido tienen reglas básicas para mantener su consistencia y legibilidad.</p>
+
+  <div class="donts-grid">
+    <div class="dont-card">
+      <div class="dont-header"><span class="dont-x">✕</span><span class="dont-title">No deformar el logo</span></div>
+      <div class="dont-body"><div class="dont-desc">No estires, aplastes ni rotés el logo. Siempre mantené las proporciones originales del archivo SVG.</div></div>
+    </div>
+    <div class="dont-card">
+      <div class="dont-header"><span class="dont-x">✕</span><span class="dont-title">No usar sobre fondos complejos</span></div>
+      <div class="dont-body"><div class="dont-desc">No pongas el logo directamente sobre fotos, gradientes multicolor o patrones. Usá siempre uno de los fondos aprobados.</div></div>
+    </div>
+    <div class="dont-card">
+      <div class="dont-header"><span class="dont-x">✕</span><span class="dont-title">No cambiar los colores del logo</span></div>
+      <div class="dont-body"><div class="dont-desc">El ícono es terracota (#C05A3B). El wordmark es oscuro o crema según el fondo. No uses otros colores para el logo.</div></div>
+    </div>
+    <div class="dont-card">
+      <div class="dont-header"><span class="dont-x">✕</span><span class="dont-title">No separar ícono de wordmark</span></div>
+      <div class="dont-body"><div class="dont-desc">El logo principal siempre va con ícono + wordmark juntos. La versión solo ícono es para contextos muy pequeños (favicon, avatar) donde el texto no se vería.</div></div>
+    </div>
+  </div>
+</section>
+
+<footer class="footer">
+  <div class="footer-text">nido · Brand Guidelines 2025 · Documento interno</div>
+</footer>
+
+</body>
+</html>
