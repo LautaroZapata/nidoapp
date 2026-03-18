@@ -1275,6 +1275,71 @@ export default function GastosPage() {
           {/* ── TAB: BALANCE ── */}
           {tab === 'balance' && (
             <>
+              {/* ── Resumen total del usuario ── */}
+              {!loading && (() => {
+                const miNet = balanceNet[miId] ?? 0
+                const alDia = Math.abs(miNet) < EPS
+                const meDeban = miNet > EPS
+                return (
+                  <div style={{
+                    borderRadius: 20,
+                    padding: '1.25rem 1.4rem',
+                    marginBottom: '1rem',
+                    background: alDia
+                      ? 'linear-gradient(135deg, #edfbf3 0%, #d6f5e5 100%)'
+                      : meDeban
+                        ? 'linear-gradient(135deg, #edf6ff 0%, #d6eaff 100%)'
+                        : 'linear-gradient(135deg, #fff4f0 0%, #ffe0d6 100%)',
+                    border: `1.5px solid ${alDia ? 'rgba(46,125,82,0.2)' : meDeban ? 'rgba(30,107,168,0.2)' : 'rgba(192,90,59,0.2)'}`,
+                    display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem',
+                  }}>
+                    <div>
+                      <div style={{ fontSize: '0.68rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: alDia ? '#2E7D52' : meDeban ? '#1E6BA8' : '#C05A3B', marginBottom: 4 }}>
+                        {alDia ? 'Tu balance' : meDeban ? 'Te deben en total' : 'Debés en total'}
+                      </div>
+                      <div style={{ fontFamily: 'var(--font-code), monospace', fontSize: '1.8rem', fontWeight: 700, color: alDia ? '#2E7D52' : meDeban ? '#1E6BA8' : '#C05A3B', letterSpacing: '-0.02em' }}>
+                        {alDia ? '✓ Al día' : `${fmtUYU(Math.round(Math.abs(miNet)))}`}
+                      </div>
+                      {!alDia && (
+                        <div style={{ fontSize: '0.75rem', color: '#8A7060', marginTop: 3 }}>
+                          {meDeban ? 'tus compañeros te deben este monto' : 'le debés este monto a tus compañeros'}
+                        </div>
+                      )}
+                    </div>
+                    <div style={{ fontSize: alDia ? '2.2rem' : '2rem', flexShrink: 0 }}>
+                      {alDia ? '🎉' : meDeban ? '🤑' : '😬'}
+                    </div>
+                  </div>
+                )
+              })()}
+
+              {/* ── Mini resumen por miembro ── */}
+              {!loading && miembros.length > 1 && (
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: '1rem' }}>
+                  {miembros.filter(m => m.id !== miId).map(m => {
+                    const val = balanceNet[m.id] ?? 0
+                    const alDia = Math.abs(val) < EPS
+                    return (
+                      <div key={m.id} style={{
+                        display: 'flex', alignItems: 'center', gap: 7,
+                        background: 'white', border: '1.5px solid #EAD8C8',
+                        borderRadius: 12, padding: '7px 12px', fontSize: '0.8rem',
+                      }}>
+                        <div style={{ width: 24, height: 24, borderRadius: '50%', background: m.color, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: '0.65rem', fontWeight: 700, flexShrink: 0 }}>
+                          {m.nombre[0].toUpperCase()}
+                        </div>
+                        <div>
+                          <div style={{ fontWeight: 600, color: '#2A1A0E', fontSize: '0.78rem' }}>{m.nombre}</div>
+                          <div style={{ fontSize: '0.7rem', color: alDia ? '#2E7D52' : val > 0 ? '#1E6BA8' : '#C05A3B', fontWeight: 600 }}>
+                            {alDia ? 'al día' : val > 0 ? `+${fmtUYU(Math.round(val))}` : fmtUYU(Math.round(val))}
+                          </div>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+
               {loading && (
                 <div className="g-balance-list">
                   {[1, 2].map(i => (

@@ -15,4 +15,17 @@ body {
   background: var(--color-bg);
   color: var(--color-text);
   font-family: var(--font-sans), system-ui, sans-serif;
+  /* Evita el bounce scroll de iOS en la página, lo dejamos por scroll container */
+  overscroll-behavior: none;
 }
+
+/* Tap highlight transparente en toda la app */
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Scrollbar sutil en desktop */
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(192, 90, 59, 0.2); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(192, 90, 59, 0.4); }

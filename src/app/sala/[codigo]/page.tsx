@@ -35,6 +35,12 @@ export default function SalaPage() {
   const [showLeave, setShowLeave] = useState(false)
   const [leaveLoading, setLeaveLoading] = useState(false)
 
+  // WhatsApp link
+  const [showWpp, setShowWpp] = useState(false)
+  const [wppCode, setWppCode] = useState('')
+  const [wppLoading, setWppLoading] = useState(false)
+  const [wppCopiado, setWppCopiado] = useState(false)
+
   useEffect(() => {
     const s = getSession()
     if (!s || s.salaCodigo !== codigo) { router.replace('/'); return }
@@ -93,6 +99,26 @@ export default function SalaPage() {
     router.replace('/dashboard')
   }
 
+  async function handleConectarWpp() {
+    setWppLoading(true); setShowWpp(true); setWppCode('')
+    const s = getSession()
+    if (!s) return
+    const res = await fetch('/api/whatsapp/link', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ miembro_id: s.miembroId, sala_id: s.salaId }),
+    })
+    const data = await res.json()
+    if (data.code) setWppCode(data.code)
+    setWppLoading(false)
+  }
+
+  function copiarWppCode() {
+    navigator.clipboard.writeText(wppCode)
+    setWppCopiado(true)
+    setTimeout(() => setWppCopiado(false), 2000)
+  }
+
   async function handleSignOut() {
     const supabase = createClient()
     clearSession()
@@ -132,7 +158,7 @@ export default function SalaPage() {
             radial-gradient(circle at 85% 80%, rgba(200,130,58,0.05) 0%, transparent 40%);
           pointer-events: none; z-index: 0;
         }
-        .s-wrap { position: relative; z-index: 1; max-width: 500px; margin: 0 auto; padding: 0 1.25rem 4rem; }
+        .s-wrap { position: relative; z-index: 1; max-width: 500px; margin: 0 auto; padding: 0 1.25rem 2rem; }
 
         /* Header */
         .s-header { display: flex; align-items: center; justify-content: space-between; padding: 1.75rem 0 1.5rem; animation: s-in 0.5s cubic-bezier(0.22, 1, 0.36, 1) both; position: relative; z-index: 20; }
@@ -269,6 +295,10 @@ export default function SalaPage() {
                       <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><circle cx="7" cy="5" r="2.5" stroke="currentColor" strokeWidth="1.3"/><path d="M2 12c0-2.761 2.239-5 5-5s5 2.239 5 5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/></svg>
                       Mis nidos
                     </button>
+                    <button className="s-dropdown-item" onClick={() => { setMenuOpen(false); handleConectarWpp() }}>
+                      <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M7 1.5C3.96 1.5 1.5 3.96 1.5 7c0 .94.24 1.83.66 2.6L1.5 12.5l2.98-.64A5.47 5.47 0 007 12.5c3.04 0 5.5-2.46 5.5-5.5S10.04 1.5 7 1.5z" stroke="#25D366" strokeWidth="1.3" strokeLinejoin="round"/><path d="M5 5.5s.5 1 1.5 2 2 1.5 2 1.5" stroke="#25D366" strokeWidth="1.3" strokeLinecap="round"/></svg>
+                      Conectar WhatsApp
+                    </button>
                     <div className="s-dropdown-sep"/>
                     <button className="s-dropdown-item danger" onClick={() => { setMenuOpen(false); setShowLeave(true) }}>
                       <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M5 7h7M9.5 4.5L12 7l-2.5 2.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/><path d="M5 2H3a1 1 0 00-1 1v8a1 1 0 001 1h2" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/></svg>
@@ -350,6 +380,41 @@ export default function SalaPage() {
               <div style={{ color:'#C04040', fontSize:'0.85rem' }}>Error al generar el link</div>
             )}
             <button className="s-modal-close" onClick={() => setShowInvite(false)}>Cerrar</button>
+          </div>
+        </div>
+      )}
+
+      {/* WhatsApp link modal */}
+      {showWpp && (
+        <div className="s-overlay" onClick={e => { if (e.target === e.currentTarget) setShowWpp(false) }}>
+          <div className="s-modal">
+            <div className="s-modal-title">Conectar WhatsApp 💬</div>
+            <div className="s-modal-sub">
+              Enviá este código al bot de Nido por WhatsApp. Expira en 15 minutos.
+            </div>
+            {wppLoading ? (
+              <div style={{ display:'flex', justifyContent:'center', padding:'1.5rem 0' }}>
+                <div style={{ width:28, height:28, borderRadius:'50%', border:'2.5px solid #25D366', borderTopColor:'transparent', animation:'s-spin 0.8s linear infinite' }}/>
+              </div>
+            ) : wppCode ? (
+              <>
+                <div style={{ background:'white', border:'1.5px solid #E0CAB8', borderRadius:12, padding:'20px 14px', textAlign:'center', marginBottom:12 }}>
+                  <div style={{ fontSize:'0.72rem', color:'#B09080', marginBottom:6, letterSpacing:'0.08em', textTransform:'uppercase', fontWeight:700 }}>Tu código</div>
+                  <div style={{ fontSize:'2.2rem', fontWeight:800, letterSpacing:'0.3em', color:'#2A1A0E', fontFamily:'monospace' }}>{wppCode}</div>
+                </div>
+                <button
+                  className={`s-copy-btn${wppCopiado ? ' copied' : ''}`}
+                  style={{ background: wppCopiado ? '#5A8869' : '#25D366' }}
+                  onClick={copiarWppCode}
+                >
+                  {wppCopiado ? '¡Código copiado!' : 'Copiar código'}
+                </button>
+                <div className="s-modal-note">Envialo al número del bot de Nido en WhatsApp</div>
+              </>
+            ) : (
+              <div style={{ color:'#C04040', fontSize:'0.85rem' }}>Error al generar el código</div>
+            )}
+            <button className="s-modal-close" onClick={() => setShowWpp(false)}>Cerrar</button>
           </div>
         </div>
       )}

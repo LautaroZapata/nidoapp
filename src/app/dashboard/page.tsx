@@ -273,20 +273,39 @@ export default function Dashboard() {
             </div>
           )}
 
-          <button className="d-btn-primary" onClick={() => { setShowCreate(true); setCError('') }}>
-            <svg width="15" height="15" viewBox="0 0 15 15" fill="none">
-              <circle cx="7.5" cy="7.5" r="6" stroke="currentColor" strokeWidth="1.4"/>
-              <path d="M7.5 4.5v6M4.5 7.5h6" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/>
-            </svg>
-            Crear nido nuevo
-          </button>
-          <button className="d-btn-secondary" onClick={() => { setShowClaim(true); setClaimError('') }}>
-            <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-              <circle cx="7" cy="5" r="2.5" stroke="currentColor" strokeWidth="1.3"/>
-              <path d="M2 12c0-2.761 2.239-5 5-5s5 2.239 5 5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
-            </svg>
-            Recuperar perfil anterior
-          </button>
+          {memberships.length === 0 ? (
+            <>
+              <button className="d-btn-primary" onClick={() => { setShowCreate(true); setCError('') }}>
+                <svg width="15" height="15" viewBox="0 0 15 15" fill="none">
+                  <circle cx="7.5" cy="7.5" r="6" stroke="currentColor" strokeWidth="1.4"/>
+                  <path d="M7.5 4.5v6M4.5 7.5h6" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/>
+                </svg>
+                Crear nido nuevo
+              </button>
+              <button className="d-btn-secondary" onClick={() => { setShowClaim(true); setClaimError('') }}>
+                <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                  <circle cx="7" cy="5" r="2.5" stroke="currentColor" strokeWidth="1.3"/>
+                  <path d="M2 12c0-2.761 2.239-5 5-5s5 2.239 5 5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
+                </svg>
+                Recuperar perfil anterior
+              </button>
+            </>
+          ) : (
+            <div style={{
+              background: 'white', border: '1.5px solid #EAD8C8', borderRadius: 14,
+              padding: '1rem 1.25rem', display: 'flex', alignItems: 'center', gap: 12,
+            }}>
+              <div style={{ fontSize: '1.5rem', flexShrink: 0 }}>🔒</div>
+              <div>
+                <div style={{ fontSize: '0.85rem', fontWeight: 600, color: '#2A1A0E', marginBottom: 2 }}>
+                  Ya pertenecés a un nido
+                </div>
+                <div style={{ fontSize: '0.78rem', color: '#A07060', lineHeight: 1.4 }}>
+                  Para crear o unirte a otro, primero salí del nido actual desde su página de inicio.
+                </div>
+              </div>
+            </div>
+          )}
 
         </div>
       </div>

@@ -44,6 +44,10 @@ export default function InvitarPage() {
   const [joining, setJoining] = useState(false)
   const [joinError, setJoinError] = useState('')
 
+  // Nido actual del usuario (para advertir que lo abandonará)
+  const [nidoActual, setNidoActual] = useState<{ id: string; nombre: string; miembroId: string } | null>(null)
+  const [confirmandoCambio, setConfirmandoCambio] = useState(false)
+
   useEffect(() => {
     const supabase = createClient()
 
@@ -52,9 +56,24 @@ export default function InvitarPage() {
       setUser(session?.user ?? null)
       setAuthLoading(false)
     })
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
       setUser(session?.user ?? null)
       setAuthLoading(false)
+      // Verificar si el usuario ya pertenece a un nido
+      if (session?.user) {
+        const { data: miembroExistente } = await supabase
+          .from('miembros')
+          .select('id, sala_id, salas(id, nombre)')
+          .eq('user_id', session.user.id)
+          .not('user_id', 'is', null)
+          .single()
+        if (miembroExistente) {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const me = miembroExistente as any
+          const sala = me.salas
+          setNidoActual({ id: sala?.id, nombre: sala?.nombre ?? 'tu nido actual', miembroId: me.id })
+        }
+      }
     })
 
     // Fetch invite
@@ -112,11 +131,22 @@ export default function InvitarPage() {
     e.preventDefault(); setJoinError('')
     if (!nombre.trim()) { setJoinError('Ingresá tu nombre'); return }
     if (!invite || !user) return
-    setJoining(true)
 
+    // Si pertenece a otro nido distinto, pedir confirmación primero
+    if (nidoActual && nidoActual.id !== invite.sala.id && !confirmandoCambio) {
+      setConfirmandoCambio(true)
+      return
+    }
+
+    setJoining(true)
     const supabase = createClient()
 
-    // Check if already a member
+    // Si confirmó el cambio, desvincular del nido anterior
+    if (nidoActual && nidoActual.id !== invite.sala.id) {
+      await supabase.from('miembros').update({ user_id: null }).eq('id', nidoActual.miembroId)
+    }
+
+    // Check if already a member of this sala
     const { data: existing } = await supabase
       .from('miembros').select('*').eq('sala_id', invite.sala.id).eq('user_id', user.id).single() as DbResult<Miembro>
     if (existing) {
@@ -289,6 +319,21 @@ export default function InvitarPage() {
                   ? <>¿Sin cuenta? <button onClick={() => { setAuthMode('signup'); setAuthError('') }}>Crear una →</button></>
                   : <>¿Ya tenés? <button onClick={() => { setAuthMode('login'); setAuthError('') }}>Iniciar sesión</button></>}
               </div>
+            </>
+          ) : confirmandoCambio ? (
+            // Confirmación de cambio de nido
+            <>
+              <div style={{ textAlign:'center', marginBottom:'1rem', fontSize:'2.5rem' }}>🏚️</div>
+              <div className="i-title" style={{ fontSize:'1.3rem' }}>¿Cambiar de nido?</div>
+              <div className="i-sub">
+                Ya estás en <strong>{nidoActual?.nombre}</strong>. Si te unís a <strong>{invite!.sala.nombre}</strong>, salís del nido anterior automáticamente. Tu historial se mantiene.
+              </div>
+              <button className="i-btn" onClick={() => { setConfirmandoCambio(false); document.querySelector<HTMLFormElement>('form')?.requestSubmit() }} style={{ marginBottom:8 }}>
+                Sí, cambiar a {invite!.sala.nombre}
+              </button>
+              <button onClick={() => setConfirmandoCambio(false)} style={{ width:'100%', padding:11, background:'none', border:'none', color:'#A07060', fontSize:'0.86rem', fontFamily:'var(--font-body),Nunito,sans-serif', cursor:'pointer' }}>
+                Cancelar
+              </button>
             </>
           ) : (
             // Logged in: show join confirmation

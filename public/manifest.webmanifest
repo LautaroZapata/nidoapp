@@ -1,0 +1,21 @@
+{
+  "name": "Nido — Tu piso compartido",
+  "short_name": "Nido",
+  "description": "Gastos, compras y convivencia para pisos compartidos",
+  "start_url": "/dashboard",
+  "display": "standalone",
+  "background_color": "#1E120A",
+  "theme_color": "#2A1A0E",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "screenshots": [],
+  "categories": ["finance", "lifestyle"],
+  "lang": "es"
+}
