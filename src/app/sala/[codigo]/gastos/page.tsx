@@ -1003,13 +1003,17 @@ export default function GastosPage() {
           border: 1px solid #F0C0B0; border-radius: 9px;
           color: #B03A1A; font-size: 0.81rem; margin-bottom: 1rem;
         }
+        .g-submit-wrap {
+          position: sticky; bottom: 0;
+          padding-top: 12px; margin-top: 0.25rem;
+          background: linear-gradient(to bottom, transparent, #FFF8F2 35%);
+        }
         .g-submit {
           width: 100%; padding: 13px; background: #C05A3B; color: white; border: none;
           border-radius: 13px; font-size: 0.9rem; font-weight: 700;
           font-family: var(--font-body), 'Nunito', sans-serif; cursor: pointer;
           transition: background 0.18s, transform 0.15s, box-shadow 0.18s;
           display: flex; align-items: center; justify-content: center; gap: 8px;
-          margin-top: 0.5rem;
         }
         .g-submit:hover:not(:disabled) { background: #A04730; transform: translateY(-1.5px); box-shadow: 0 10px 28px rgba(192,90,59,0.35); }
         .g-submit:disabled { opacity: 0.55; cursor: not-allowed; }
@@ -2154,10 +2158,12 @@ export default function GastosPage() {
                 </div>
               )}
 
-              <button type="submit" className="g-submit" disabled={guardando}>
-                {guardando && <span className="g-spinner" />}
-                {guardando ? 'Guardando...' : editandoId ? 'Guardar cambios' : 'Añadir gasto'}
-              </button>
+              <div className="g-submit-wrap">
+                <button type="submit" className="g-submit" disabled={guardando}>
+                  {guardando && <span className="g-spinner" />}
+                  {guardando ? 'Guardando...' : editandoId ? 'Guardar cambios' : 'Añadir gasto'}
+                </button>
+              </div>
             </form>
           </div>
         </div>
