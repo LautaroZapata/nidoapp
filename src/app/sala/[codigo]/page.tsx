@@ -50,6 +50,79 @@ export default function SalaPage() {
   const [pushStatus, setPushStatus] = useState<'granted' | 'denied' | 'default' | 'unsupported'>('unsupported')
   const [pushLoading, setPushLoading] = useState(false)
 
+  // Plan
+  const [planInfo, setPlanInfo] = useState<{ plan_type: 'free' | 'pro'; plan_tier: string | null; owner_user_id: string | null; stripe_customer_id: string | null } | null>(null)
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null)
+  const [billingLoading, setBillingLoading] = useState(false)
+
+  async function handleUpgradePro() {
+    if (!session) return
+    setBillingLoading(true)
+    try {
+      const supabase = createClient()
+      const { data: { session: authSession } } = await supabase.auth.getSession()
+      const token = authSession?.access_token
+      if (!token) { setBillingLoading(false); return }
+      const res = await fetch('/api/billing/checkout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ salaId: session.salaId }),
+      })
+      const data = await res.json()
+      if (data.url) window.location.href = data.url
+    } catch (err) {
+      console.error('[Upgrade]', err)
+    } finally {
+      setBillingLoading(false)
+    }
+  }
+
+  async function handleChangeTier() {
+    if (!session) return
+    setBillingLoading(true)
+    try {
+      const supabase = createClient()
+      const { data: { session: authSession } } = await supabase.auth.getSession()
+      const token = authSession?.access_token
+      if (!token) { setBillingLoading(false); return }
+      const res = await fetch('/api/billing/change-tier', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ salaId: session.salaId }),
+      })
+      const data = await res.json()
+      if (data.ok) {
+        setPlanInfo(prev => prev ? { ...prev, plan_tier: data.tier } : prev)
+      }
+    } catch (err) {
+      console.error('[ChangeTier]', err)
+    } finally {
+      setBillingLoading(false)
+    }
+  }
+
+  async function handleManageSubscription() {
+    if (!session) return
+    setBillingLoading(true)
+    try {
+      const supabase = createClient()
+      const { data: { session: authSession } } = await supabase.auth.getSession()
+      const token = authSession?.access_token
+      if (!token) { setBillingLoading(false); return }
+      const res = await fetch('/api/billing/portal', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ salaId: session.salaId }),
+      })
+      const data = await res.json()
+      if (data.url) window.location.href = data.url
+    } catch (err) {
+      console.error('[Portal]', err)
+    } finally {
+      setBillingLoading(false)
+    }
+  }
+
   useEffect(() => {
     const s = getSession()
     if (!s || s.salaCodigo !== codigo) { router.replace('/'); return }
@@ -66,6 +139,14 @@ export default function SalaPage() {
       if (data) setMiembros(data as Miembro[])
     })
 
+    supabase.from('salas').select('plan_type, plan_tier, owner_user_id, stripe_customer_id').eq('id', s.salaId).single().then(({ data }) => {
+      if (data) setPlanInfo(data as { plan_type: 'free' | 'pro'; plan_tier: string | null; owner_user_id: string | null; stripe_customer_id: string | null })
+    })
+
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (user) setCurrentUserId(user.id)
+    })
+
     // Mostrar onboarding si es la primera vez
     const onboardedKey = `nido_onboarded_${s.miembroId}`
     if (!localStorage.getItem(onboardedKey)) {
@@ -74,6 +155,42 @@ export default function SalaPage() {
 
     // Estado de notificaciones push
     estadoPush().then(setPushStatus)
+
+    // ── Realtime: miembros ──
+    const chMiembros = supabase
+      .channel(`miembros_sala_${s.salaId}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'miembros', filter: `sala_id=eq.${s.salaId}` }, (payload) => {
+        if (payload.eventType === 'INSERT') {
+          setMiembros(prev => [...prev, payload.new as Miembro])
+        } else if (payload.eventType === 'UPDATE') {
+          const updated = payload.new as Miembro
+          setMiembros(prev => {
+            const existing = prev.find(x => x.id === updated.id)
+            // Si tenía user_id antes y ahora es null → se fue (OAuth user leaving)
+            if (existing && existing.user_id !== null && updated.user_id === null) {
+              return prev.filter(x => x.id !== updated.id)
+            }
+            return prev.map(x => x.id === updated.id ? updated : x)
+          })
+        } else if (payload.eventType === 'DELETE') {
+          setMiembros(prev => prev.filter(x => x.id !== (payload.old as Partial<Miembro>).id))
+        }
+      })
+      .subscribe()
+
+    // ── Realtime: salas (plan, tier, subscription) ──
+    const chSala = supabase
+      .channel(`sala_plan_${s.salaId}`)
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'salas', filter: `id=eq.${s.salaId}` }, (payload) => {
+        const updated = payload.new as { plan_type: 'free' | 'pro'; plan_tier: string | null; owner_user_id: string | null; stripe_customer_id: string | null }
+        setPlanInfo(updated)
+      })
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(chMiembros)
+      supabase.removeChannel(chSala)
+    }
   }, [codigo, router])
 
   // Close menu on outside click
@@ -210,6 +327,7 @@ export default function SalaPage() {
         .s-miembro-av { width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 0.75rem; font-weight: 700; color: white; box-shadow: 0 2px 6px rgba(0,0,0,0.1); }
         .s-miembro-name { font-size: 0.85rem; font-weight: 600; color: #2A1A0E; }
         .s-miembro-you { font-size: 0.72rem; color: #C05A3B; font-weight: 500; }
+        .s-miembro-owner { font-size: 0.66rem; font-weight: 700; color: #C8823A; background: rgba(200,130,58,0.1); padding: 1px 6px; border-radius: 20px; border: 1px solid rgba(200,130,58,0.22); white-space: nowrap; }
 
         /* Module grid */
         .s-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; animation: s-fadeup 0.5s 0.1s cubic-bezier(0.22, 1, 0.36, 1) both; }
@@ -266,6 +384,62 @@ export default function SalaPage() {
           .s-sala-name { font-size: 1.1rem; }
           .s-header-right { gap: 6px; }
         }
+
+        /* Desktop layout — context panel left, modules right */
+        @media (min-width: 1024px) {
+          .s-wrap { max-width: none; padding: 0 2.5rem 2rem; }
+          .s-desktop-cols { display: grid; grid-template-columns: 260px 1fr; gap: 2rem; align-items: start; }
+          .s-miembros { grid-column: 1; grid-row: 1; margin-bottom: 0; position: sticky; top: 1.5rem; }
+          .s-miembros-list { flex-direction: column; gap: 6px; }
+          .s-miembro { padding: 6px 8px; background: rgba(234,216,200,0.25); border-radius: 10px; }
+          .s-grid { grid-column: 2; grid-row: 1 / span 2; grid-template-columns: 1fr 1fr; }
+          .s-plan { grid-column: 1; grid-row: 2; margin-top: 0; }
+          .s-mod { padding: 2rem 1.75rem; min-height: 170px; }
+          .s-mod-icon { font-size: 2.5rem; margin-bottom: 14px; }
+          .s-mod-name { font-size: 1.15rem; }
+          .s-mod-desc { font-size: 0.82rem; }
+        }
+
+        /* Plan section */
+        .s-plan { margin-top: 1.25rem; border-radius: 18px; overflow: hidden; animation: s-fadeup 0.5s 0.2s cubic-bezier(0.22,1,0.36,1) both; }
+        .s-plan-free { background: linear-gradient(135deg, #FFF8F2 0%, #FAF0E6 100%); border: 1.5px solid #E8CDB8; }
+        .s-plan-pro  { background: linear-gradient(135deg, #1a3a2a 0%, #2E5C40 100%); border: 1.5px solid #2E5C40; }
+        .s-plan-body { padding: 1.15rem 1.25rem; }
+        .s-plan-top  { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 10px; }
+        .s-plan-label { font-size: 0.65rem; font-weight: 800; letter-spacing: 0.12em; text-transform: uppercase; margin-bottom: 3px; }
+        .s-plan-label-free { color: #C8823A; }
+        .s-plan-label-pro  { color: rgba(37,211,102,0.75); }
+        .s-plan-title { font-family: var(--font-serif),'Georgia',serif; font-size: 1.15rem; font-weight: 700; }
+        .s-plan-title-free { color: #2A1A0E; }
+        .s-plan-title-pro  { color: white; }
+        .s-plan-badge-free { font-size: 0.65rem; font-weight: 700; padding: 3px 9px; border-radius: 20px; background: rgba(192,90,59,0.1); color: #C05A3B; border: 1px solid rgba(192,90,59,0.2); white-space: nowrap; }
+        .s-plan-badge-pro  { font-size: 0.65rem; font-weight: 700; padding: 3px 9px; border-radius: 20px; background: rgba(37,211,102,0.15); color: #4ADE80; border: 1px solid rgba(37,211,102,0.3); white-space: nowrap; }
+        .s-plan-divider { height: 1px; margin: 10px 0; }
+        .s-plan-divider-free { background: rgba(192,90,59,0.12); }
+        .s-plan-divider-pro  { background: rgba(255,255,255,0.1); }
+        .s-plan-perks { display: flex; flex-direction: column; gap: 5px; margin-bottom: 14px; }
+        .s-plan-perk { font-size: 0.78rem; display: flex; align-items: center; gap: 7px; }
+        .s-plan-perk-free { color: #7A5540; }
+        .s-plan-perk-pro  { color: rgba(255,255,255,0.82); }
+        .s-plan-price-box { border-radius: 10px; padding: 8px 11px; margin-bottom: 12px; }
+        .s-plan-price-box-free { background: rgba(192,90,59,0.07); border: 1px solid rgba(192,90,59,0.12); }
+        .s-plan-price-box-pro  { background: rgba(255,255,255,0.07); border: 1px solid rgba(255,255,255,0.12); }
+        .s-plan-price-main { font-size: 0.82rem; font-weight: 700; }
+        .s-plan-price-main-free { color: #2A1A0E; }
+        .s-plan-price-main-pro  { color: white; }
+        .s-plan-price-sub { font-size: 0.72rem; margin-top: 1px; }
+        .s-plan-price-sub-free { color: #A07060; }
+        .s-plan-price-sub-pro  { color: rgba(255,255,255,0.55); }
+        .s-plan-warn { border-radius: 10px; padding: 8px 11px; margin-bottom: 12px; background: rgba(200,130,58,0.15); border: 1px solid rgba(200,130,58,0.3); font-size: 0.78rem; color: #F5D08A; }
+        .s-plan-btn { width: 100%; padding: 11px; border: none; border-radius: 12px; font-size: 0.88rem; font-weight: 700; font-family: var(--font-body),'Nunito',sans-serif; cursor: pointer; transition: all 0.18s; margin-top: 4px; }
+        .s-plan-btn + .s-plan-btn { margin-top: 7px; }
+        .s-plan-btn:disabled { opacity: 0.55; cursor: not-allowed; }
+        .s-plan-btn-upgrade { background: #C05A3B; color: white; }
+        .s-plan-btn-upgrade:hover:not(:disabled) { background: #A04730; transform: translateY(-1px); box-shadow: 0 6px 18px rgba(192,90,59,0.35); }
+        .s-plan-btn-manage  { background: rgba(255,255,255,0.1); color: rgba(255,255,255,0.85); border: 1px solid rgba(255,255,255,0.18) !important; }
+        .s-plan-btn-manage:hover:not(:disabled)  { background: rgba(255,255,255,0.18); }
+        .s-plan-btn-change  { background: rgba(200,130,58,0.25); color: #F5D08A; border: 1px solid rgba(200,130,58,0.35) !important; }
+        .s-plan-btn-change:hover:not(:disabled)  { background: rgba(200,130,58,0.38); }
       `}</style>
 
       <div className="s-root">
@@ -309,8 +483,15 @@ export default function SalaPage() {
                       Mis nidos
                     </button>
                     {(() => {
+                      const esPro = planInfo?.plan_type === 'pro'
                       const miMiembro = miembros.find(m => m.id === session.miembroId)
                       const wppConectado = !!miMiembro?.whatsapp_phone
+                      if (!esPro) return (
+                        <div className="s-dropdown-item" style={{ cursor: 'default', opacity: 0.45 }}>
+                          <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M7 1.5C3.96 1.5 1.5 3.96 1.5 7c0 .94.24 1.83.66 2.6L1.5 12.5l2.98-.64A5.47 5.47 0 007 12.5c3.04 0 5.5-2.46 5.5-5.5S10.04 1.5 7 1.5z" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round"/><path d="M5 5.5s.5 1 1.5 2 2 1.5 2 1.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/></svg>
+                          WhatsApp · solo Pro
+                        </div>
+                      )
                       return wppConectado ? (
                         <div className="s-dropdown-item" style={{ cursor: 'default', opacity: 0.6 }}>
                           <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M7 1.5C3.96 1.5 1.5 3.96 1.5 7c0 .94.24 1.83.66 2.6L1.5 12.5l2.98-.64A5.47 5.47 0 007 12.5c3.04 0 5.5-2.46 5.5-5.5S10.04 1.5 7 1.5z" stroke="#25D366" strokeWidth="1.3" strokeLinejoin="round"/><path d="M5 5.5s.5 1 1.5 2 2 1.5 2 1.5" stroke="#25D366" strokeWidth="1.3" strokeLinecap="round"/></svg>
@@ -359,6 +540,7 @@ export default function SalaPage() {
             </div>
           </div>
 
+          <div className="s-desktop-cols">
           {/* Members */}
           <div className="s-miembros">
             <div className="s-miembros-label">Miembros · {miembros.length}</div>
@@ -369,7 +551,12 @@ export default function SalaPage() {
                     {m.nombre[0].toUpperCase()}
                   </div>
                   <div>
-                    <div className="s-miembro-name">{m.nombre}</div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '5px', flexWrap: 'wrap' }}>
+                      <div className="s-miembro-name">{m.nombre}</div>
+                      {m.user_id && planInfo?.owner_user_id && m.user_id === planInfo.owner_user_id && (
+                        <span className="s-miembro-owner">👑 dueño</span>
+                      )}
+                    </div>
                     {m.id === session.miembroId && <div className="s-miembro-you">tú</div>}
                   </div>
                 </div>
@@ -395,6 +582,104 @@ export default function SalaPage() {
               </button>
             ))}
           </div>
+
+          {/* Plan section */}
+          {planInfo && (() => {
+            const TIER_DATA = {
+              starter:     { nombre: 'Starter',     precio: 150, maxMiembros: 3, label: 'hasta 3 miembros' },
+              hogar:       { nombre: 'Hogar',       precio: 400, maxMiembros: 8, label: '4 a 8 miembros'   },
+              casa_grande: { nombre: 'Casa Grande', precio: 800, maxMiembros: Infinity, label: '9+ miembros' },
+            }
+            const esPro    = planInfo.plan_type === 'pro'
+            const esOwner  = !!(currentUserId && planInfo.owner_user_id === currentUserId)
+            const tierKey  = planInfo.plan_tier as 'starter' | 'hogar' | 'casa_grande' | null
+            const td       = tierKey ? TIER_DATA[tierKey] : null
+            const tierSugerido = miembros.length <= 3 ? TIER_DATA.starter : miembros.length <= 8 ? TIER_DATA.hogar : TIER_DATA.casa_grande
+            const necesitaUpgradeTier = esPro && td && miembros.length > td.maxMiembros
+            const precioPorPersona = td ? Math.ceil(td.precio / miembros.length) : Math.ceil(tierSugerido.precio / miembros.length)
+
+            return (
+              <div className={`s-plan ${esPro ? 's-plan-pro' : 's-plan-free'}`}>
+                <div className="s-plan-body">
+
+                  {/* Header */}
+                  <div className="s-plan-top">
+                    <div>
+                      <div className={`s-plan-label ${esPro ? 's-plan-label-pro' : 's-plan-label-free'}`}>Plan actual</div>
+                      <div className={`s-plan-title ${esPro ? 's-plan-title-pro' : 's-plan-title-free'}`}>
+                        {esPro ? `✦ ${td?.nombre ?? 'Pro'}` : 'Gratuito'}
+                      </div>
+                    </div>
+                    <span className={esPro ? 's-plan-badge-pro' : 's-plan-badge-free'}>
+                      {esPro ? (td?.label ?? 'Pro') : 'Gratis'}
+                    </span>
+                  </div>
+
+                  <div className={`s-plan-divider ${esPro ? 's-plan-divider-pro' : 's-plan-divider-free'}`}/>
+
+                  {/* Perks */}
+                  <div className="s-plan-perks">
+                    {esPro ? (
+                      <>
+                        <div className="s-plan-perk s-plan-perk-pro">✓ Historial de gastos ilimitado</div>
+                        <div className="s-plan-perk s-plan-perk-pro">✓ Bot de WhatsApp sin límites</div>
+                        <div className="s-plan-perk s-plan-perk-pro">✓ Miembros ilimitados dentro del tier</div>
+                      </>
+                    ) : (
+                      <>
+                        <div className="s-plan-perk s-plan-perk-free">· Historial últimos 3 meses</div>
+                        <div className="s-plan-perk s-plan-perk-free">· Hasta 3 miembros</div>
+                        <div className="s-plan-perk s-plan-perk-free">· Sin bot de WhatsApp</div>
+                      </>
+                    )}
+                  </div>
+
+                  {/* Precio / split */}
+                  <div className={`s-plan-price-box ${esPro ? 's-plan-price-box-pro' : 's-plan-price-box-free'}`}>
+                    <div className={`s-plan-price-main ${esPro ? 's-plan-price-main-pro' : 's-plan-price-main-free'}`}>
+                      💸 ${esPro ? td?.precio : tierSugerido.precio} UYU/mes
+                      {' · '}~${precioPorPersona} por persona
+                    </div>
+                    <div className={`s-plan-price-sub ${esPro ? 's-plan-price-sub-pro' : 's-plan-price-sub-free'}`}>
+                      {miembros.length} miembro{miembros.length !== 1 ? 's' : ''} en el nido
+                      {!esPro && ` · Plan sugerido: ${tierSugerido.nombre}`}
+                    </div>
+                  </div>
+
+                  {/* Aviso upgrade de tier */}
+                  {necesitaUpgradeTier && esOwner && (
+                    <div className="s-plan-warn">
+                      ⚠ Tu nido tiene {miembros.length} miembros pero el plan {td?.nombre} permite hasta {td?.maxMiembros}. Actualizá el plan.
+                    </div>
+                  )}
+
+                  {/* Botones — solo owner */}
+                  {esOwner && (
+                    <>
+                      {!esPro && (
+                        <button className="s-plan-btn s-plan-btn-upgrade" disabled={billingLoading} onClick={handleUpgradePro}>
+                          {billingLoading ? 'Cargando...' : `Activar Pro · $${tierSugerido.precio} UYU/mes →`}
+                        </button>
+                      )}
+                      {esPro && necesitaUpgradeTier && (
+                        <button className="s-plan-btn s-plan-btn-change" disabled={billingLoading} onClick={handleChangeTier}>
+                          {billingLoading ? 'Actualizando...' : `Cambiar a ${TIER_DATA[miembros.length <= 8 ? 'hogar' : 'casa_grande'].nombre} · $${TIER_DATA[miembros.length <= 8 ? 'hogar' : 'casa_grande'].precio} UYU/mes →`}
+                        </button>
+                      )}
+                      {esPro && (
+                        <button className="s-plan-btn s-plan-btn-manage" disabled={billingLoading} onClick={handleManageSubscription}>
+                          {billingLoading ? 'Cargando...' : 'Gestionar suscripción'}
+                        </button>
+                      )}
+                    </>
+                  )}
+
+                </div>
+              </div>
+            )
+          })()}
+
+          </div>{/* end s-desktop-cols */}
 
         </div>
       </div>

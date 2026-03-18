@@ -241,6 +241,47 @@ function SalaLayoutInner({ children }: { children: React.ReactNode }) {
         .notif-arrow {
           color: #C8A898; flex-shrink: 0;
         }
+
+        /* ── Desktop Sidebar ── */
+        .sidebar {
+          display: none;
+          position: fixed; left: 0; top: 0; bottom: 0; width: 224px;
+          background: rgba(255,252,248,0.97);
+          backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+          border-right: 1.5px solid rgba(234,216,200,0.75);
+          flex-direction: column;
+          z-index: 200;
+          box-shadow: 2px 0 24px rgba(42,26,14,0.05);
+        }
+        .sidebar-header { display:flex; align-items:center; gap:9px; padding:1.5rem 1.25rem 1rem; }
+        .sidebar-brand { font-family:Georgia,'Times New Roman',serif; font-size:1.15rem; font-weight:600; color:#2A1A0E; letter-spacing:-0.02em; }
+        .sidebar-sala { display:flex; align-items:center; gap:8px; padding:0 1.25rem 0.9rem; }
+        .sidebar-sala-name { font-size:0.81rem; font-weight:600; color:#7A5540; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:150px; font-family:'Nunito',system-ui,sans-serif; }
+        .sidebar-divider { height:1px; background:rgba(234,216,200,0.65); margin:0 1rem 0.6rem; }
+        .sidebar-nav { display:flex; flex-direction:column; gap:2px; padding:0 0.6rem; }
+        .sidebar-item {
+          display:flex; align-items:center; gap:11px;
+          padding:10px 13px; border-radius:12px; width:100%;
+          border:none; background:none; cursor:pointer;
+          color:#8A6050; font-size:0.875rem; font-weight:600; letter-spacing:-0.01em;
+          font-family:'Nunito',system-ui,sans-serif;
+          transition:background 0.15s, color 0.15s; text-align:left;
+        }
+        .sidebar-item:hover { background:rgba(192,90,59,0.07); color:#2A1A0E; }
+        .sidebar-item.active { background:rgba(192,90,59,0.1); color:#C05A3B; }
+        .sidebar-spacer { flex:1; min-height:8px; }
+        .sidebar-footer { padding:0.6rem; border-top:1px solid rgba(234,216,200,0.6); display:flex; flex-direction:column; gap:2px; }
+        .sidebar-badge { margin-left:auto; min-width:18px; height:18px; background:#C05A3B; color:white; border-radius:999px; font-size:0.58rem; font-weight:800; display:flex; align-items:center; justify-content:center; padding:0 4px; }
+        .sidebar-user { display:flex; align-items:center; gap:10px; padding:8px 13px; border-radius:12px; }
+        .sidebar-user-av { width:30px; height:30px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:0.72rem; font-weight:700; color:white; flex-shrink:0; border:2px solid rgba(255,255,255,0.5); box-shadow:0 1px 4px rgba(0,0,0,0.1); }
+        .sidebar-user-name { font-size:0.8rem; font-weight:600; color:#7A5540; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:130px; font-family:'Nunito',system-ui,sans-serif; }
+
+        @media (min-width: 1024px) {
+          .sidebar { display: flex; }
+          .sala-content { padding-bottom: 0 !important; padding-left: 224px; }
+          .bnav { display: none !important; }
+          .notif-panel { left: 224px; right: auto !important; width: 360px; border-radius: 22px 22px 0 0; }
+        }
       `}</style>
 
       <div className="sala-content">
@@ -393,6 +434,69 @@ function SalaLayoutInner({ children }: { children: React.ReactNode }) {
           </div>
         </>
       )}
+
+      {/* ── DESKTOP SIDEBAR ── */}
+      <aside className="sidebar">
+        <div className="sidebar-header">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/nido-icon.png" alt="nido" width="26" height="26" style={{ objectFit: 'contain' }}/>
+          <span className="sidebar-brand">Nido</span>
+        </div>
+
+        {session?.salaNombre && (
+          <div className="sidebar-sala">
+            <span style={{ fontSize: '0.95rem' }}>🏠</span>
+            <span className="sidebar-sala-name">{session.salaNombre}</span>
+          </div>
+        )}
+
+        <div className="sidebar-divider"/>
+
+        <nav className="sidebar-nav">
+          {tabs.map(tab => {
+            const Icon = tab.icon
+            const isActive = pathname === tab.href
+            return (
+              <button
+                key={tab.href}
+                className={`sidebar-item${isActive ? ' active' : ''}`}
+                onClick={() => router.push(tab.href)}
+              >
+                <Icon />
+                <span>{tab.label}</span>
+              </button>
+            )
+          })}
+        </nav>
+
+        <div className="sidebar-spacer"/>
+
+        <div className="sidebar-footer">
+          <button
+            className={`sidebar-item${bellOpen ? ' active' : ''}`}
+            onClick={() => { setBellOpen(!bellOpen); if (!bellOpen) markAllRead() }}
+          >
+            <div style={{ position: 'relative', display: 'flex' }}>
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+                <path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/>
+                <path d="M13.73 21a2 2 0 01-3.46 0" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+            </div>
+            <span>Actividad</span>
+            {unreadCount > 0 && (
+              <span className="sidebar-badge">{unreadCount > 9 ? '9+' : unreadCount}</span>
+            )}
+          </button>
+          {session && (
+            <div className="sidebar-user">
+              <div className="sidebar-user-av" style={{ background: session.miembroColor }}>
+                {session.miembroNombre[0].toUpperCase()}
+              </div>
+              <span className="sidebar-user-name">{session.miembroNombre}</span>
+            </div>
+          )}
+        </div>
+      </aside>
 
       {/* ── TOASTS ── */}
       {toasts.length > 0 && (

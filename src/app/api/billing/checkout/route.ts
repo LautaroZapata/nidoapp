@@ -1,11 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient as createSupabaseClient } from '@supabase/supabase-js'
-import { stripe } from '@/lib/stripe'
+import { createCheckout } from '@/lib/lemonsqueezy'
 import { createAdminClient } from '@/lib/supabase-admin'
+import { getTierParaMiembros, getVariantId, TIERS } from '@/lib/features'
 
 /**
  * POST /api/billing/checkout
- * Crea una sesión de Stripe Checkout para upgradear un nido a Pro.
+ * Crea una sesión de Lemon Squeezy Checkout para el tier correspondiente
+ * según la cantidad de miembros actuales del nido.
  *
  * Body: { salaId: string }
  * Requiere autenticación Supabase.
@@ -43,72 +45,56 @@ export async function POST(req: NextRequest) {
   const supabaseAdmin = createAdminClient()
   const { data: sala } = await supabaseAdmin
     .from('salas')
-    .select('id, nombre, plan_type, stripe_customer_id, owner_user_id')
+    .select('id, nombre, plan_type, owner_user_id')
     .eq('id', salaId)
     .single()
 
   if (!sala) {
     return NextResponse.json({ error: 'Sala no encontrada' }, { status: 404 })
   }
-
   if (sala.owner_user_id !== user.id) {
     return NextResponse.json({ error: 'Solo el dueño del nido puede gestionar el plan' }, { status: 403 })
   }
-
   if (sala.plan_type === 'pro') {
     return NextResponse.json({ error: 'Este nido ya tiene el plan Pro' }, { status: 400 })
   }
 
-  // ── Obtener o crear cliente en Stripe ──
-  let stripeCustomerId = sala.stripe_customer_id
+  // ── Determinar tier según cantidad de miembros ──
+  const { count } = await supabaseAdmin
+    .from('miembros')
+    .select('id', { count: 'exact', head: true })
+    .eq('sala_id', salaId)
 
-  if (!stripeCustomerId) {
-    const customer = await stripe.customers.create({
-      email: user.email,
-      metadata: {
-        user_id: user.id,
-        sala_id: salaId,
-        sala_nombre: sala.nombre,
-      },
-    })
-    stripeCustomerId = customer.id
+  const miembroCount = count ?? 1
+  const tier = getTierParaMiembros(miembroCount)
+  const variantId = getVariantId(tier)
+  const storeId = process.env.LEMONSQUEEZY_STORE_ID
 
-    // Guardar el customer_id en la sala
-    await supabaseAdmin
-      .from('salas')
-      .update({ stripe_customer_id: stripeCustomerId })
-      .eq('id', salaId)
-  }
-
-  // ── Verificar que el precio Pro esté configurado ──
-  const priceId = process.env.STRIPE_PRO_PRICE_ID
-  if (!priceId) {
-    console.error('[Billing] STRIPE_PRO_PRICE_ID no configurado')
+  if (!storeId || !variantId) {
+    console.error('[Billing] Variables de entorno de LS no configuradas')
     return NextResponse.json({ error: 'Plan no disponible en este momento' }, { status: 503 })
   }
 
-  // ── Crear sesión de Checkout ──
+  const tierInfo = TIERS[tier]
   const origin = req.headers.get('origin') ?? process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000'
 
-  const session = await stripe.checkout.sessions.create({
-    customer: stripeCustomerId,
-    mode: 'subscription',
-    payment_method_types: ['card'],
-    line_items: [{ price: priceId, quantity: 1 }],
-    metadata: {
-      sala_id: salaId,
-      user_id: user.id,
-    },
-    subscription_data: {
-      metadata: {
+  try {
+    const { url } = await createCheckout({
+      storeId,
+      variantId,
+      email: user.email ?? undefined,
+      customData: {
         sala_id: salaId,
         user_id: user.id,
+        tier,
+        miembro_count: String(miembroCount),
       },
-    },
-    success_url: `${origin}/sala/${encodeURIComponent(body.salaId ?? '')}/gastos?upgraded=1`,
-    cancel_url: `${origin}/sala/${encodeURIComponent(body.salaId ?? '')}?upgrade=cancelled`,
-    allow_promotion_codes: true,
-  })
+      redirectUrl: `${origin}/sala/${encodeURIComponent(salaId)}/gastos?upgraded=1`,
+    })
 
-  return NextResponse.json({ url: session.url })
+    return NextResponse.json({ url, tier, tierInfo: { nombre: tierInfo.nombre, precio: tierInfo.precio, miembroCount } })
+  } catch (err) {
+    console.error('[Billing] Error creando checkout:', err)
+    return NextResponse.json({ error: 'Error creando checkout' }, { status: 500 })
+  }
 }

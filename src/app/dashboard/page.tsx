@@ -167,6 +167,10 @@ export default function Dashboard() {
         .d-root { min-height: 100vh; background: #FAF5EE; font-family: var(--font-body),'Nunito',system-ui,sans-serif; color: #2A1A0E; }
         .d-bg { position:fixed; inset:0; background-image:radial-gradient(circle at 15% 20%, rgba(192,90,59,0.05) 0%, transparent 40%), radial-gradient(circle at 85% 80%, rgba(200,130,58,0.05) 0%, transparent 40%); pointer-events:none; z-index:0; }
         .d-wrap { position:relative; z-index:1; max-width:480px; margin:0 auto; padding:0 1.25rem 4rem; }
+        @media (min-width: 1024px) {
+          .d-wrap { max-width: none; padding: 0 3rem 4rem; }
+          .d-desktop-cols { display: grid; grid-template-columns: 1fr 380px; gap: 2rem; align-items: start; }
+        }
 
         .d-header { display:flex; align-items:center; justify-content:space-between; padding:1.75rem 0 2rem; animation:d-in 0.5s cubic-bezier(0.22,1,0.36,1) both; }
         .d-logo { display:flex; align-items:center; gap:8px; }
@@ -226,6 +230,7 @@ export default function Dashboard() {
         .d-spinner { width:15px; height:15px; border-radius:50%; border:2px solid rgba(255,255,255,0.35); border-top-color:white; animation:d-spin 0.7s linear infinite; flex-shrink:0; }
         .d-cancel { width:100%; padding:12px; background:none; border:none; color:#A07060; font-size:0.88rem; font-family:var(--font-body),'Nunito',sans-serif; cursor:pointer; margin-top:6px; transition:color 0.18s; }
         .d-cancel:hover { color:#C05A3B; }
+
       `}</style>
 
       <div className="d-root">
@@ -246,6 +251,8 @@ export default function Dashboard() {
             <div className="d-greeting-sub">{user?.email}</div>
           </div>
 
+          <div className="d-desktop-cols">
+          <div>
           {memberships.length > 0 ? (
             <div style={{ marginBottom:'1.5rem' }}>
               <div className="d-section-label">Tus nidos</div>
@@ -284,6 +291,8 @@ export default function Dashboard() {
             </div>
           )}
 
+          </div>{/* end left col */}
+          <div>{/* right col: actions */}
           {memberships.length === 0 ? (
             <>
               <button className="d-btn-primary" onClick={() => { setShowCreate(true); setCError('') }}>
@@ -317,6 +326,8 @@ export default function Dashboard() {
               </div>
             </div>
           )}
+          </div>{/* end right col */}
+          </div>{/* end desktop-cols */}
 
         </div>
       </div>

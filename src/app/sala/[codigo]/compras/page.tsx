@@ -183,6 +183,10 @@ export default function ComprasPage() {
           position: relative; z-index: 1;
           max-width: 760px; margin: 0 auto; padding: 0 1.5rem 5rem;
         }
+        @media (min-width: 1024px) {
+          .c-wrap { max-width: none; padding: 0 2.5rem 5rem; }
+          .c-desktop-cols { display: grid; grid-template-columns: 3fr 2fr; gap: 2.5rem; align-items: start; }
+        }
 
         /* ── Header ── */
         .c-header {
@@ -551,6 +555,7 @@ export default function ComprasPage() {
             </div>
           )}
 
+          <div className="c-desktop-cols">
           {/* ── PENDIENTES ── */}
           {!loading && pendientes.length > 0 && (
             <>
@@ -697,6 +702,7 @@ export default function ComprasPage() {
               )}
             </>
           )}
+          </div>{/* end c-desktop-cols */}
 
         </div>
       </div>

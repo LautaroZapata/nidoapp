@@ -287,6 +287,18 @@ export default function PisosPage() {
           position: relative; z-index: 1;
           max-width: 900px; margin: 0 auto; padding: 0 1.5rem 5rem;
         }
+        @media (min-width: 1024px) {
+          .p-wrap { max-width: none; padding: 0 2.5rem 5rem; display: grid; grid-template-columns: 240px 1fr; column-gap: 2rem; align-items: start; }
+          .p-header { grid-column: 1 / -1; }
+          .p-stats { grid-column: 1; flex-direction: column; gap: 0.75rem; margin-bottom: 0; position: sticky; top: 1.5rem; }
+          .p-stat { flex: none; min-width: 0; }
+          .p-filter-bar { grid-column: 1; flex-direction: column; gap: 6px; margin-top: 0.75rem; margin-bottom: 0; }
+          .p-search { width: 100%; }
+          .p-sort-group { flex-direction: column; width: 100%; }
+          .p-sort-btn { width: 100%; text-align: left; border-radius: 10px; }
+          .p-main-col { grid-column: 2; grid-row: 2 / span 10; min-width: 0; }
+          .p-grid { grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); }
+        }
 
         .p-header {
           display: flex; align-items: center; justify-content: space-between;
@@ -677,6 +689,7 @@ export default function PisosPage() {
             </div>
           )}
 
+          <div className="p-main-col">
           {/* ── LOADING ── */}
           {loading && (
             <div className="p-grid">
@@ -807,6 +820,8 @@ export default function PisosPage() {
             )}
             </>
           )}
+
+          </div>{/* end p-main-col */}
 
         </div>
       </div>

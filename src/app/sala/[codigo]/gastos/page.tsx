@@ -582,6 +582,53 @@ export default function GastosPage() {
           position: relative; z-index: 1;
           max-width: 760px; margin: 0 auto; padding: 0 1.5rem 5rem;
         }
+        @media (min-width: 1024px) {
+          .g-wrap { max-width: none; padding: 0 2.5rem 5rem; }
+          .g-stats { margin-bottom: 1.75rem; }
+          .g-desktop-cols { display: grid; grid-template-columns: 3fr 2fr; gap: 2.5rem; align-items: start; }
+          .g-balance-panel { display: block !important; }
+          .g-tab-balance { display: none !important; }
+        }
+        .g-balance-panel {
+          display: none;
+          position: sticky; top: 1.5rem;
+          background: white; border: 1.5px solid #EAD8C8; border-radius: 20px;
+          overflow: hidden; box-shadow: 0 2px 12px rgba(150,80,40,0.06);
+        }
+        .g-balance-panel-header {
+          padding: 1rem 1.25rem 0.75rem;
+          border-bottom: 1px solid #EAD8C8;
+          display: flex; align-items: center; justify-content: space-between;
+        }
+        .g-balance-panel-title {
+          font-size: 0.68rem; font-weight: 800; text-transform: uppercase;
+          letter-spacing: 0.1em; color: #B09080;
+        }
+        .g-balance-panel-body { padding: 0.875rem 1.1rem; display: flex; flex-direction: column; gap: 0.75rem; }
+        .g-bp-net {
+          border-radius: 14px; padding: 1rem 1.1rem;
+          display: flex; align-items: center; justify-content: space-between;
+        }
+        .g-bp-net-val { font-family: var(--font-code), monospace; font-size: 1.5rem; font-weight: 700; letter-spacing: -0.02em; }
+        .g-bp-net-label { font-size: 0.68rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em; margin-bottom: 3px; }
+        .g-bp-chips { display: flex; flex-direction: column; gap: 6px; }
+        .g-bp-chip {
+          display: flex; align-items: center; gap: 8px;
+          padding: 7px 10px; border-radius: 10px;
+          background: #FAF5EE; border: 1px solid #EAD8C8;
+        }
+        .g-bp-chip-av { width: 26px; height: 26px; border-radius: 50%; flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-size: 0.65rem; font-weight: 700; color: white; }
+        .g-bp-chip-name { font-size: 0.8rem; font-weight: 600; color: #2A1A0E; flex: 1; }
+        .g-bp-chip-val { font-family: var(--font-code), monospace; font-size: 0.82rem; font-weight: 600; }
+        .g-bp-debts { display: flex; flex-direction: column; gap: 6px; }
+        .g-bp-debt {
+          display: flex; align-items: center; gap: 8px;
+          padding: 8px 10px; border-radius: 12px;
+          background: #FAF5EE; border: 1px solid #EAD8C8; font-size: 0.8rem;
+        }
+        .g-bp-debt-text { flex: 1; color: #6B4030; font-size: 0.78rem; line-height: 1.35; }
+        .g-bp-debt-text strong { color: #2A1A0E; }
+        .g-bp-debt-amount { font-family: var(--font-code), monospace; font-size: 0.88rem; font-weight: 600; color: #C05A3B; flex-shrink: 0; }
 
         /* ── Header ── */
         .g-header {
@@ -1099,7 +1146,7 @@ export default function GastosPage() {
             </div>
           </div>
 
-          {/* ── STATS ── */}
+          {/* ── STATS (full-width on desktop) ── */}
           {!loading && (
             <div className="g-stats">
               <div className="g-stat">
@@ -1121,7 +1168,7 @@ export default function GastosPage() {
             </div>
           )}
 
-          {/* ── LOADING SKELETONS ── */}
+          {/* ── LOADING SKELETONS STATS ── */}
           {loading && (
             <div className="g-stats">
               {[1, 2, 3].map(i => (
@@ -1133,10 +1180,12 @@ export default function GastosPage() {
             </div>
           )}
 
+          <div className="g-desktop-cols">
+          <div>{/* main col */}
           {/* ── TABS ── */}
           <div className="g-tabs">
             <button className={`g-tab${tab === 'gastos' ? ' active' : ''}`} onClick={() => setTab('gastos')}>Gastos</button>
-            <button className={`g-tab${tab === 'balance' ? ' active' : ''}`} onClick={() => setTab('balance')}>Balance</button>
+            <button className={`g-tab g-tab-balance${tab === 'balance' ? ' active' : ''}`} onClick={() => setTab('balance')}>Balance</button>
             <button className={`g-tab${tab === 'historial' ? ' active' : ''}`} onClick={() => setTab('historial')}>
               Historial
               {pagos.length > 0 && tab !== 'historial' && (
@@ -1164,19 +1213,18 @@ export default function GastosPage() {
                   Con Nido Pro accedés a todo el historial sin límite.
                 </div>
               </div>
-              <a
-                href={`/sala/${codigo}?upgrade=1`}
+              <button
+                onClick={() => router.push(`/sala/${codigo}`)}
                 style={{
                   flexShrink: 0, padding: '6px 14px',
                   background: '#C05A3B', color: 'white',
                   border: 'none', borderRadius: 10,
                   fontSize: '0.75rem', fontWeight: 700,
-                  textDecoration: 'none', cursor: 'pointer',
-                  whiteSpace: 'nowrap',
+                  cursor: 'pointer', whiteSpace: 'nowrap',
                 }}
               >
-                Ver Pro →
-              </a>
+                Ver planes →
+              </button>
             </div>
           )}
 
@@ -1728,6 +1776,99 @@ export default function GastosPage() {
               )}
             </>
           )}
+
+          </div>{/* end main col */}
+
+          {/* ── BALANCE SIDEBAR (desktop only) ── */}
+          <aside className="g-balance-panel">
+            <div className="g-balance-panel-header">
+              <span className="g-balance-panel-title">Balance</span>
+              {!loading && debts.length === 0 && (
+                <span style={{ fontSize: '0.72rem', color: '#2E7D52', fontWeight: 700 }}>✓ Todo ok</span>
+              )}
+            </div>
+            <div className="g-balance-panel-body">
+              {loading && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {[1, 2, 3].map(i => <div key={i} className="g-skeleton" style={{ height: 38, borderRadius: 10 }}/>)}
+                </div>
+              )}
+
+              {!loading && (() => {
+                const miNet = balanceNet[miId] ?? 0
+                const alDia = Math.abs(miNet) < EPS
+                const meDeban = miNet > EPS
+                return (
+                  <div className="g-bp-net" style={{
+                    background: alDia ? 'linear-gradient(135deg,#edfbf3,#d6f5e5)' : meDeban ? 'linear-gradient(135deg,#edf6ff,#d6eaff)' : 'linear-gradient(135deg,#fff4f0,#ffe0d6)',
+                    border: `1.5px solid ${alDia ? 'rgba(46,125,82,0.2)' : meDeban ? 'rgba(30,107,168,0.2)' : 'rgba(192,90,59,0.2)'}`,
+                  }}>
+                    <div>
+                      <div className="g-bp-net-label" style={{ color: alDia ? '#2E7D52' : meDeban ? '#1E6BA8' : '#C05A3B' }}>
+                        {alDia ? 'Al día' : meDeban ? 'Te deben' : 'Debés'}
+                      </div>
+                      <div className="g-bp-net-val" style={{ color: alDia ? '#2E7D52' : meDeban ? '#1E6BA8' : '#C05A3B' }}>
+                        {alDia ? '✓' : fmtUYU(Math.round(Math.abs(miNet)))}
+                      </div>
+                    </div>
+                    <span style={{ fontSize: '1.5rem' }}>{alDia ? '🎉' : meDeban ? '🤑' : '😬'}</span>
+                  </div>
+                )
+              })()}
+
+              {!loading && miembros.length > 1 && (
+                <div className="g-bp-chips">
+                  {miembros.map(m => {
+                    const val = balanceNet[m.id] ?? 0
+                    const alDia = Math.abs(val) < EPS
+                    return (
+                      <div key={m.id} className="g-bp-chip">
+                        <div className="g-bp-chip-av" style={{ background: m.color }}>{m.nombre[0].toUpperCase()}</div>
+                        <span className="g-bp-chip-name">{m.nombre}{m.id === miId ? ' (tú)' : ''}</span>
+                        <span className="g-bp-chip-val" style={{ color: alDia ? '#2E7D52' : val > 0 ? '#1E6BA8' : '#C05A3B' }}>
+                          {alDia ? '✓' : val > 0 ? `+${fmtUYU(Math.round(val))}` : fmtUYU(Math.round(val))}
+                        </span>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+
+              {!loading && debts.length > 0 && (
+                <div>
+                  <div style={{ fontSize: '0.66rem', fontWeight: 700, color: '#B09080', textTransform: 'uppercase', letterSpacing: '0.09em', marginBottom: 6 }}>Deudas pendientes</div>
+                  <div className="g-bp-debts">
+                    {debts.map((d, i) => {
+                      const fromM = miembros.find(m => m.id === d.from)
+                      const toM   = miembros.find(m => m.id === d.to)
+                      if (!fromM || !toM) return null
+                      return (
+                        <div key={i} className="g-bp-debt">
+                          <div style={{ display: 'flex', gap: 4, flexShrink: 0, alignItems: 'center' }}>
+                            <div className="g-debt-av" style={{ background: fromM.color, width: 22, height: 22, fontSize: '0.58rem' }}>{fromM.nombre[0].toUpperCase()}</div>
+                            <span style={{ color: '#C0A898', fontSize: '0.75rem' }}>→</span>
+                            <div className="g-debt-av" style={{ background: toM.color, width: 22, height: 22, fontSize: '0.58rem' }}>{toM.nombre[0].toUpperCase()}</div>
+                          </div>
+                          <div className="g-bp-debt-text">
+                            <strong>{fromM.nombre}</strong> → <strong>{toM.nombre}</strong>
+                          </div>
+                          <div className="g-bp-debt-amount">{fmtUYU(Math.round(d.amount))}</div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {!loading && debts.length === 0 && miembros.length <= 1 && (
+                <div style={{ textAlign: 'center', padding: '0.75rem 0', color: '#B09080', fontSize: '0.8rem' }}>
+                  Sin compañeros aún
+                </div>
+              )}
+            </div>
+          </aside>
+
+          </div>{/* end g-desktop-cols */}
 
         </div>
       </div>

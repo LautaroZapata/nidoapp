@@ -165,8 +165,8 @@ export default function InvitarPage() {
       const { data: todosCheck } = await supabase
         .from('miembros').select('id').eq('sala_id', invite.sala.id)
       const cantMiembros = todosCheck?.length ?? 0
-      const maxMiembros = planData.limites?.maxMiembros ?? 4
-      if (maxMiembros !== null && cantMiembros >= maxMiembros) {
+      const maxMiembros = planData.limites?.maxMiembros  // null = ilimitado (pro), number = límite (free)
+      if (maxMiembros != null && cantMiembros >= maxMiembros) {
         setJoinError(`Este nido ya alcanzó el límite de ${maxMiembros} miembros del plan Free. El dueño del nido debe upgradear a Pro para agregar más.`)
         setJoining(false); return
       }
