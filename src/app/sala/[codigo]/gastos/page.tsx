@@ -335,7 +335,9 @@ export default function GastosPage() {
           } else if (payload.eventType === 'UPDATE') {
             setGastos(prev => prev.map(g => g.id === payload.new.id ? payload.new as Gasto : g))
           } else if (payload.eventType === 'DELETE') {
-            setGastos(prev => prev.filter(g => g.id !== payload.old.id))
+            const old = payload.old as Partial<Gasto>
+            setGastos(prev => prev.filter(g => g.id !== old.id))
+            if (old.descripcion) addNotif(`Gasto eliminado: ${old.descripcion}`, '🗑️')
           }
         }
       )
@@ -358,7 +360,8 @@ export default function GastosPage() {
               : 'Pago registrado entre miembros'
             addNotif(texto, '💰')
           } else if (payload.eventType === 'DELETE') {
-            setPagos(prev => prev.filter(p => p.id !== payload.old.id))
+            const old = payload.old as Partial<Pago>
+            setPagos(prev => prev.filter(p => p.id !== old.id))
           }
         }
       )
