@@ -30,6 +30,7 @@ export type Database = {
           color: string
           password_hash: string | null
           salt: string | null
+          user_id: string | null
           creado_en: string
         }
         Insert: {
@@ -39,6 +40,7 @@ export type Database = {
           color?: string
           password_hash?: string | null
           salt?: string | null
+          user_id?: string | null
           creado_en?: string
         }
         Update: {
@@ -48,7 +50,38 @@ export type Database = {
           color?: string
           password_hash?: string | null
           salt?: string | null
+          user_id?: string | null
           creado_en?: string
+        }
+        Relationships: []
+      }
+      invitaciones: {
+        Row: {
+          id: string
+          sala_id: string
+          token: string
+          creado_por: string | null
+          usado_por: string | null
+          creado_en: string
+          expires_at: string
+        }
+        Insert: {
+          id?: string
+          sala_id: string
+          token?: string
+          creado_por?: string | null
+          usado_por?: string | null
+          creado_en?: string
+          expires_at?: string
+        }
+        Update: {
+          id?: string
+          sala_id?: string
+          token?: string
+          creado_por?: string | null
+          usado_por?: string | null
+          creado_en?: string
+          expires_at?: string
         }
         Relationships: []
       }
@@ -267,6 +300,7 @@ export type Database = {
 // Tipos de conveniencia
 export type Sala = Database['public']['Tables']['salas']['Row']
 export type Miembro = Database['public']['Tables']['miembros']['Row']
+export type Invitacion = Database['public']['Tables']['invitaciones']['Row']
 export type Piso = Database['public']['Tables']['pisos']['Row']
 export type VotoPiso = Database['public']['Tables']['votos_piso']['Row']
 export type Gasto = Database['public']['Tables']['gastos']['Row']
