@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useCallback, useRef } from 'react'
+import { useEffect, useState, useCallback, useRef, useMemo } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { Fraunces, Nunito, DM_Mono } from 'next/font/google'
 import { createClient } from '@/lib/supabase'
@@ -94,7 +94,30 @@ export default function PisosPage() {
   const [subiendoFoto, setSubiendoFoto] = useState(false)
   const [formError, setFormError] = useState('')
   const [pisosPag, setPisosPag] = useState(12)
+  const [busqueda, setBusqueda] = useState('')
+  const [orden, setOrden] = useState<'reciente' | 'nota' | 'precio'>('reciente')
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  const pisosVisibles = useMemo(() => {
+    const q = busqueda.trim().toLowerCase()
+    let lista = q
+      ? pisos.filter(p =>
+          p.titulo.toLowerCase().includes(q) ||
+          (p.zona ?? '').toLowerCase().includes(q) ||
+          (p.notas ?? '').toLowerCase().includes(q)
+        )
+      : [...pisos]
+    if (orden === 'nota') {
+      lista = lista.sort((a, b) => (b.promedio ?? -1) - (a.promedio ?? -1))
+    } else if (orden === 'precio') {
+      lista = lista.sort((a, b) => {
+        if (a.precio === null) return 1
+        if (b.precio === null) return -1
+        return a.precio - b.precio
+      })
+    }
+    return lista
+  }, [pisos, busqueda, orden])
 
   const cargarDatos = useCallback(async () => {
     if (!session) return
@@ -491,6 +514,43 @@ export default function PisosPage() {
           .p-stat { padding: 0.7rem 0.85rem; }
           .p-stat-val { font-size: 1.05rem; }
         }
+
+        .p-filter-bar {
+          display: flex; align-items: center; gap: 8px;
+          margin-bottom: 1rem; flex-wrap: wrap;
+        }
+        .p-search {
+          flex: 1; min-width: 140px;
+          display: flex; align-items: center; gap: 7px;
+          padding: 9px 12px; background: white;
+          border: 1.5px solid #E0C8B8; border-radius: 11px;
+          transition: border-color 0.18s, box-shadow 0.18s;
+        }
+        .p-search:focus-within { border-color: #C05A3B; box-shadow: 0 0 0 3px rgba(192,90,59,0.10); }
+        .p-search svg { flex-shrink: 0; color: #B09080; }
+        .p-search input {
+          flex: 1; border: none; outline: none; background: transparent;
+          font-size: 0.85rem; font-family: var(--font-body), 'Nunito', sans-serif;
+          color: #2A1A0E;
+        }
+        .p-search input::placeholder { color: #C0A898; }
+        .p-sort-group { display: flex; gap: 4px; }
+        .p-sort-btn {
+          padding: 8px 12px; border-radius: 9px;
+          border: 1.5px solid #E0C8B8; background: white;
+          font-size: 0.75rem; font-weight: 700; color: #A07060;
+          font-family: var(--font-body), 'Nunito', sans-serif;
+          cursor: pointer; transition: all 0.15s; white-space: nowrap;
+        }
+        .p-sort-btn:hover { border-color: #C05A3B; color: #C05A3B; background: #FFF5F0; }
+        .p-sort-btn.active { background: #C05A3B; border-color: #C05A3B; color: white; }
+        .p-no-results {
+          text-align: center; padding: 3rem 1rem;
+          color: #B09080; font-size: 0.88rem;
+        }
+        @media (max-width: 480px) {
+          .p-sort-btn { padding: 8px 9px; font-size: 0.7rem; }
+        }
       `}</style>
 
       <div className="p-root">
@@ -561,6 +621,41 @@ export default function PisosPage() {
             </div>
           )}
 
+          {/* ── FILTROS ── */}
+          {!loading && pisos.length > 0 && (
+            <div className="p-filter-bar">
+              <div className="p-search">
+                <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                  <circle cx="6" cy="6" r="4.5" stroke="currentColor" strokeWidth="1.4"/>
+                  <path d="M9.5 9.5L12 12" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/>
+                </svg>
+                <input
+                  type="text"
+                  placeholder="Buscar por título, zona..."
+                  value={busqueda}
+                  onChange={e => { setBusqueda(e.target.value); setPisosPag(12) }}
+                />
+                {busqueda && (
+                  <button
+                    onClick={() => setBusqueda('')}
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#B09080', padding: 0, lineHeight: 1, fontSize: '1rem' }}
+                  >×</button>
+                )}
+              </div>
+              <div className="p-sort-group">
+                {(['reciente', 'nota', 'precio'] as const).map(o => (
+                  <button
+                    key={o}
+                    className={`p-sort-btn${orden === o ? ' active' : ''}`}
+                    onClick={() => { setOrden(o); setPisosPag(12) }}
+                  >
+                    {o === 'reciente' ? 'Reciente' : o === 'nota' ? '★ Nota' : '$ Precio'}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* ── LOADING ── */}
           {loading && (
             <div className="p-grid">
@@ -587,11 +682,18 @@ export default function PisosPage() {
             </div>
           )}
 
+          {/* ── SIN RESULTADOS ── */}
+          {!loading && pisos.length > 0 && pisosVisibles.length === 0 && (
+            <div className="p-no-results">
+              Sin resultados para <strong>"{busqueda}"</strong>
+            </div>
+          )}
+
           {/* ── GRID ── */}
-          {!loading && pisos.length > 0 && (
+          {!loading && pisosVisibles.length > 0 && (
             <>
             <div className="p-grid">
-              {pisos.slice(0, pisosPag).map((piso, idx) => (
+              {pisosVisibles.slice(0, pisosPag).map((piso, idx) => (
                 <div
                   key={piso.id}
                   className="p-card"
@@ -665,7 +767,7 @@ export default function PisosPage() {
                 </div>
               ))}
             </div>
-            {pisos.length > pisosPag && (
+            {pisosVisibles.length > pisosPag && (
               <button
                 onClick={() => setPisosPag(p => p + 12)}
                 style={{
@@ -679,7 +781,7 @@ export default function PisosPage() {
                 onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = '#FFF5EE'; (e.currentTarget as HTMLElement).style.color = '#C05A3B'; (e.currentTarget as HTMLElement).style.borderColor = '#C05A3B' }}
                 onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'white'; (e.currentTarget as HTMLElement).style.color = '#A07060'; (e.currentTarget as HTMLElement).style.borderColor = '#D4B8A0' }}
               >
-                Ver más ({pisos.length - pisosPag} aptos restantes)
+                Ver más ({pisosVisibles.length - pisosPag} aptos restantes)
               </button>
             )}
             </>

@@ -51,7 +51,7 @@ export default function SalaLayout({ children }: { children: React.ReactNode }) 
     { label: 'Nido',    href: `/sala/${codigo}`,         icon: IconNido    },
     { label: 'Gastos',  href: `/sala/${codigo}/gastos`,  icon: IconGastos  },
     { label: 'Compras', href: `/sala/${codigo}/compras`, icon: IconCompras },
-    { label: 'Pisos',   href: `/sala/${codigo}/pisos`,   icon: IconPisos   },
+    { label: 'Aptos',   href: `/sala/${codigo}/pisos`,   icon: IconPisos   },
   ]
 
   // No mostrar nav en páginas de detalle (ej: pisos/[id])

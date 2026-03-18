@@ -111,7 +111,7 @@ const FEATURES = [
   },
   {
     icon: '🏠',
-    title: 'Buscar piso juntos',
+    title: 'Buscar apto juntos',
     desc: 'Guardá y votá los aptos que les gustan. Compará precios, m² y zonas sin perder ninguna opción en el camino.',
     color: '#C8823A',
     bg: 'rgba(200,130,58,0.08)',
@@ -440,7 +440,7 @@ export default function LandingPage() {
               Nuevo · Bot de WhatsApp con IA
             </div>
             <h1 className="l-hero-title">
-              Tu piso compartido,<br/>
+              Tu apto compartido,<br/>
               <em>sin el drama</em>
             </h1>
             <p className="l-hero-sub">
@@ -484,7 +484,7 @@ export default function LandingPage() {
         <section className="l-features">
           <div className="l-section-wrap">
             <div className="l-section-label">Funcionalidades</div>
-            <h2 className="l-section-title">Todo lo que un piso<br/>compartido necesita</h2>
+            <h2 className="l-section-title">Todo lo que un apto<br/>compartido necesita</h2>
             <p className="l-section-sub">Desde buscar el apto hasta liquidar deudas al final del mes. Un solo lugar para todo.</p>
             <div className="l-features-grid">
               {FEATURES.map((f, i) => (
