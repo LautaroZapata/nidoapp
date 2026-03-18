@@ -1,7 +1,7 @@
 {
   "name": "Nido — Tu piso compartido",
   "short_name": "Nido",
-  "description": "Gastos, compras y convivencia para pisos compartidos",
+  "description": "Gastos, compras y convivencia para pisos compartidos. Con bot de WhatsApp incluido.",
   "start_url": "/dashboard",
   "display": "standalone",
   "background_color": "#1E120A",
@@ -9,13 +9,23 @@
   "orientation": "portrait-primary",
   "icons": [
     {
-      "src": "/icon.svg",
-      "sizes": "any",
-      "type": "image/svg+xml",
-      "purpose": "any maskable"
+      "src": "/icon",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/apple-icon",
+      "sizes": "180x180",
+      "type": "image/png"
     }
   ],
-  "screenshots": [],
   "categories": ["finance", "lifestyle"],
   "lang": "es"
 }
