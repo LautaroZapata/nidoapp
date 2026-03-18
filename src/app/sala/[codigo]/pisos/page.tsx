@@ -517,12 +517,12 @@ export default function PisosPage() {
 
         .p-filter-bar {
           display: flex; align-items: center; gap: 8px;
-          margin-bottom: 1rem; flex-wrap: wrap;
+          margin-top: 1rem; margin-bottom: 1rem; flex-wrap: wrap;
         }
         .p-search {
-          flex: 1; min-width: 140px;
+          flex: 1; min-width: 160px;
           display: flex; align-items: center; gap: 7px;
-          padding: 9px 12px; background: white;
+          padding: 10px 12px; background: white;
           border: 1.5px solid #E0C8B8; border-radius: 11px;
           transition: border-color 0.18s, box-shadow 0.18s;
         }
@@ -530,13 +530,13 @@ export default function PisosPage() {
         .p-search svg { flex-shrink: 0; color: #B09080; }
         .p-search input {
           flex: 1; border: none; outline: none; background: transparent;
-          font-size: 0.85rem; font-family: var(--font-body), 'Nunito', sans-serif;
-          color: #2A1A0E;
+          font-size: 1rem; font-family: var(--font-body), 'Nunito', sans-serif;
+          color: #2A1A0E; min-width: 0;
         }
         .p-search input::placeholder { color: #C0A898; }
-        .p-sort-group { display: flex; gap: 4px; }
+        .p-sort-group { display: flex; gap: 4px; flex-shrink: 0; }
         .p-sort-btn {
-          padding: 8px 12px; border-radius: 9px;
+          padding: 9px 13px; border-radius: 9px;
           border: 1.5px solid #E0C8B8; background: white;
           font-size: 0.75rem; font-weight: 700; color: #A07060;
           font-family: var(--font-body), 'Nunito', sans-serif;
@@ -547,9 +547,12 @@ export default function PisosPage() {
         .p-no-results {
           text-align: center; padding: 3rem 1rem;
           color: #B09080; font-size: 0.88rem;
+          font-family: var(--font-body), 'Nunito', sans-serif;
         }
-        @media (max-width: 480px) {
-          .p-sort-btn { padding: 8px 9px; font-size: 0.7rem; }
+        @media (max-width: 520px) {
+          .p-filter-bar { gap: 6px; }
+          .p-sort-group { width: 100%; }
+          .p-sort-btn { flex: 1; padding: 9px 6px; font-size: 0.72rem; text-align: center; }
         }
       `}</style>
 
@@ -637,7 +640,7 @@ export default function PisosPage() {
                 />
                 {busqueda && (
                   <button
-                    onClick={() => setBusqueda('')}
+                    onClick={() => { setBusqueda(''); setPisosPag(12) }}
                     style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#B09080', padding: 0, lineHeight: 1, fontSize: '1rem' }}
                   >×</button>
                 )}
