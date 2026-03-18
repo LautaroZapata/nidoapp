@@ -123,6 +123,31 @@ export default function PisosPage() {
     cargarDatos()
   }, [codigo, session, cargarDatos, router])
 
+  useEffect(() => {
+    if (!session) return
+    const supabase = createClient()
+    const chPisos = supabase
+      .channel(`pisos_${session.salaId}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'pisos', filter: `sala_id=eq.${session.salaId}` },
+        () => cargarDatos()
+      )
+      .subscribe()
+    const chVotos = supabase
+      .channel(`votos_piso_${session.salaId}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'votos_piso' },
+        () => cargarDatos()
+      )
+      .subscribe()
+    return () => {
+      supabase.removeChannel(chPisos)
+      supabase.removeChannel(chVotos)
+    }
+  }, [session, cargarDatos])
+
   async function handleSubirFoto(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     if (!file || !session) return

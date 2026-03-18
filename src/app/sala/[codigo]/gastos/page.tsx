@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useCallback, useMemo } from 'react'
+import { useEffect, useState, useCallback, useMemo, useRef } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { Fraunces, Nunito, DM_Mono } from 'next/font/google'
 import { createClient } from '@/lib/supabase'
@@ -27,6 +27,14 @@ const dmMono = DM_Mono({
 })
 
 type Categoria = Gasto['categoria']
+type Notif = { id: string; text: string; ts: number; icon: string }
+
+function fmtTimeAgo(ts: number) {
+  const diff = (Date.now() - ts) / 1000
+  if (diff < 60) return 'ahora'
+  if (diff < 3600) return `${Math.floor(diff / 60)}m`
+  return `${Math.floor(diff / 3600)}h`
+}
 
 const CATEGORIA_META: Record<Categoria, { label: string; icon: string; color: string; bg: string; border: string }> = {
   alquiler:    { label: 'Alquiler',    icon: '🏠', color: '#2E7D52', bg: 'rgba(46,125,82,0.1)',   border: 'rgba(46,125,82,0.25)'   },
@@ -74,6 +82,8 @@ const DIAS_ES  = ['L','M','X','J','V','S','D']
 
 function CalendarioPicker({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   const [open, setOpen] = useState(false)
+  const [dropPos, setDropPos] = useState<{ top: number; left: number; width: number } | null>(null)
+  const btnRef = useRef<HTMLButtonElement>(null)
   const todayStr = new Date().toISOString().slice(0, 10)
 
   const parseV = (iso: string) => {
@@ -116,8 +126,18 @@ function CalendarioPicker({ value, onChange }: { value: string; onChange: (v: st
   return (
     <div style={{ position: 'relative' }}>
       <button
+        ref={btnRef}
         type="button"
-        onClick={() => setOpen(o => !o)}
+        onClick={() => {
+          if (open) { setOpen(false); return }
+          if (btnRef.current) {
+            const rect = btnRef.current.getBoundingClientRect()
+            const calH = 300
+            const top = (window.innerHeight - rect.bottom) >= calH ? rect.bottom + 6 : rect.top - calH - 6
+            setDropPos({ top, left: rect.left, width: rect.width })
+          }
+          setOpen(true)
+        }}
         style={{
           width: '100%', padding: '10px 13px',
           background: 'white', border: `1.5px solid ${open ? '#C05A3B' : '#E0C8B8'}`,
@@ -138,11 +158,11 @@ function CalendarioPicker({ value, onChange }: { value: string; onChange: (v: st
         {value ? fmtDisplay(value) : 'Seleccionar fecha'}
       </button>
 
-      {open && (
+      {open && dropPos && (
         <>
           <div style={{ position: 'fixed', inset: 0, zIndex: 200 }} onClick={() => setOpen(false)} />
           <div style={{
-            position: 'absolute', top: 'calc(100% + 6px)', left: 0, right: 0,
+            position: 'fixed', top: dropPos.top, left: dropPos.left, width: dropPos.width,
             zIndex: 201, background: '#FFF8F2', border: '1.5px solid #EAD8C8',
             borderRadius: 16, padding: '0.9rem',
             boxShadow: '0 8px 32px rgba(150,80,40,0.18)',
@@ -247,7 +267,18 @@ export default function GastosPage() {
   const [modalLiquidar, setModalLiquidar] = useState<{ debt: Debt; importe: string; nota: string } | null>(null)
   const [liquidandoOk, setLiquidandoOk] = useState<string | null>(null)
   const [expandedDebt, setExpandedDebt] = useState<string | null>(null)
+  const [notifs, setNotifs] = useState<Notif[]>([])
+  const [bellOpen, setBellOpen] = useState(false)
+  const [toasts, setToasts] = useState<Notif[]>([])
+  const [unreadCount, setUnreadCount] = useState(0)
 
+  function addNotif(text: string, icon: string) {
+    const n: Notif = { id: Math.random().toString(36).slice(2), text, ts: Date.now(), icon }
+    setNotifs(prev => [n, ...prev].slice(0, 30))
+    setUnreadCount(c => c + 1)
+    setToasts(prev => [...prev, n])
+    setTimeout(() => setToasts(prev => prev.filter(t => t.id !== n.id)), 5000)
+  }
 
   const cargarDatos = useCallback(async () => {
     if (!session) return
@@ -287,6 +318,7 @@ export default function GastosPage() {
         (payload) => {
           if (payload.eventType === 'INSERT') {
             setGastos(prev => [payload.new as Gasto, ...prev])
+            addNotif(`Nuevo gasto: ${(payload.new as Gasto).descripcion}`, '💸')
           } else if (payload.eventType === 'UPDATE') {
             setGastos(prev => prev.map(g => g.id === payload.new.id ? payload.new as Gasto : g))
           } else if (payload.eventType === 'DELETE') {
@@ -304,6 +336,7 @@ export default function GastosPage() {
         (payload) => {
           if (payload.eventType === 'INSERT') {
             setPagos(prev => [payload.new as Pago, ...prev])
+            addNotif('Pago registrado entre miembros', '💰')
           } else if (payload.eventType === 'DELETE') {
             setPagos(prev => prev.filter(p => p.id !== payload.old.id))
           }
@@ -846,11 +879,69 @@ export default function GastosPage() {
         .g-modal {
           background: #FFF8F2; border: 1.5px solid #EAD8C8;
           border-radius: 24px 24px 0 0; width: 100%; max-width: 520px;
-          padding: 2rem; animation: g-modal 0.3s cubic-bezier(0.22, 1, 0.36, 1) both;
+          padding: 2rem; padding-bottom: max(2rem, calc(env(safe-area-inset-bottom) + 1rem));
+          animation: g-modal 0.3s cubic-bezier(0.22, 1, 0.36, 1) both;
           max-height: 92vh; overflow-y: auto;
+          -webkit-overflow-scrolling: touch; overscroll-behavior: contain;
           box-shadow: 0 -8px 40px rgba(150,80,40,0.12);
         }
         @media (min-width: 600px) { .g-modal { border-radius: 20px; box-shadow: 0 20px 60px rgba(150,80,40,0.15); } }
+
+        /* ── Bell ── */
+        .g-bell-btn {
+          position: relative; width: 36px; height: 36px; border-radius: 10px;
+          background: white; border: 1.5px solid #E8D5C0;
+          display: flex; align-items: center; justify-content: center;
+          cursor: pointer; color: #A07060;
+          transition: background 0.18s, border-color 0.18s, color 0.18s;
+        }
+        .g-bell-btn:hover { background: #FFF5EE; border-color: #C05A3B; color: #C05A3B; }
+        .g-bell-badge {
+          position: absolute; top: -5px; right: -5px;
+          background: #C05A3B; color: white;
+          border-radius: 999px; font-size: 0.55rem; font-weight: 700;
+          padding: 2px 4px; min-width: 16px; text-align: center;
+          border: 1.5px solid #FAF5EE; pointer-events: none;
+        }
+        .g-notif-panel {
+          position: fixed; top: 66px; right: 1rem;
+          width: min(320px, calc(100vw - 1.5rem));
+          background: white; border: 1.5px solid #EAD8C8;
+          border-radius: 18px; box-shadow: 0 8px 32px rgba(150,80,40,0.15);
+          z-index: 300; overflow: hidden;
+          animation: g-fadeup 0.2s cubic-bezier(0.22,1,0.36,1) both;
+        }
+        .g-notif-hdr {
+          display: flex; align-items: center; justify-content: space-between;
+          padding: 12px 14px; border-bottom: 1px solid #EAD8C8;
+        }
+        .g-notif-title { font-family: var(--font-serif), serif; font-size: 0.95rem; font-weight: 600; color: #2A1A0E; }
+        .g-notif-clear { background: none; border: none; font-size: 0.72rem; color: #C05A3B; font-weight: 600; cursor: pointer; font-family: var(--font-body), sans-serif; }
+        .g-notif-list { max-height: 300px; overflow-y: auto; }
+        .g-notif-item {
+          display: flex; align-items: flex-start; gap: 9px;
+          padding: 9px 14px; border-bottom: 1px solid #F5EDE4; font-size: 0.81rem;
+        }
+        .g-notif-item:last-child { border-bottom: none; }
+        .g-notif-text { flex: 1; color: #4A3020; line-height: 1.4; }
+        .g-notif-time { font-size: 0.68rem; color: #C0A898; flex-shrink: 0; margin-top: 2px; }
+        .g-notif-empty { padding: 1.5rem; text-align: center; color: #B09080; font-size: 0.83rem; }
+
+        /* ── Toasts ── */
+        .g-toasts {
+          position: fixed; bottom: 1.5rem; left: 50%; transform: translateX(-50%);
+          display: flex; flex-direction: column; gap: 8px; align-items: center;
+          z-index: 500; pointer-events: none;
+          width: min(360px, calc(100vw - 2rem));
+        }
+        .g-toast {
+          background: #2A1A0E; color: white; border-radius: 14px; padding: 11px 16px;
+          display: flex; align-items: center; gap: 10px; width: 100%;
+          font-size: 0.83rem; font-weight: 500; line-height: 1.4;
+          box-shadow: 0 8px 24px rgba(42,26,14,0.25);
+          animation: g-toast-in 0.3s cubic-bezier(0.22,1,0.36,1) both;
+        }
+        @keyframes g-toast-in { from { opacity:0; transform:translateY(14px) scale(0.96); } to { opacity:1; transform:translateY(0) scale(1); } }
 
         .g-modal-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.75rem; }
         .g-modal-title { font-family: var(--font-serif), serif; font-size: 1.5rem; color: #2A1A0E; letter-spacing: -0.025em; font-weight: 600; }
@@ -1022,6 +1113,13 @@ export default function GastosPage() {
                   En vivo
                 </div>
               )}
+              <button className="g-bell-btn" onClick={() => { setBellOpen(o => !o); setUnreadCount(0) }}>
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                  <path d="M8 1.5A4.5 4.5 0 003.5 6v3l-1 1.5h11L12.5 9V6A4.5 4.5 0 008 1.5z" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round"/>
+                  <path d="M6.5 13a1.5 1.5 0 003 0" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/>
+                </svg>
+                {unreadCount > 0 && <span className="g-bell-badge">{unreadCount > 9 ? '9+' : unreadCount}</span>}
+              </button>
               <div className="g-avatar" style={{ background: session.miembroColor }}>
                 {session.miembroNombre[0].toUpperCase()}
               </div>
@@ -1721,6 +1819,44 @@ export default function GastosPage() {
           </div>
         )
       })()}
+
+      {/* ── BELL DROPDOWN ── */}
+      {bellOpen && (
+        <>
+          <div style={{ position: 'fixed', inset: 0, zIndex: 299 }} onClick={() => setBellOpen(false)} />
+          <div className="g-notif-panel">
+            <div className="g-notif-hdr">
+              <span className="g-notif-title">Actividad reciente</span>
+              {notifs.length > 0 && (
+                <button className="g-notif-clear" onClick={() => setNotifs([])}>Limpiar</button>
+              )}
+            </div>
+            <div className="g-notif-list">
+              {notifs.length === 0 ? (
+                <div className="g-notif-empty">Sin actividad aún</div>
+              ) : notifs.map(n => (
+                <div key={n.id} className="g-notif-item">
+                  <span style={{ fontSize: '1rem', flexShrink: 0 }}>{n.icon}</span>
+                  <span className="g-notif-text">{n.text}</span>
+                  <span className="g-notif-time">{fmtTimeAgo(n.ts)}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* ── TOASTS ── */}
+      {toasts.length > 0 && (
+        <div className="g-toasts">
+          {toasts.map(t => (
+            <div key={t.id} className="g-toast">
+              <span style={{ fontSize: '1.1rem', flexShrink: 0 }}>{t.icon}</span>
+              <span>{t.text}</span>
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* ── MODAL: AÑADIR GASTO ── */}
       {modalOpen && (
