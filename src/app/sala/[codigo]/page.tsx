@@ -308,10 +308,21 @@ export default function SalaPage() {
                       <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><circle cx="7" cy="5" r="2.5" stroke="currentColor" strokeWidth="1.3"/><path d="M2 12c0-2.761 2.239-5 5-5s5 2.239 5 5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/></svg>
                       Mis nidos
                     </button>
-                    <button className="s-dropdown-item" onClick={() => { setMenuOpen(false); handleConectarWpp() }}>
-                      <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M7 1.5C3.96 1.5 1.5 3.96 1.5 7c0 .94.24 1.83.66 2.6L1.5 12.5l2.98-.64A5.47 5.47 0 007 12.5c3.04 0 5.5-2.46 5.5-5.5S10.04 1.5 7 1.5z" stroke="#25D366" strokeWidth="1.3" strokeLinejoin="round"/><path d="M5 5.5s.5 1 1.5 2 2 1.5 2 1.5" stroke="#25D366" strokeWidth="1.3" strokeLinecap="round"/></svg>
-                      Conectar WhatsApp
-                    </button>
+                    {(() => {
+                      const miMiembro = miembros.find(m => m.id === session.miembroId)
+                      const wppConectado = !!miMiembro?.whatsapp_phone
+                      return wppConectado ? (
+                        <div className="s-dropdown-item" style={{ cursor: 'default', opacity: 0.6 }}>
+                          <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M7 1.5C3.96 1.5 1.5 3.96 1.5 7c0 .94.24 1.83.66 2.6L1.5 12.5l2.98-.64A5.47 5.47 0 007 12.5c3.04 0 5.5-2.46 5.5-5.5S10.04 1.5 7 1.5z" stroke="#25D366" strokeWidth="1.3" strokeLinejoin="round"/><path d="M5 5.5s.5 1 1.5 2 2 1.5 2 1.5" stroke="#25D366" strokeWidth="1.3" strokeLinecap="round"/></svg>
+                          ✓ WhatsApp conectado
+                        </div>
+                      ) : (
+                        <button className="s-dropdown-item" onClick={() => { setMenuOpen(false); handleConectarWpp() }}>
+                          <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M7 1.5C3.96 1.5 1.5 3.96 1.5 7c0 .94.24 1.83.66 2.6L1.5 12.5l2.98-.64A5.47 5.47 0 007 12.5c3.04 0 5.5-2.46 5.5-5.5S10.04 1.5 7 1.5z" stroke="#25D366" strokeWidth="1.3" strokeLinejoin="round"/><path d="M5 5.5s.5 1 1.5 2 2 1.5 2 1.5" stroke="#25D366" strokeWidth="1.3" strokeLinecap="round"/></svg>
+                          Conectar WhatsApp
+                        </button>
+                      )
+                    })()}
                     {pushStatus !== 'unsupported' && (
                       <button
                         className="s-dropdown-item"
