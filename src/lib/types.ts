@@ -31,6 +31,8 @@ export type Database = {
           password_hash: string | null
           salt: string | null
           user_id: string | null
+          telefono: string | null
+          whatsapp_phone: string | null
           creado_en: string
         }
         Insert: {
@@ -41,6 +43,8 @@ export type Database = {
           password_hash?: string | null
           salt?: string | null
           user_id?: string | null
+          telefono?: string | null
+          whatsapp_phone?: string | null
           creado_en?: string
         }
         Update: {
@@ -51,6 +55,8 @@ export type Database = {
           password_hash?: string | null
           salt?: string | null
           user_id?: string | null
+          telefono?: string | null
+          whatsapp_phone?: string | null
           creado_en?: string
         }
         Relationships: []
@@ -285,6 +291,57 @@ export type Database = {
           asignada_a?: string | null
           semana?: string
           completada?: boolean
+          creado_en?: string
+        }
+        Relationships: []
+      }
+      whatsapp_pending_confirmations: {
+        Row: {
+          id: string
+          miembro_id: string
+          accion: object
+          expires_at: string
+          creado_en: string
+        }
+        Insert: {
+          id?: string
+          miembro_id: string
+          accion: object
+          expires_at: string
+          creado_en?: string
+        }
+        Update: {
+          id?: string
+          miembro_id?: string
+          accion?: object
+          expires_at?: string
+          creado_en?: string
+        }
+        Relationships: []
+      }
+      whatsapp_link_codes: {
+        Row: {
+          id: string
+          miembro_id: string
+          sala_id: string
+          code: string
+          expires_at: string
+          creado_en: string
+        }
+        Insert: {
+          id?: string
+          miembro_id: string
+          sala_id: string
+          code: string
+          expires_at: string
+          creado_en?: string
+        }
+        Update: {
+          id?: string
+          miembro_id?: string
+          sala_id?: string
+          code?: string
+          expires_at?: string
           creado_en?: string
         }
         Relationships: []

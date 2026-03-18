@@ -257,13 +257,8 @@ export default function SalaPage() {
           <div className="s-header">
             <div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <svg width="22" height="22" viewBox="0 0 32 32" fill="none">
-                  <rect x="5" y="15" width="22" height="15" rx="2" fill="#FFF5EE" stroke="#DFC5B0" strokeWidth="1.5"/>
-                  <path d="M3 16.5L16 4.5L29 16.5" stroke="#C8823A" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/>
-                  <rect x="13" y="22" width="6" height="8" rx="1.5" fill="#FDEBD8" stroke="#D4A880" strokeWidth="1.3"/>
-                  <rect x="7" y="18.5" width="4.5" height="3.5" rx="1" fill="rgba(255,210,100,0.5)" stroke="#D4C070" strokeWidth="1.1"/>
-                  <rect x="20.5" y="18.5" width="4.5" height="3.5" rx="1" fill="rgba(255,210,100,0.5)" stroke="#D4C070" strokeWidth="1.1"/>
-                </svg>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src="/nido-icon.png" alt="nido" width="28" height="28" style={{ objectFit:'contain' }}/>
                 <div className="s-sala-name">{session.salaNombre}</div>
               </div>
               <button className="s-code-btn" onClick={copiarCodigo}>

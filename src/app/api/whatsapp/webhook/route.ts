@@ -1,6 +1,24 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
+import { createHmac, timingSafeEqual } from 'crypto'
+import { createAdminClient } from '@/lib/supabase-admin'
 import { parsearMensaje, type CategoriaGasto } from '@/lib/whatsapp-ai'
+
+/** Verifica la firma HMAC-SHA256 que Meta envía en cada webhook POST */
+async function verificarFirmaMeta(req: NextRequest, rawBody: string): Promise<boolean> {
+  const appSecret = process.env.WHATSAPP_APP_SECRET
+  if (!appSecret) {
+    console.warn('[WhatsApp] WHATSAPP_APP_SECRET no configurado — omitiendo verificación de firma')
+    return true // permitir en dev sin la variable
+  }
+  const signature = req.headers.get('x-hub-signature-256') ?? ''
+  if (!signature.startsWith('sha256=')) return false
+  const expected = 'sha256=' + createHmac('sha256', appSecret).update(rawBody).digest('hex')
+  try {
+    return timingSafeEqual(Buffer.from(signature), Buffer.from(expected))
+  } catch {
+    return false
+  }
+}
 
 // Mapeo de prefijos telefónicos → timezone
 // Cubre los países más comunes de habla hispana + otros frecuentes
@@ -39,10 +57,18 @@ function fechaLocalDesdeTelefono(telefono: string): string {
   return new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date())
 }
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-)
+// Cliente admin (service role) — lazy init para no romper el build sin la env var
+let _supabase: ReturnType<typeof createAdminClient> | null = null
+function getSupabase() {
+  if (!_supabase) _supabase = createAdminClient()
+  return _supabase
+}
+const supabase = new Proxy({} as ReturnType<typeof createAdminClient>, {
+  get(_target, prop) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return (getSupabase() as any)[prop]
+  },
+})
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -97,12 +123,13 @@ async function buscarMiembro(telefono: string) {
 async function vincularConCodigo(telefono: string, code: string): Promise<string | null> {
   const ahora = new Date().toISOString()
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { data: link } = await supabase
     .from('whatsapp_link_codes')
     .select('miembro_id, sala_id, miembros(nombre)')
     .eq('code', code)
     .gt('expires_at', ahora)   // que no haya expirado
-    .single()
+    .single() as { data: any }
 
   if (!link) return null
 
@@ -130,9 +157,10 @@ async function consultarBalance(
   nombresMiembros: string[],
   miembrosData: { nombre: string }[]
 ): Promise<string> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [{ data: gastos }, { data: pagos }, { data: miembros }] = await Promise.all([
-    supabase.from('gastos').select('*').eq('sala_id', salaId),
-    supabase.from('pagos').select('*').eq('sala_id', salaId),
+    supabase.from('gastos').select('*').eq('sala_id', salaId) as any,
+    supabase.from('pagos').select('*').eq('sala_id', salaId) as any,
     supabase.from('miembros').select('id, nombre').eq('sala_id', salaId),
   ])
 
@@ -271,19 +299,40 @@ async function calcularNetMiembro(salaId: string, miembroId: string): Promise<nu
 // ---------------------------------------------------------------------------
 // POST — Recepción de mensajes
 // ---------------------------------------------------------------------------
+const MAX_MSG_LENGTH = 500
+
 export async function POST(req: NextRequest) {
-  const body = await req.json()
+  // ── Verificar firma de Meta ──
+  const rawBody = await req.text()
+  const esValido = await verificarFirmaMeta(req, rawBody)
+  if (!esValido) {
+    console.warn('[WhatsApp] Firma inválida — request rechazado')
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let body: any
+  try {
+    body = JSON.parse(rawBody)
+  } catch {
+    return NextResponse.json({ status: 'ok' })
+  }
 
   const messages = body?.entry?.[0]?.changes?.[0]?.value?.messages
   if (!messages || messages.length === 0) return NextResponse.json({ status: 'ok' })
 
   const mensaje = messages[0]
-  const texto   = mensaje?.text?.body?.trim() ?? ''
-  const deFono  = mensaje?.from ?? ''
+  const deFono  = String(mensaje?.from ?? '').replace(/\D/g, '') // solo dígitos
+  const textoRaw = String(mensaje?.text?.body ?? '').trim()
 
+  // Validar que el número tenga formato válido (7-15 dígitos)
+  if (!deFono || !/^\d{7,15}$/.test(deFono)) return NextResponse.json({ status: 'ok' })
+
+  // Limitar longitud del mensaje para evitar prompt injection masivo y DoS
+  const texto = textoRaw.slice(0, MAX_MSG_LENGTH)
   if (!texto) return NextResponse.json({ status: 'ok' })
 
-  console.log(`[WhatsApp] De: ${deFono} | Texto: "${texto}"`)
+  console.log(`[WhatsApp] mensaje recibido de +${deFono.slice(0, 2)}***`)
 
   // ── 1. ¿Es un código de vinculación? ──
   const esCodigoLink = /^[A-Z0-9]{6}$/.test(texto.toUpperCase())

@@ -172,10 +172,9 @@ export default function Home() {
         }
         .l-brand-icon {
           width: 30px; height: 30px;
-          background: rgba(192,90,59,0.12);
-          border: 1px solid rgba(192,90,59,0.25);
           border-radius: 8px;
-          display: flex; align-items: center; justify-content: center;
+          overflow: hidden;
+          flex-shrink: 0;
         }
         .l-brand-name {
           font-family: var(--font-serif), 'Georgia', serif;
@@ -510,10 +509,7 @@ export default function Home() {
 
           <div className="l-brand">
             <div className="l-brand-icon">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-                <path d="M3 11.5L12 3.5L21 11.5" stroke="rgba(192,90,59,0.8)" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
-                <path d="M5 10V20C5 20.55 5.45 21 6 21H10V15H14V21H18C18.55 21 19 20.55 19 20V10" stroke="rgba(192,90,59,0.7)" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
-              </svg>
+              <img src="/nido-icon.png" alt="Nido" width={30} height={30} style={{ display:'block', width:'100%', height:'100%', objectFit:'cover' }}/>
             </div>
             <span className="l-brand-name">Nido</span>
           </div>
