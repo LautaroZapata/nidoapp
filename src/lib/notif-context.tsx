@@ -2,7 +2,7 @@
 
 import { createContext, useContext, useState, useCallback, ReactNode } from 'react'
 
-export type Notif = { id: string; text: string; ts: number; icon: string }
+export type Notif = { id: string; text: string; ts: number; icon: string; url?: string }
 
 type NotifCtx = {
   notifs: Notif[]
@@ -10,7 +10,7 @@ type NotifCtx = {
   unreadCount: number
   bellOpen: boolean
   setBellOpen: (v: boolean) => void
-  addNotif: (text: string, icon: string) => void
+  addNotif: (text: string, icon: string, url?: string) => void
   clearNotifs: () => void
   markAllRead: () => void
 }
@@ -23,12 +23,12 @@ export function NotifProvider({ children }: { children: ReactNode }) {
   const [unreadCount, setUnreadCount] = useState(0)
   const [bellOpen, setBellOpen] = useState(false)
 
-  const addNotif = useCallback((text: string, icon: string) => {
-    const n: Notif = { id: Math.random().toString(36).slice(2), text, ts: Date.now(), icon }
+  const addNotif = useCallback((text: string, icon: string, url?: string) => {
+    const n: Notif = { id: Math.random().toString(36).slice(2), text, ts: Date.now(), icon, url }
     setNotifs(prev => [n, ...prev].slice(0, 50))
     setUnreadCount(c => c + 1)
     setToasts(prev => [...prev, n])
-    setTimeout(() => setToasts(prev => prev.filter(t => t.id !== n.id)), 5000)
+    setTimeout(() => setToasts(prev => prev.filter(t => t.id !== n.id)), 4500)
   }, [])
 
   const clearNotifs = useCallback(() => setNotifs([]), [])
@@ -51,5 +51,14 @@ export function fmtTimeAgo(ts: number) {
   const diff = (Date.now() - ts) / 1000
   if (diff < 60) return 'ahora'
   if (diff < 3600) return `${Math.floor(diff / 60)}m`
-  return `${Math.floor(diff / 3600)}h`
+  if (diff < 86400) return `${Math.floor(diff / 3600)}h`
+  return `${Math.floor(diff / 86400)}d`
+}
+
+export function notifAccentColor(icon: string): string {
+  if (icon === '💸') return '#2E7D52'
+  if (icon === '💰') return '#1E6BA8'
+  if (icon === '🏠') return '#C05A3B'
+  if (icon === '🗑️') return '#B03A1A'
+  return '#A07060'
 }

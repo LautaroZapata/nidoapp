@@ -1453,11 +1453,11 @@ export default function PisoDetallePage() {
               <div className="d-row2">
                 <div className="d-field">
                   <label className="d-label">Precio total/mes <span className="d-label-hint">($ UYU)</span></label>
-                  <input className="d-input" type="number" min={0} value={editForm.precio} onChange={e => setEditForm(f => ({ ...f, precio: e.target.value }))} placeholder="28000" />
+                  <input className="d-input" type="number" inputMode="decimal" min={0} value={editForm.precio} onChange={e => setEditForm(f => ({ ...f, precio: e.target.value }))} placeholder="28000" />
                 </div>
                 <div className="d-field">
                   <label className="d-label">Metros cuadrados</label>
-                  <input className="d-input" type="number" min={0} value={editForm.m2} onChange={e => setEditForm(f => ({ ...f, m2: e.target.value }))} placeholder="75" />
+                  <input className="d-input" type="number" inputMode="numeric" min={0} value={editForm.m2} onChange={e => setEditForm(f => ({ ...f, m2: e.target.value }))} placeholder="75" />
                 </div>
               </div>
 

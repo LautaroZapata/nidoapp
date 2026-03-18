@@ -906,11 +906,11 @@ export default function PisosPage() {
               <div className="p-row2">
                 <div className="p-field">
                   <label className="p-label">Alquiler <span className="p-label-hint">($ UYU)</span></label>
-                  <input className="p-input" type="number" placeholder="25000" min={0} value={form.alquiler} onChange={e => setForm(f => ({ ...f, alquiler: e.target.value }))} />
+                  <input className="p-input" type="number" inputMode="decimal" placeholder="25000" min={0} value={form.alquiler} onChange={e => setForm(f => ({ ...f, alquiler: e.target.value }))} />
                 </div>
                 <div className="p-field">
                   <label className="p-label">Gastos comunes <span className="p-label-hint">($ UYU)</span></label>
-                  <input className="p-input" type="number" placeholder="3000" min={0} value={form.gastosCom} onChange={e => setForm(f => ({ ...f, gastosCom: e.target.value }))} />
+                  <input className="p-input" type="number" inputMode="decimal" placeholder="3000" min={0} value={form.gastosCom} onChange={e => setForm(f => ({ ...f, gastosCom: e.target.value }))} />
                 </div>
               </div>
 
@@ -929,7 +929,7 @@ export default function PisosPage() {
               <div className="p-row2">
                 <div className="p-field">
                   <label className="p-label">Metros cuadrados</label>
-                  <input className="p-input" type="number" placeholder="75" min={0} value={form.m2} onChange={e => setForm(f => ({ ...f, m2: e.target.value }))} />
+                  <input className="p-input" type="number" inputMode="numeric" placeholder="75" min={0} value={form.m2} onChange={e => setForm(f => ({ ...f, m2: e.target.value }))} />
                 </div>
                 <div className="p-field">
                   <label className="p-label">Zona / Barrio</label>

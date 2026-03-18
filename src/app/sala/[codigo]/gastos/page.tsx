@@ -1871,6 +1871,7 @@ export default function GastosPage() {
                         <input
                           className="g-input"
                           type="number"
+                          inputMode="decimal"
                           placeholder="0"
                           min={1}
                           step="any"
@@ -1928,6 +1929,7 @@ export default function GastosPage() {
                                 <input
                                   className="g-split-input"
                                   type="number"
+                                  inputMode="decimal"
                                   min={0}
                                   step="any"
                                   placeholder="0"
@@ -1947,6 +1949,7 @@ export default function GastosPage() {
                             <input
                               className="g-input"
                               type="number"
+                              inputMode="decimal"
                               placeholder="opcional — para el botón completar"
                               min={0}
                               step="any"
