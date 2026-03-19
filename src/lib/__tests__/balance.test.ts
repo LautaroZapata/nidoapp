@@ -145,3 +145,38 @@ describe('EPS', () => {
     expect(EPS).toBe(0.5)
   })
 })
+
+describe('miembro nuevo no hereda gastos anteriores', () => {
+  it('miembro que se unió después del gasto no participa en reparto igualitario', () => {
+    const mAntiguo = { ...mkMiembro('A'), creado_en: '2024-01-01' }
+    const mNuevo   = { ...mkMiembro('B'), creado_en: '2024-03-01' }
+    const g = mkGasto({ id: 'g1', importe: 1000, pagado_por: 'A', fecha: '2024-01-15' })
+    const { net, debts } = calcularBalance([g], [mAntiguo, mNuevo], [])
+    // B se unió el 1-mar, el gasto es del 15-ene → B no debe nada
+    expect(net.B).toBe(0)
+    expect(debts.find(d => d.from === 'B')).toBeUndefined()
+    // A pagó todo y es el único participante → su net es 0
+    expect(net.A).toBeCloseTo(0)
+  })
+
+  it('miembro que se unió el mismo día del gasto sí participa', () => {
+    const mA = { ...mkMiembro('A'), creado_en: '2024-01-01' }
+    const mB = { ...mkMiembro('B'), creado_en: '2024-01-15' }
+    const g = mkGasto({ id: 'g1', importe: 1000, pagado_por: 'A', fecha: '2024-01-15' })
+    const { net } = calcularBalance([g], [mA, mB], [])
+    expect(net.B).toBeCloseTo(-500)
+    expect(net.A).toBeCloseTo(500)
+  })
+
+  it('desglosarDeuda excluye gastos anteriores al ingreso del deudor', () => {
+    const mA = { ...mkMiembro('A'), creado_en: '2024-01-01' }
+    const mB = { ...mkMiembro('B'), creado_en: '2024-03-01' }
+    const gastos = [
+      mkGasto({ id: 'g1', importe: 200, pagado_por: 'A', fecha: '2024-01-15' }), // antes de que entre B
+      mkGasto({ id: 'g2', importe: 400, pagado_por: 'A', fecha: '2024-03-10' }), // después de que entre B
+    ]
+    const result = desglosarDeuda('B', 'A', gastos, [mA, mB])
+    expect(result).toHaveLength(1)
+    expect(result[0].gasto.id).toBe('g2')
+  })
+})
