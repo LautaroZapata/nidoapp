@@ -5,25 +5,31 @@ const groq = new Groq({ apiKey: process.env.GROQ_API_KEY })
 export type CategoriaGasto = 'alquiler' | 'suministros' | 'internet' | 'comida' | 'limpieza' | 'otro'
 
 export type AccionNido =
-  | { accion: 'crear_gasto';      monto: number; descripcion: string; split: 'igual' | 'personal'; categoria: CategoriaGasto; confirmacion: string }
-  | { accion: 'agregar_compra';   items: string[];                                                  confirmacion: string }
-  | { accion: 'consultar_balance';                                                                  confirmacion: string }
-  | { accion: 'consultar_gastos';                                                                   confirmacion: string }
-  | { accion: 'liquidar_deuda';                                                                     confirmacion: string }
-  | { accion: 'desconocido';                                                                        confirmacion: string }
+  | { accion: 'crear_gasto';      monto: number; descripcion: string; split: 'igual' | 'personal' | 'parcial'; split_con?: string[]; categoria: CategoriaGasto; confirmacion: string }
+  | { accion: 'agregar_compra';   items: string[];                                                              confirmacion: string }
+  | { accion: 'consultar_balance';                                                                              confirmacion: string }
+  | { accion: 'consultar_gastos';                                                                               confirmacion: string }
+  | { accion: 'liquidar_deuda';                                                                                 confirmacion: string }
+  | { accion: 'desconocido';                                                                                    confirmacion: string }
 
-const SYSTEM_PROMPT = `Sos NidoApp bot. Devolvé SOLO JSON válido, sin markdown.
+const SYSTEM_PROMPT = `Sos NidoApp bot. Devolvé SOLO JSON válido, sin markdown, sin texto extra.
 Acciones disponibles:
-- crear_gasto (hay monto numérico): {"accion":"crear_gasto","monto":N,"descripcion":"...","split":"igual"|"personal","categoria":"alquiler"|"suministros"|"internet"|"comida"|"limpieza"|"otro","confirmacion":"..."}
-- agregar_compra (productos sin monto): {"accion":"agregar_compra","items":["..."],"confirmacion":"..."}
-- consultar_balance (deudas/balances): {"accion":"consultar_balance","confirmacion":"..."}
-- consultar_gastos (historial/lista de gastos): {"accion":"consultar_gastos","confirmacion":"..."}
-- liquidar_deuda (pagó una deuda): {"accion":"liquidar_deuda","confirmacion":"..."}
+- crear_gasto: {"accion":"crear_gasto","monto":N,"descripcion":"...","split":"igual"|"personal"|"parcial","split_con":["nombre"],"categoria":"alquiler"|"suministros"|"internet"|"comida"|"limpieza"|"otro","confirmacion":"..."}
+- agregar_compra: {"accion":"agregar_compra","items":["..."],"confirmacion":"..."}
+- consultar_balance: {"accion":"consultar_balance","confirmacion":"..."}
+- consultar_gastos: {"accion":"consultar_gastos","confirmacion":"..."}
+- liquidar_deuda: {"accion":"liquidar_deuda","confirmacion":"..."}
 - desconocido: {"accion":"desconocido","confirmacion":"..."}
-Reglas:
-- split=personal si es solo para una persona; split=igual si es compartido o sin especificar.
-- descripcion: sustantivo corto, máximo 3 palabras, sin artículos ni preposiciones. Ejemplos: "pizza", "luz", "super", "delivery sushi", "alquiler". NUNCA pongas frases como "compré una pizza" o "gasté en comida".
-- confirmacion: español, con emojis relevantes, amigable y descriptiva. Para gasto: incluí el monto formateado y descripción. Para desconocido: sugerí cómo reformular con ejemplos concretos.`
+
+Reglas de split:
+- split=igual: dividir entre TODOS los miembros del nido (cuando no especifica con quién).
+- split=personal: solo para quien pagó, sin repartir con nadie (ej: "es mío solo", "gasto personal").
+- split=parcial: cuando se menciona dividir solo con algunos miembros (ej: "con kmii", "entre lauta y yo"). split_con debe ser array con los NOMBRES de los otros miembros a incluir (NO el remitente). Si split no es parcial, omitir split_con.
+
+Reglas generales:
+- descripcion: sustantivo corto, máximo 3 palabras, sin artículos. Ej: "super", "pizza", "luz", "delivery sushi".
+- confirmacion: SIEMPRE debe ser una pregunta de confirmación que termine con "Respondé *si* o *no*". Incluí descripción, monto y con quién se divide. Nunca hagas una afirmación como respuesta final.
+- Para desconocido: en confirmacion explicá qué podés hacer con ejemplos concretos.`
 
 export async function parsearMensaje(
   mensaje: string,

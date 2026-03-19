@@ -378,6 +378,27 @@ export async function POST(req: NextRequest) {
       const accion = pendiente.accion as any
 
       if (accion.accion === 'crear_gasto') {
+        // Calcular splits según tipo
+        let splits: Record<string, number> | null = null
+        if (accion.split === 'personal') {
+          splits = { [miembro.id]: accion.monto }
+        } else if (accion.split === 'parcial' && accion.split_con && accion.split_con.length > 0) {
+          const { data: miembrosData } = await supabase
+            .from('miembros').select('id, nombre').eq('sala_id', miembro.sala_id).not('user_id', 'is', null)
+          if (miembrosData) {
+            const splitNombres = (accion.split_con as string[]).map(n => n.toLowerCase())
+            const grupo = miembrosData.filter(m =>
+              m.id === miembro.id || splitNombres.includes(m.nombre.toLowerCase())
+            )
+            if (grupo.length > 1) {
+              const porcion = accion.monto / grupo.length
+              splits = {}
+              grupo.forEach(m => { if (m.id !== miembro.id) splits![m.id] = Math.round(porcion * 100) / 100 })
+            }
+          }
+        }
+        // split === 'igual': splits = null (balance calculation uses all members)
+
         const { error } = await supabase.from('gastos').insert({
           sala_id:     miembro.sala_id,
           descripcion: accion.descripcion,
@@ -386,7 +407,7 @@ export async function POST(req: NextRequest) {
           pagado_por:  miembro.id,
           tipo:        'variable',
           fecha:       fechaLocalDesdeTelefono(deFono),
-          splits:      accion.split === 'personal' ? { [miembro.id]: accion.monto } : null,
+          splits,
         })
         if (error) { await enviarMensaje(deFono, `😓 Hubo un error al guardar el gasto. Intentá de nuevo.`); return NextResponse.json({ status: 'ok' }) }
         const netPost = await calcularNetMiembro(miembro.sala_id, miembro.id)
