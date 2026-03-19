@@ -97,6 +97,7 @@ export default function PisosPage() {
   const [busqueda, setBusqueda] = useState('')
   const [orden, setOrden] = useState<'reciente' | 'nota' | 'precio'>('reciente')
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const [masDetalles, setMasDetalles] = useState(false)
 
   const pisosVisibles = useMemo(() => {
     const q = busqueda.trim().toLowerCase()
@@ -248,6 +249,7 @@ export default function PisosPage() {
     setFotosForm([''])
     setVideosForm([''])
     setFormError('')
+    setMasDetalles(false)
     setModalOpen(true)
   }
 
@@ -850,6 +852,25 @@ export default function PisosPage() {
                 <input className="p-input" type="url" placeholder="https://infocasas.com.uy/..." value={form.url} onChange={e => setForm(f => ({ ...f, url: e.target.value }))} />
               </div>
 
+              {/* Más detalles toggle */}
+              <button
+                type="button"
+                onClick={() => setMasDetalles(v => !v)}
+                style={{
+                  width: '100%', padding: '8px 12px', borderRadius: 10,
+                  border: '1.5px dashed #E0C8B8', background: 'transparent',
+                  color: '#A07060', cursor: 'pointer', fontSize: '0.78rem', fontWeight: 600,
+                  fontFamily: 'var(--font-body), Nunito, sans-serif',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                  marginBottom: '0.75rem', transition: 'all 0.18s',
+                }}
+              >
+                <span style={{ fontSize: '0.7rem', transition: 'transform 0.2s', display: 'inline-block', transform: masDetalles ? 'rotate(180deg)' : 'rotate(0deg)' }}>▼</span>
+                {masDetalles ? 'Menos detalles' : 'Más detalles (fotos, zona, dirección, notas, videos)'}
+              </button>
+
+              {masDetalles && <>
+
               {/* ── FOTOS ── */}
               <div className="p-field">
                 <label className="p-label" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -1011,6 +1032,8 @@ export default function PisosPage() {
                   >+ Añadir otro video</button>
                 )}
               </div>
+
+              </>}
 
               {formError && (
                 <div className="p-error">

@@ -10,6 +10,7 @@ import { calcularBalance, desglosarDeuda, EPS } from '@/lib/balance'
 import type { Debt } from '@/lib/balance'
 import { notificarSala } from '@/lib/push'
 import { useNotif } from '@/lib/notif-context'
+import { ConfirmModal } from '@/components/ConfirmModal'
 
 const fraunces = Fraunces({
   weight: 'variable',
@@ -266,6 +267,7 @@ export default function GastosPage() {
   const [planSala, setPlanSala] = useState<'free' | 'pro'>('free')
   const [historialLimitado, setHistorialLimitado] = useState(false)
   const [masOpciones, setMasOpciones] = useState(false)
+  const [confirmDialog, setConfirmDialog] = useState<{ title?: string; message: string; onConfirm: () => void } | null>(null)
 
   const { addNotif } = useNotif()
 
@@ -538,15 +540,21 @@ export default function GastosPage() {
     await createClient().from('pagos').delete().eq('id', id)
   }
 
-  async function handleEliminar(id: string) {
-    if (!confirm('¿Eliminar este gasto? Esta acción no se puede deshacer.')) return
-    setBorrando(id)
-    const supabase = createClient()
-    const { error } = await supabase.from('gastos').delete().eq('id', id)
-    if (!error) {
-      setGastos(prev => prev.filter(g => g.id !== id))
-    }
-    setBorrando(null)
+  function handleEliminar(id: string) {
+    setConfirmDialog({
+      title: 'Eliminar gasto',
+      message: 'Esta acción no se puede deshacer. El gasto y sus deudas asociadas serán eliminados.',
+      onConfirm: async () => {
+        setConfirmDialog(null)
+        setBorrando(id)
+        const supabase = createClient()
+        const { error } = await supabase.from('gastos').delete().eq('id', id)
+        if (!error) {
+          setGastos(prev => prev.filter(g => g.id !== id))
+        }
+        setBorrando(null)
+      },
+    })
   }
 
   if (!session) return null
@@ -1948,6 +1956,14 @@ export default function GastosPage() {
       })()}
 
       {/* ── MODAL: AÑADIR GASTO ── */}
+      <ConfirmModal
+        open={!!confirmDialog}
+        title={confirmDialog?.title}
+        message={confirmDialog?.message ?? ''}
+        onConfirm={() => confirmDialog?.onConfirm()}
+        onCancel={() => setConfirmDialog(null)}
+      />
+
       {modalOpen && (
         <div className="g-overlay" onClick={e => e.target === e.currentTarget && setModalOpen(false)}>
           <div className="g-modal">

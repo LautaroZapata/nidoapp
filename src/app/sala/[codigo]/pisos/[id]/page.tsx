@@ -6,6 +6,7 @@ import { Fraunces, Nunito, DM_Mono } from 'next/font/google'
 import { createClient } from '@/lib/supabase'
 import { getSession } from '@/lib/session'
 import type { Piso, VotoPiso, Miembro } from '@/lib/types'
+import { ConfirmModal } from '@/components/ConfirmModal'
 
 const fraunces = Fraunces({
   weight: 'variable',
@@ -125,6 +126,7 @@ export default function PisoDetallePage() {
   const [votoError, setVotoError] = useState('')
 
   const [eliminando, setEliminando] = useState(false)
+  const [confirmDialog, setConfirmDialog] = useState<{ title?: string; message: string; onConfirm: () => void } | null>(null)
 
   // Fotos
   const [nuevaFotoUrl, setNuevaFotoUrl] = useState('')
@@ -322,12 +324,18 @@ export default function PisoDetallePage() {
     cargarDatos()
   }
 
-  async function handleEliminarPiso() {
-    if (!confirm('¿Eliminar este apto? Esta acción no se puede deshacer.')) return
-    setEliminando(true)
-    const supabase = createClient()
-    await supabase.from('pisos').delete().eq('id', pisoId)
-    router.replace(`/sala/${codigo}/pisos`)
+  function handleEliminarPiso() {
+    setConfirmDialog({
+      title: 'Eliminar apto',
+      message: 'Se eliminará este apto junto con todos sus votos y fotos. Esta acción no se puede deshacer.',
+      onConfirm: async () => {
+        setConfirmDialog(null)
+        setEliminando(true)
+        const supabase = createClient()
+        await supabase.from('pisos').delete().eq('id', pisoId)
+        router.replace(`/sala/${codigo}/pisos`)
+      },
+    })
   }
 
   const promedio = votos.length > 0
@@ -1536,6 +1544,14 @@ export default function PisoDetallePage() {
           )}
         </div>
       )}
+
+      <ConfirmModal
+        open={!!confirmDialog}
+        title={confirmDialog?.title}
+        message={confirmDialog?.message ?? ''}
+        onConfirm={() => confirmDialog?.onConfirm()}
+        onCancel={() => setConfirmDialog(null)}
+      />
     </div>
   )
 }

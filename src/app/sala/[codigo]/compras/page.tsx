@@ -7,6 +7,7 @@ import { createClient } from '@/lib/supabase'
 import { getSession } from '@/lib/session'
 import type { ItemCompra, Miembro } from '@/lib/types'
 import { notificarSala } from '@/lib/push'
+import { ConfirmModal } from '@/components/ConfirmModal'
 
 const fraunces = Fraunces({
   weight: 'variable',
@@ -39,6 +40,7 @@ export default function ComprasPage() {
   const [borrando, setBorrando] = useState<string | null>(null)
   const [pendientesPag, setPendientesPag] = useState(25)
   const [completadosPag, setCompletadosPag] = useState(10)
+  const [confirmDialog, setConfirmDialog] = useState<{ title?: string; message: string; onConfirm: () => void } | null>(null)
 
   const cargarDatos = useCallback(async () => {
     if (!session) return
@@ -129,12 +131,18 @@ export default function ComprasPage() {
     setBorrando(null)
   }
 
-  async function handleLimpiarCompletados() {
+  function handleLimpiarCompletados() {
     const ids = items.filter(i => i.completado).map(i => i.id)
     if (ids.length === 0) return
-    if (!confirm(`¿Eliminar ${ids.length} ítem${ids.length !== 1 ? 's' : ''} completado${ids.length !== 1 ? 's' : ''}? Esta acción no se puede deshacer.`)) return
-    const supabase = createClient()
-    await supabase.from('items_compra').delete().in('id', ids)
+    setConfirmDialog({
+      title: 'Limpiar completados',
+      message: `Se eliminarán ${ids.length} ítem${ids.length !== 1 ? 's' : ''} completado${ids.length !== 1 ? 's' : ''}. Esta acción no se puede deshacer.`,
+      onConfirm: async () => {
+        setConfirmDialog(null)
+        const supabase = createClient()
+        await supabase.from('items_compra').delete().in('id', ids)
+      },
+    })
   }
 
   if (!session) return null
@@ -776,6 +784,14 @@ export default function ComprasPage() {
           </div>
         </div>
       )}
+
+      <ConfirmModal
+        open={!!confirmDialog}
+        title={confirmDialog?.title}
+        message={confirmDialog?.message ?? ''}
+        onConfirm={() => confirmDialog?.onConfirm()}
+        onCancel={() => setConfirmDialog(null)}
+      />
     </div>
   )
 }
