@@ -97,6 +97,7 @@ export default function PisosPage() {
   const [busqueda, setBusqueda] = useState('')
   const [orden, setOrden] = useState<'reciente' | 'nota' | 'precio'>('reciente')
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const [masDetalles, setMasDetalles] = useState(false)
 
   const pisosVisibles = useMemo(() => {
     const q = busqueda.trim().toLowerCase()
@@ -126,7 +127,7 @@ export default function PisosPage() {
     const [{ data: pisosData }, { data: votosData }, { data: miembrosData }] = await Promise.all([
       supabase.from('pisos').select().eq('sala_id', session.salaId).order('creado_en', { ascending: false }),
       supabase.from('votos_piso').select(),
-      supabase.from('miembros').select().eq('sala_id', session.salaId),
+      supabase.from('miembros').select().eq('sala_id', session.salaId).not('user_id', 'is', null),
     ])
     if (miembrosData) setMiembros(miembrosData as Miembro[])
     const pisosConVotos: PisoConVotos[] = ((pisosData as Piso[]) ?? []).map((piso) => {
@@ -248,6 +249,7 @@ export default function PisosPage() {
     setFotosForm([''])
     setVideosForm([''])
     setFormError('')
+    setMasDetalles(false)
     setModalOpen(true)
   }
 
@@ -286,6 +288,26 @@ export default function PisosPage() {
         .p-wrap {
           position: relative; z-index: 1;
           max-width: 900px; margin: 0 auto; padding: 0 1.5rem 5rem;
+        }
+        @media (min-width: 1024px) {
+          .p-wrap { max-width: none; padding: 0 2.5rem 5rem; display: grid; grid-template-columns: 240px 1fr; column-gap: 2rem; align-items: start; }
+          .p-header { grid-column: 1 / -1; }
+          .p-stats { grid-column: 1; flex-direction: column; gap: 0.75rem; margin-bottom: 0; position: sticky; top: 1.5rem; }
+          .p-stat { flex: none; min-width: 0; }
+          .p-filter-bar { grid-column: 1; flex-direction: column; gap: 6px; margin-top: 0.75rem; margin-bottom: 0; }
+          .p-search { width: 100%; }
+          .p-sort-group { flex-direction: column; width: 100%; }
+          .p-sort-btn { width: 100%; text-align: left; border-radius: 10px; }
+          .p-main-col { grid-column: 2; grid-row: 2 / span 10; min-width: 0; }
+          .p-grid { grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); }
+        }
+        @media (min-width: 1280px) {
+          .p-wrap { max-width: 1380px; margin: 0 auto; padding: 0 3rem 5rem; grid-template-columns: 260px 1fr; column-gap: 2.5rem; }
+          .p-grid { grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); }
+        }
+        @media (min-width: 1536px) {
+          .p-wrap { max-width: 1560px; padding: 0 4rem 5rem; grid-template-columns: 280px 1fr; column-gap: 3rem; }
+          .p-grid { grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); }
         }
 
         .p-header {
@@ -677,6 +699,7 @@ export default function PisosPage() {
             </div>
           )}
 
+          <div className="p-main-col">
           {/* ── LOADING ── */}
           {loading && (
             <div className="p-grid">
@@ -808,6 +831,8 @@ export default function PisosPage() {
             </>
           )}
 
+          </div>{/* end p-main-col */}
+
         </div>
       </div>
 
@@ -834,6 +859,25 @@ export default function PisosPage() {
                 <label className="p-label">URL del anuncio</label>
                 <input className="p-input" type="url" placeholder="https://infocasas.com.uy/..." value={form.url} onChange={e => setForm(f => ({ ...f, url: e.target.value }))} />
               </div>
+
+              {/* Más detalles toggle */}
+              <button
+                type="button"
+                onClick={() => setMasDetalles(v => !v)}
+                style={{
+                  width: '100%', padding: '8px 12px', borderRadius: 10,
+                  border: '1.5px dashed #E0C8B8', background: 'transparent',
+                  color: '#A07060', cursor: 'pointer', fontSize: '0.78rem', fontWeight: 600,
+                  fontFamily: 'var(--font-body), Nunito, sans-serif',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                  marginBottom: '0.75rem', transition: 'all 0.18s',
+                }}
+              >
+                <span style={{ fontSize: '0.7rem', transition: 'transform 0.2s', display: 'inline-block', transform: masDetalles ? 'rotate(180deg)' : 'rotate(0deg)' }}>▼</span>
+                {masDetalles ? 'Menos detalles' : 'Más detalles (fotos, zona, dirección, notas, videos)'}
+              </button>
+
+              {masDetalles && <>
 
               {/* ── FOTOS ── */}
               <div className="p-field">
@@ -996,6 +1040,8 @@ export default function PisosPage() {
                   >+ Añadir otro video</button>
                 )}
               </div>
+
+              </>}
 
               {formError && (
                 <div className="p-error">

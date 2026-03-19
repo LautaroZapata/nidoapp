@@ -10,6 +10,8 @@ import { calcularBalance, desglosarDeuda, EPS } from '@/lib/balance'
 import type { Debt } from '@/lib/balance'
 import { notificarSala } from '@/lib/push'
 import { useNotif } from '@/lib/notif-context'
+import { ConfirmModal } from '@/components/ConfirmModal'
+import { FREE_LIMITS } from '@/lib/features'
 
 const fraunces = Fraunces({
   weight: 'variable',
@@ -42,20 +44,253 @@ function fmtUYU(n: number) {
   return `$ ${n.toLocaleString('es-UY')}`
 }
 
+async function exportarExcel(gastos: Gasto[], pagos: Pago[], miembros: Miembro[], salaNombre: string) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const xlsxMod = await import('xlsx-js-style') as any
+  const XLSX = xlsxMod.default ?? xlsxMod
+
+  const fechaExport = new Date().toLocaleDateString('es-UY', { day: '2-digit', month: 'long', year: 'numeric' })
+  const nombrePor = (id: string | null) => miembros.find(m => m.id === id)?.nombre ?? '—'
+
+  const CAT_LABEL: Record<string, string> = {
+    alquiler: 'Alquiler', suministros: 'Suministros', internet: 'Internet',
+    comida: 'Comida', limpieza: 'Limpieza', otro: 'Otro',
+  }
+
+  // ── Helpers de estilo ──
+  const border = (color = 'EAD8C8', style = 'hair') => ({
+    top: { style, color: { rgb: color } }, bottom: { style, color: { rgb: color } },
+    left: { style, color: { rgb: color } }, right: { style, color: { rgb: color } },
+  })
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  function cell(ws: Record<string, any>, addr: string, style: unknown) {
+    if (ws[addr]) ws[addr].s = style
+    else ws[addr] = { t: 'z', s: style }
+  }
+  function enc(r: number, c: number) { return XLSX.utils.encode_cell({ r, c }) }
+
+  const S = {
+    brand:    { fill: { patternType: 'solid', fgColor: { rgb: 'C05A3B' } }, font: { bold: true, sz: 14, color: { rgb: 'FFFFFF' }, name: 'Calibri' }, alignment: { horizontal: 'left', vertical: 'center', indent: 1 } },
+    brandSub: { fill: { patternType: 'solid', fgColor: { rgb: 'C05A3B' } }, font: { sz: 9, color: { rgb: 'F2D0C4' }, name: 'Calibri', italic: true }, alignment: { horizontal: 'left', vertical: 'center', indent: 1 } },
+    gap:      { fill: { patternType: 'solid', fgColor: { rgb: 'FAF5EE' } } },
+    head:     { fill: { patternType: 'solid', fgColor: { rgb: '2A1A0E' } }, font: { bold: true, sz: 10, color: { rgb: 'FFFFFF' }, name: 'Calibri' }, alignment: { horizontal: 'center', vertical: 'center' }, border: border('1A0E04', 'thin') },
+    headL:    { fill: { patternType: 'solid', fgColor: { rgb: '2A1A0E' } }, font: { bold: true, sz: 10, color: { rgb: 'FFFFFF' }, name: 'Calibri' }, alignment: { horizontal: 'left', vertical: 'center', indent: 1 }, border: border('1A0E04', 'thin') },
+    sec:      { fill: { patternType: 'solid', fgColor: { rgb: 'F5EBE5' } }, font: { bold: true, sz: 9, color: { rgb: 'C05A3B' }, name: 'Calibri' }, alignment: { horizontal: 'left', vertical: 'center', indent: 1 }, border: border('EAD8C8', 'thin') },
+    d:   (alt: boolean) => ({ fill: { patternType: 'solid', fgColor: { rgb: alt ? 'FDF9F5' : 'FFFFFF' } }, font: { sz: 10, color: { rgb: '2A1A0E' }, name: 'Calibri' }, border: border(), alignment: { vertical: 'center', wrapText: false } }),
+    dR:  (alt: boolean) => ({ fill: { patternType: 'solid', fgColor: { rgb: alt ? 'FDF9F5' : 'FFFFFF' } }, font: { sz: 10, color: { rgb: '2A1A0E' }, name: 'Calibri' }, border: border(), alignment: { horizontal: 'right', vertical: 'center' }, numFmt: '#,##0' }),
+    tot:      { fill: { patternType: 'solid', fgColor: { rgb: 'EAF3ED' } }, font: { bold: true, sz: 10, color: { rgb: '2A5A40' }, name: 'Calibri' }, border: { ...border('5A8869', 'medium'), top: { style: 'medium', color: { rgb: '5A8869' } } }, alignment: { horizontal: 'left', vertical: 'center', indent: 1 } },
+    totR:     { fill: { patternType: 'solid', fgColor: { rgb: 'EAF3ED' } }, font: { bold: true, sz: 10, color: { rgb: '2A5A40' }, name: 'Calibri' }, border: { ...border('5A8869', 'medium'), top: { style: 'medium', color: { rgb: '5A8869' } } }, alignment: { horizontal: 'right', vertical: 'center' }, numFmt: '#,##0' },
+  }
+
+  // ── Sheet builder helpers ──
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  function applyBrandRows(ws: Record<string, any>, colCount: number) {
+    const merge = (r: number) => ({ s: { r, c: 0 }, e: { r, c: colCount - 1 } })
+    if (!ws['!merges']) ws['!merges'] = []
+    ws['!merges'].push(merge(0), merge(1), merge(2))
+    for (let c = 0; c < colCount; c++) {
+      cell(ws, enc(0, c), S.brand)
+      cell(ws, enc(1, c), S.brandSub)
+      cell(ws, enc(2, c), S.gap)
+    }
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  function applyHeaders(ws: Record<string, any>, row: number, colCount: number, leftCols: number[] = [0]) {
+    for (let c = 0; c < colCount; c++)
+      cell(ws, enc(row, c), leftCols.includes(c) ? S.headL : S.head)
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  function applyDataRows(ws: Record<string, any>, startRow: number, count: number, numCols: number[], colCount: number) {
+    for (let i = 0; i < count; i++) {
+      const r = startRow + i
+      const alt = i % 2 === 1
+      for (let c = 0; c < colCount; c++)
+        cell(ws, enc(r, c), numCols.includes(c) ? S.dR(alt) : S.d(alt))
+    }
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  function applyTotalRow(ws: Record<string, any>, row: number, numCols: number[], colCount: number) {
+    for (let c = 0; c < colCount; c++)
+      cell(ws, enc(row, c), numCols.includes(c) ? S.totR : S.tot)
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  function setRowHeights(ws: Record<string, any>, heights: number[]) {
+    ws['!rows'] = heights.map(hpt => hpt ? { hpt } : null)
+  }
+
+  // ─────────────────────────────────────────────
+  // SHEET 1 — GASTOS
+  // ─────────────────────────────────────────────
+  const sorted = [...gastos].sort((a, b) => b.fecha.localeCompare(a.fecha))
+  const totalG = gastos.reduce((s, g) => s + g.importe, 0)
+  const COLS_G = 7
+
+  const gastosAOA: unknown[][] = [
+    [`🏠 ${salaNombre}`, ...Array(COLS_G - 1).fill('')],
+    [`Exportado el ${fechaExport} · NidoApp`, ...Array(COLS_G - 1).fill('')],
+    Array(COLS_G).fill(''),
+    ['Fecha', 'Descripción', 'Categoría', 'Tipo', 'Pagado por', 'Dividido entre', 'Importe'],
+    ...sorted.map(g => {
+      const sp = g.splits as Record<string, number> | null
+      let dividido: string
+      if (!sp) { dividido = miembros.map(m => m.nombre).join(', ') }
+      else {
+        const keys = Object.keys(sp).filter(k => sp[k] > 0)
+        if (keys.length === 1 && keys[0] === g.pagado_por) { dividido = `${nombrePor(g.pagado_por)} (personal)` }
+        else { dividido = [...new Set([g.pagado_por, ...keys].filter(Boolean) as string[])].map(id => nombrePor(id)).join(', ') }
+      }
+      return [g.fecha, g.descripcion, CAT_LABEL[g.categoria] ?? g.categoria, g.tipo === 'fijo' ? 'Fijo' : 'Variable', nombrePor(g.pagado_por), dividido, g.importe]
+    }),
+    ['Total', ...Array(COLS_G - 2).fill(''), totalG],
+  ]
+
+  const wsG = XLSX.utils.aoa_to_sheet(gastosAOA)
+  wsG['!cols'] = [{ wch: 12 }, { wch: 32 }, { wch: 14 }, { wch: 10 }, { wch: 14 }, { wch: 26 }, { wch: 13 }]
+  applyBrandRows(wsG, COLS_G)
+  applyHeaders(wsG, 3, COLS_G, [0, 1, 4, 5])
+  applyDataRows(wsG, 4, sorted.length, [6], COLS_G)
+  applyTotalRow(wsG, 4 + sorted.length, [6], COLS_G)
+  setRowHeights(wsG, [28, 16, 6, 22, ...Array(sorted.length).fill(18), 20])
+  XLSX.utils.book_append_sheet(XLSX.utils.book_new(), wsG, 'Gastos') // temp, replaced below
+
+  // ─────────────────────────────────────────────
+  // SHEET 2 — LIQUIDACIONES
+  // ─────────────────────────────────────────────
+  const sortedP = [...pagos].sort((a, b) => b.fecha.localeCompare(a.fecha))
+  const totalP = pagos.reduce((s, p) => s + p.importe, 0)
+  const COLS_P = 5
+
+  const pagosAOA: unknown[][] = [
+    [`🏠 ${salaNombre}`, ...Array(COLS_P - 1).fill('')],
+    [`Liquidaciones · ${fechaExport} · NidoApp`, ...Array(COLS_P - 1).fill('')],
+    Array(COLS_P).fill(''),
+    ['Fecha', 'De', 'A', 'Importe', 'Nota'],
+    ...sortedP.map(p => [p.fecha, nombrePor(p.de_id), nombrePor(p.a_id), p.importe, p.nota ?? '']),
+    ['Total', '', '', totalP, ''],
+  ]
+
+  const wsP = XLSX.utils.aoa_to_sheet(pagosAOA)
+  wsP['!cols'] = [{ wch: 12 }, { wch: 16 }, { wch: 16 }, { wch: 13 }, { wch: 30 }]
+  applyBrandRows(wsP, COLS_P)
+  applyHeaders(wsP, 3, COLS_P, [0, 1, 2, 4])
+  applyDataRows(wsP, 4, sortedP.length, [3], COLS_P)
+  applyTotalRow(wsP, 4 + sortedP.length, [3], COLS_P)
+  setRowHeights(wsP, [28, 16, 6, 22, ...Array(sortedP.length).fill(18), 20])
+
+  // ─────────────────────────────────────────────
+  // SHEET 3 — RESUMEN
+  // ─────────────────────────────────────────────
+  // Balance
+  const EPS = 0.5
+  const net: Record<string, number> = {}
+  miembros.forEach(m => { net[m.id] = 0 })
+  gastos.forEach(g => {
+    if (g.tipo === 'fijo' || !g.pagado_por) return
+    if (!g.splits) {
+      const share = g.importe / miembros.length
+      net[g.pagado_por] = (net[g.pagado_por] ?? 0) + g.importe - share
+      miembros.forEach(m => { if (m.id !== g.pagado_por) net[m.id] = (net[m.id] ?? 0) - share })
+    } else {
+      miembros.forEach(m => {
+        if (m.id === g.pagado_por) return
+        const owes = (g.splits as Record<string, number>)[m.id] ?? 0
+        if (owes <= 0) return
+        net[m.id] = (net[m.id] ?? 0) - owes
+        net[g.pagado_por!] = (net[g.pagado_por!] ?? 0) + owes
+      })
+    }
+  })
+  pagos.forEach(p => { net[p.de_id] = (net[p.de_id] ?? 0) + p.importe; net[p.a_id] = (net[p.a_id] ?? 0) - p.importe })
+
+  const porCat = Object.entries(
+    gastos.reduce((acc, g) => { acc[g.categoria] = (acc[g.categoria] ?? 0) + g.importe; return acc }, {} as Record<string, number>)
+  ).sort((a, b) => b[1] - a[1])
+
+  const COLS_R = 3
+  const resumenAOA: unknown[][] = [
+    [`🏠 ${salaNombre}`, '', ''],
+    [`Resumen general · ${fechaExport} · NidoApp`, '', ''],
+    ['', '', ''],
+    // KPIs section
+    ['RESUMEN GENERAL', '', ''],
+    ['Total gastado', '', totalG],
+    ['Promedio por persona', '', miembros.length ? Math.round(totalG / miembros.length) : 0],
+    ['Gastos registrados', '', gastos.length],
+    ['Liquidaciones registradas', '', pagos.length],
+    ['', '', ''],
+    // Balance section
+    ['BALANCE POR MIEMBRO', '', ''],
+    ...miembros.map(m => {
+      const v = net[m.id] ?? 0
+      const estado = Math.abs(v) < EPS ? 'Al día ✅' : v > 0 ? 'Le deben' : 'Debe'
+      return [m.nombre, estado, Math.abs(v) < EPS ? 0 : Math.round(Math.abs(v))]
+    }),
+    ['', '', ''],
+    // Category section
+    ['GASTO POR CATEGORÍA', '', ''],
+    ...porCat.map(([cat, val]) => [CAT_LABEL[cat] ?? cat, `${Math.round((val / totalG) * 100)}%`, Math.round(val)]),
+  ]
+
+  const wsR = XLSX.utils.aoa_to_sheet(resumenAOA)
+  wsR['!cols'] = [{ wch: 26 }, { wch: 18 }, { wch: 14 }]
+  wsR['!merges'] = [
+    { s: { r: 0, c: 0 }, e: { r: 0, c: 2 } },
+    { s: { r: 1, c: 0 }, e: { r: 1, c: 2 } },
+    { s: { r: 2, c: 0 }, e: { r: 2, c: 2 } },
+  ]
+  for (let c = 0; c < COLS_R; c++) {
+    cell(wsR, enc(0, c), S.brand)
+    cell(wsR, enc(1, c), S.brandSub)
+    cell(wsR, enc(2, c), S.gap)
+  }
+  // Section headers + data
+  const applySection = (headerRow: number, dataCount: number, numCol: number) => {
+    for (let c = 0; c < COLS_R; c++) cell(wsR, enc(headerRow, c), S.sec)
+    for (let i = 0; i < dataCount; i++) {
+      const r = headerRow + 1 + i
+      const alt = i % 2 === 1
+      for (let c = 0; c < COLS_R; c++) cell(wsR, enc(r, c), c === numCol ? S.dR(alt) : S.d(alt))
+    }
+  }
+  applySection(3, 4, 2)  // KPIs
+  applySection(9, miembros.length, 2)  // Balance
+  applySection(10 + miembros.length + 1, porCat.length, 2)  // Categorías
+  // Empty separators
+  for (let c = 0; c < COLS_R; c++) {
+    cell(wsR, enc(8, c), S.gap)
+    cell(wsR, enc(10 + miembros.length, c), S.gap)
+  }
+  setRowHeights(wsR, [28, 16, 6])
+
+  // ── Build workbook ──
+  const wb = XLSX.utils.book_new()
+  XLSX.utils.book_append_sheet(wb, wsG, 'Gastos')
+  XLSX.utils.book_append_sheet(wb, wsP, 'Liquidaciones')
+  XLSX.utils.book_append_sheet(wb, wsR, 'Resumen')
+
+  const filename = `nido-${salaNombre.replace(/\s+/g, '-').toLowerCase()}-${new Date().toISOString().slice(0, 10)}.xlsx`
+  XLSX.writeFile(wb, filename)
+}
+
 function isPersonal(g: Gasto): boolean {
-  if (!g.splits) return false
-  const nonZero = Object.values(g.splits as Record<string, number>).filter(v => v > 0)
-  return nonZero.length === 1
+  if (!g.splits || !g.pagado_por) return false
+  const nonZero = Object.entries(g.splits as Record<string, number>).filter(([, v]) => v > 0)
+  // Personal = un solo entry y ese entry ES el mismo que pagó (no otros miembros)
+  return nonZero.length === 1 && nonZero[0][0] === g.pagado_por
 }
 
 function personalOwner(g: Gasto): string | null {
   if (!isPersonal(g)) return null
-  const entry = Object.entries(g.splits as Record<string, number>).find(([, v]) => v > 0)
-  return entry ? entry[0] : null
+  return g.pagado_por
 }
 
 function fmtFecha(iso: string) {
-  const d = new Date(iso + 'T00:00:00')
+  const d = new Date(iso + 'T12:00:00')
   return d.toLocaleDateString('es-UY', { day: 'numeric', month: 'short' })
 }
 
@@ -245,7 +480,7 @@ export default function GastosPage() {
   const miembrosRef = useRef<Miembro[]>([])
   const [pagos, setPagos] = useState<Pago[]>([])
   const [loading, setLoading] = useState(true)
-  const [tab, setTab] = useState<'gastos' | 'balance' | 'historial'>('gastos')
+  const [tab, setTab] = useState<'gastos' | 'balance' | 'historial' | 'stats'>('gastos')
   const [modalOpen, setModalOpen] = useState(false)
   const [guardando, setGuardando] = useState(false)
   const [form, setForm] = useState(FORM_INIT)
@@ -264,7 +499,11 @@ export default function GastosPage() {
   const [editandoMonto, setEditandoMonto] = useState(false)
   const [notaAbierta, setNotaAbierta] = useState(false)
   const [planSala, setPlanSala] = useState<'free' | 'pro'>('free')
+  const [planTier, setPlanTier] = useState<string | null>(null)
   const [historialLimitado, setHistorialLimitado] = useState(false)
+  const [exportando, setExportando] = useState(false)
+  const [masOpciones, setMasOpciones] = useState(false)
+  const [confirmDialog, setConfirmDialog] = useState<{ title?: string; message: string; onConfirm: () => void } | null>(null)
 
   const { addNotif } = useNotif()
 
@@ -281,20 +520,21 @@ export default function GastosPage() {
         const planData = await planRes.json()
         plan = planData.plan ?? 'free'
         setPlanSala(plan)
+        if (planData.tier) setPlanTier(planData.tier)
       }
     } catch { /* si falla, asumimos free */ }
 
-    // En plan Free: solo últimos 3 meses de historial
+    // En plan Free: solo últimos N meses de historial
     let gastosQuery = supabase.from('gastos').select().eq('sala_id', session.salaId).order('fecha', { ascending: false })
     if (plan === 'free') {
-      const hace3Meses = new Date()
-      hace3Meses.setMonth(hace3Meses.getMonth() - 3)
-      gastosQuery = gastosQuery.gte('fecha', hace3Meses.toISOString().slice(0, 10))
+      const fechaLimite = new Date()
+      fechaLimite.setMonth(fechaLimite.getMonth() - FREE_LIMITS.historialMeses)
+      gastosQuery = gastosQuery.gte('fecha', fechaLimite.toISOString().slice(0, 10))
     }
 
     const [{ data: gastosData }, { data: miembrosData }, { data: pagosData }] = await Promise.all([
       gastosQuery,
-      supabase.from('miembros').select().eq('sala_id', session.salaId),
+      supabase.from('miembros').select().eq('sala_id', session.salaId).not('user_id', 'is', null),
       supabase.from('pagos').select().eq('sala_id', session.salaId).order('creado_en', { ascending: false }),
     ])
     if (gastosData) {
@@ -410,6 +650,7 @@ export default function GastosPage() {
     setAutoSplit(true)
     setCustomSplits({})
     setEditandoId(null)
+    setMasOpciones(false)
     setModalOpen(true)
   }
 
@@ -431,6 +672,7 @@ export default function GastosPage() {
     )
     setEditandoId(g.id)
     setFormError('')
+    setMasOpciones(true)
     setModalOpen(true)
   }
 
@@ -490,7 +732,6 @@ export default function GastosPage() {
     setModalOpen(false)
     setGuardando(false)
     setEditandoId(null)
-    cargarDatos()
   }
 
   async function handleLiquidar() {
@@ -527,7 +768,6 @@ export default function GastosPage() {
           url: `/sala/${session!.salaCodigo}/gastos`,
         })
       }
-      await cargarDatos()
     }
     setLiquidando(null)
     setModalLiquidar(null)
@@ -535,18 +775,23 @@ export default function GastosPage() {
 
   async function handleEliminarPago(id: string) {
     await createClient().from('pagos').delete().eq('id', id)
-    await cargarDatos()
   }
 
-  async function handleEliminar(id: string) {
-    if (!confirm('¿Eliminar este gasto? También se borrarán los pagos registrados de la sala para mantener el balance consistente.')) return
-    setBorrando(id)
-    setGastos(prev => prev.filter(g => g.id !== id))
-    const supabase = createClient()
-    await supabase.from('pagos').delete().eq('sala_id', session!.salaId)
-    setPagos([])
-    await supabase.from('gastos').delete().eq('id', id)
-    setBorrando(null)
+  function handleEliminar(id: string) {
+    setConfirmDialog({
+      title: 'Eliminar gasto',
+      message: 'Esta acción no se puede deshacer. El gasto y sus deudas asociadas serán eliminados.',
+      onConfirm: async () => {
+        setConfirmDialog(null)
+        setBorrando(id)
+        const supabase = createClient()
+        const { error } = await supabase.from('gastos').delete().eq('id', id)
+        if (!error) {
+          setGastos(prev => prev.filter(g => g.id !== id))
+        }
+        setBorrando(null)
+      },
+    })
   }
 
   if (!session) return null
@@ -582,6 +827,66 @@ export default function GastosPage() {
           position: relative; z-index: 1;
           max-width: 760px; margin: 0 auto; padding: 0 1.5rem 5rem;
         }
+        @media (min-width: 1024px) {
+          .g-wrap { max-width: none; padding: 0 2.5rem 5rem; }
+          .g-stats { margin-bottom: 1.75rem; }
+          .g-desktop-cols { display: grid; grid-template-columns: minmax(0,1fr) 320px; gap: 2rem; align-items: start; }
+          .g-balance-panel { display: block !important; }
+          .g-tab-balance { display: none !important; }
+          .g-tabs-row { flex-direction: row; align-items: center; margin-bottom: 1.25rem; }
+          .g-tabs-row .g-tabs { margin-bottom: 0; }
+        }
+        @media (min-width: 1280px) {
+          .g-wrap { padding: 0 3rem 5rem; }
+          .g-desktop-cols { grid-template-columns: minmax(0,1fr) 360px; gap: 2.5rem; }
+        }
+        @media (min-width: 1536px) {
+          .g-wrap { padding: 0 4rem 5rem; max-width: 1560px; }
+          .g-desktop-cols { grid-template-columns: minmax(0,1fr) 400px; gap: 3rem; }
+          .g-stat { padding: 1rem 1.25rem; }
+          .g-stat-val { font-size: 1.5rem; }
+          .g-balance-panel-body { padding: 1.1rem 1.4rem; }
+        }
+        .g-balance-panel {
+          display: none;
+          position: sticky; top: 1.5rem;
+          background: white; border: 1.5px solid #EAD8C8; border-radius: 20px;
+          overflow: hidden; box-shadow: 0 2px 12px rgba(150,80,40,0.06);
+        }
+        .g-balance-panel-header {
+          padding: 1rem 1.25rem 0.75rem;
+          border-bottom: 1px solid #EAD8C8;
+          display: flex; align-items: center; justify-content: space-between;
+        }
+        .g-balance-panel-title {
+          font-size: 0.68rem; font-weight: 800; text-transform: uppercase;
+          letter-spacing: 0.1em; color: #B09080;
+        }
+        .g-balance-panel-body { padding: 0.875rem 1.1rem; display: flex; flex-direction: column; gap: 0.75rem; }
+        .g-bp-net {
+          border-radius: 14px; padding: 1rem 1.1rem;
+          display: flex; align-items: center; justify-content: space-between;
+        }
+        .g-bp-net-val { font-family: var(--font-code), monospace; font-size: 1.5rem; font-weight: 700; letter-spacing: -0.02em; }
+        .g-bp-net-label { font-size: 0.68rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em; margin-bottom: 3px; }
+        .g-bp-chips { display: flex; flex-direction: column; gap: 6px; }
+        .g-bp-chip {
+          display: flex; align-items: center; gap: 8px;
+          padding: 7px 10px; border-radius: 10px;
+          background: #FAF5EE; border: 1px solid #EAD8C8;
+        }
+        .g-bp-chip-av { width: 26px; height: 26px; border-radius: 50%; flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-size: 0.65rem; font-weight: 700; color: white; }
+        .g-bp-chip-name { font-size: 0.8rem; font-weight: 600; color: #2A1A0E; flex: 1; }
+        .g-bp-chip-val { font-family: var(--font-code), monospace; font-size: 0.82rem; font-weight: 600; }
+        .g-bp-debts { display: flex; flex-direction: column; gap: 6px; }
+        .g-bp-debt {
+          display: flex; align-items: center; gap: 8px;
+          padding: 8px 10px; border-radius: 12px;
+          background: #FAF5EE; border: 1px solid #EAD8C8; font-size: 0.8rem;
+        }
+        .g-bp-debt-text { flex: 1; color: #6B4030; font-size: 0.78rem; line-height: 1.35; }
+        .g-bp-debt-text strong { color: #2A1A0E; }
+        .g-bp-debt-amount { font-family: var(--font-code), monospace; font-size: 0.88rem; font-weight: 600; color: #C05A3B; flex-shrink: 0; }
 
         /* ── Header ── */
         .g-header {
@@ -646,13 +951,27 @@ export default function GastosPage() {
         .g-stat-val { font-family: var(--font-serif), serif; font-size: 1.5rem; color: #2A1A0E; letter-spacing: -0.03em; line-height: 1.2; font-weight: 600; }
         .g-stat-label { font-size: 0.7rem; color: #B09080; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; }
 
+        /* ── Tabs row (tabs + export btn) ── */
+        .g-tabs-row {
+          display: flex; flex-direction: column; gap: 8px;
+          margin-bottom: 1.25rem;
+          animation: g-fadeup 0.5s 0.15s cubic-bezier(0.22, 1, 0.36, 1) both;
+        }
+        .g-export-btn {
+          display: flex; align-items: center; gap: 5px;
+          padding: 6px 13px;
+          background: rgba(90,136,105,0.1); border: 1.5px solid rgba(90,136,105,0.3);
+          border-radius: 9px; font-size: 0.75rem; font-weight: 700; color: #5A8869;
+          cursor: pointer; font-family: var(--font-body),'Nunito',sans-serif;
+          transition: background 0.18s; white-space: nowrap; align-self: flex-start;
+        }
+        .g-export-btn:hover:not(:disabled) { background: rgba(90,136,105,0.18); }
+        .g-export-btn:disabled { opacity: 0.45; cursor: not-allowed; }
         /* ── Tabs ── */
         .g-tabs {
           display: flex; gap: 4px;
           background: white; border: 1.5px solid #EAD8C8;
           border-radius: 14px; padding: 4px;
-          margin-bottom: 1.5rem;
-          animation: g-fadeup 0.5s 0.15s cubic-bezier(0.22, 1, 0.36, 1) both;
           width: fit-content;
           box-shadow: 0 2px 8px rgba(150,80,40,0.06);
         }
@@ -1029,8 +1348,10 @@ export default function GastosPage() {
           .g-stat { padding: 0.8rem 1rem; }
           .g-stat-val { font-size: 1.25rem; }
           /* Tabs */
+          .g-tabs-row { gap: 6px; }
           .g-tabs { width: 100%; }
           .g-tab { flex: 1; padding: 7px 10px; }
+          .g-export-btn { align-self: stretch; justify-content: center; }
           /* Gasto items: 2 filas */
           .g-item { flex-wrap: wrap; row-gap: 6px; padding: 0.85rem 0.9rem; gap: 0 0.65rem; }
           .g-cat-badge { align-self: flex-start; margin-top: 3px; }
@@ -1099,7 +1420,7 @@ export default function GastosPage() {
             </div>
           </div>
 
-          {/* ── STATS ── */}
+          {/* ── STATS (full-width on desktop) ── */}
           {!loading && (
             <div className="g-stats">
               <div className="g-stat">
@@ -1121,7 +1442,7 @@ export default function GastosPage() {
             </div>
           )}
 
-          {/* ── LOADING SKELETONS ── */}
+          {/* ── LOADING SKELETONS STATS ── */}
           {loading && (
             <div className="g-stats">
               {[1, 2, 3].map(i => (
@@ -1133,18 +1454,44 @@ export default function GastosPage() {
             </div>
           )}
 
+          <div className="g-desktop-cols">
+          <div>{/* main col */}
           {/* ── TABS ── */}
-          <div className="g-tabs">
-            <button className={`g-tab${tab === 'gastos' ? ' active' : ''}`} onClick={() => setTab('gastos')}>Gastos</button>
-            <button className={`g-tab${tab === 'balance' ? ' active' : ''}`} onClick={() => setTab('balance')}>Balance</button>
-            <button className={`g-tab${tab === 'historial' ? ' active' : ''}`} onClick={() => setTab('historial')}>
-              Historial
-              {pagos.length > 0 && tab !== 'historial' && (
-                <span style={{ marginLeft: 5, background: 'rgba(192,90,59,0.15)', color: '#C05A3B', borderRadius: 999, fontSize: '0.65rem', fontWeight: 700, padding: '1px 6px' }}>
-                  {pagos.length}
-                </span>
+          <div className="g-tabs-row">
+            <div className="g-tabs">
+              <button className={`g-tab${tab === 'gastos' ? ' active' : ''}`} onClick={() => setTab('gastos')}>Gastos</button>
+              <button className={`g-tab g-tab-balance${tab === 'balance' ? ' active' : ''}`} onClick={() => setTab('balance')}>Balance</button>
+              <button className={`g-tab${tab === 'historial' ? ' active' : ''}`} onClick={() => setTab('historial')}>
+                Historial
+                {pagos.length > 0 && tab !== 'historial' && (
+                  <span style={{ marginLeft: 5, background: 'rgba(192,90,59,0.15)', color: '#C05A3B', borderRadius: 999, fontSize: '0.65rem', fontWeight: 700, padding: '1px 6px' }}>
+                    {pagos.length}
+                  </span>
+                )}
+              </button>
+              {planSala === 'pro' && planTier === 'casa' && (
+                <button className={`g-tab${tab === 'stats' ? ' active' : ''}`} onClick={() => setTab('stats')}>
+                  Estadísticas ✦
+                </button>
               )}
-            </button>
+            </div>
+            {planSala === 'pro' && planTier === 'casa' && (
+              <button
+                className="g-export-btn"
+                onClick={() => {
+                  if (exportando) return
+                  setExportando(true)
+                  exportarExcel(gastos, pagos, miembros, session?.salaNombre ?? 'nido')
+                    .finally(() => setExportando(false))
+                }}
+                disabled={loading || gastos.length === 0 || exportando}
+              >
+                {exportando
+                  ? <><span style={{ width: 10, height: 10, borderRadius: '50%', border: '1.5px solid currentColor', borderTopColor: 'transparent', display: 'inline-block', animation: 'g-spin 0.7s linear infinite' }} />Generando...</>
+                  : <><svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M6 1v7M3 5.5L6 8.5 9 5.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/><path d="M1 10h10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>Exportar Excel</>
+                }
+              </button>
+            )}
           </div>
 
           {/* ── BANNER: Historial limitado (plan Free) ── */}
@@ -1158,25 +1505,24 @@ export default function GastosPage() {
             }}>
               <div>
                 <div style={{ fontSize: '0.82rem', fontWeight: 700, color: '#2A1A0E', marginBottom: 2 }}>
-                  📅 Historial de los últimos 3 meses
+                  📅 Historial de los últimos {FREE_LIMITS.historialMeses} meses
                 </div>
                 <div style={{ fontSize: '0.75rem', color: '#8A5A40', lineHeight: 1.4 }}>
                   Con Nido Pro accedés a todo el historial sin límite.
                 </div>
               </div>
-              <a
-                href={`/sala/${codigo}?upgrade=1`}
+              <button
+                onClick={() => router.push(`/sala/${codigo}`)}
                 style={{
                   flexShrink: 0, padding: '6px 14px',
                   background: '#C05A3B', color: 'white',
                   border: 'none', borderRadius: 10,
                   fontSize: '0.75rem', fontWeight: 700,
-                  textDecoration: 'none', cursor: 'pointer',
-                  whiteSpace: 'nowrap',
+                  cursor: 'pointer', whiteSpace: 'nowrap',
                 }}
               >
-                Ver Pro →
-              </a>
+                Ver planes →
+              </button>
             </div>
           )}
 
@@ -1416,6 +1762,99 @@ export default function GastosPage() {
             </>
           )}
 
+          {/* ── TAB: ESTADÍSTICAS (Casa) ── */}
+          {tab === 'stats' && (() => {
+            if (loading) return <div style={{ display:'flex', justifyContent:'center', padding:'2rem' }}><div style={{ width:28, height:28, borderRadius:'50%', border:'2.5px solid #C05A3B', borderTopColor:'transparent', animation:'g-spin 0.8s linear infinite' }}/></div>
+            if (gastos.length === 0) return (
+              <div className="g-empty"><div className="g-empty-icon">📊</div><div className="g-empty-title">Sin datos aún</div><p className="g-empty-sub">Registrá gastos para ver estadísticas.</p></div>
+            )
+
+            // ── Cálculos ──
+            const totalGastado = gastos.reduce((s, g) => s + g.importe, 0)
+
+            // Gasto por categoría
+            const porCategoria: Record<string, number> = {}
+            gastos.forEach(g => { if (g.categoria) { porCategoria[g.categoria] = (porCategoria[g.categoria] ?? 0) + g.importe } })
+            const categoriasOrdenadas = Object.entries(porCategoria).sort((a, b) => b[1] - a[1])
+
+            // Gasto por mes
+            const porMes: Record<string, number> = {}
+            gastos.forEach(g => {
+              const mes = g.fecha?.slice(0, 7) ?? ''
+              if (mes) porMes[mes] = (porMes[mes] ?? 0) + g.importe
+            })
+            const mesesOrdenados = Object.entries(porMes).sort((a, b) => b[0].localeCompare(a[0])).slice(0, 6)
+            const maxMes = Math.max(...mesesOrdenados.map(([, v]) => v), 1)
+            const mesNombres: Record<string, string> = { '01':'Ene','02':'Feb','03':'Mar','04':'Abr','05':'May','06':'Jun','07':'Jul','08':'Ago','09':'Sep','10':'Oct','11':'Nov','12':'Dic' }
+
+            const promPorPersona = miembros.length > 0 ? totalGastado / miembros.length : 0
+
+            return (
+              <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
+                {/* KPIs */}
+                <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:10 }}>
+                  {[
+                    { label:'Total gastado', value: fmtUYU(totalGastado), icon:'💸' },
+                    { label:'Promedio por persona', value: fmtUYU(promPorPersona), icon:'👤' },
+                    { label:'Gastos registrados', value: `${gastos.length}`, icon:'📋' },
+                  ].map((kpi, i) => (
+                    <div key={i} style={{ background:'white', border:'1.5px solid #EAD8C8', borderRadius:16, padding:'1rem 1.1rem' }}>
+                      <div style={{ fontSize:'1.2rem', marginBottom:4 }}>{kpi.icon}</div>
+                      <div style={{ fontSize:'0.68rem', color:'#B09080', fontWeight:700, textTransform:'uppercase', letterSpacing:'0.08em', marginBottom:3 }}>{kpi.label}</div>
+                      <div style={{ fontSize:'1.05rem', fontWeight:800, color:'#2A1A0E', fontFamily:'var(--font-serif),Georgia,serif' }}>{kpi.value}</div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Gasto por mes */}
+                {mesesOrdenados.length > 0 && (
+                  <div style={{ background:'white', border:'1.5px solid #EAD8C8', borderRadius:16, padding:'1rem 1.1rem' }}>
+                    <div style={{ fontSize:'0.7rem', color:'#B09080', fontWeight:700, textTransform:'uppercase', letterSpacing:'0.08em', marginBottom:12 }}>Gasto mensual</div>
+                    <div style={{ display:'flex', alignItems:'flex-end', gap:6, height:80 }}>
+                      {mesesOrdenados.slice().reverse().map(([mes, val]) => {
+                        const [y, m] = mes.split('-')
+                        const pct = (val / maxMes) * 100
+                        return (
+                          <div key={mes} style={{ flex:1, display:'flex', flexDirection:'column', alignItems:'center', gap:4 }}>
+                            <div style={{ fontSize:'0.6rem', color:'#B09080', fontWeight:600 }}>{fmtUYU(val).replace('$','')}</div>
+                            <div style={{ width:'100%', background:'rgba(192,90,59,0.12)', borderRadius:6, height:56, display:'flex', alignItems:'flex-end' }}>
+                              <div style={{ width:'100%', background:'#C05A3B', borderRadius:6, height:`${pct}%`, minHeight:4, transition:'height 0.3s' }}/>
+                            </div>
+                            <div style={{ fontSize:'0.6rem', color:'#A07060', fontWeight:600 }}>{mesNombres[m]} {y?.slice(2)}</div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* Top categorías */}
+                {categoriasOrdenadas.length > 0 && (
+                  <div style={{ background:'white', border:'1.5px solid #EAD8C8', borderRadius:16, padding:'1rem 1.1rem' }}>
+                    <div style={{ fontSize:'0.7rem', color:'#B09080', fontWeight:700, textTransform:'uppercase', letterSpacing:'0.08em', marginBottom:10 }}>Por categoría</div>
+                    <div style={{ display:'flex', flexDirection:'column', gap:7 }}>
+                      {categoriasOrdenadas.slice(0, 5).map(([cat, val]) => {
+                        const pct = (val / totalGastado) * 100
+                        return (
+                          <div key={cat}>
+                            <div style={{ display:'flex', justifyContent:'space-between', fontSize:'0.78rem', marginBottom:3 }}>
+                              <span style={{ color:'#2A1A0E', fontWeight:600, textTransform:'capitalize' }}>{cat}</span>
+                              <span style={{ color:'#8A6050', fontFamily:'var(--font-code),monospace' }}>{fmtUYU(val)} · {pct.toFixed(0)}%</span>
+                            </div>
+                            <div style={{ height:5, background:'#F0E8DF', borderRadius:4, overflow:'hidden' }}>
+                              <div style={{ height:'100%', background:'#C05A3B', width:`${pct}%`, borderRadius:4, transition:'width 0.3s' }}/>
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )}
+
+              </div>
+            )
+          })()}
+
           {/* ── TAB: BALANCE ── */}
           {tab === 'balance' && (
             <>
@@ -1457,32 +1896,6 @@ export default function GastosPage() {
                 )
               })()}
 
-              {/* ── Mini resumen por miembro ── */}
-              {!loading && miembros.length > 1 && (
-                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: '1rem' }}>
-                  {miembros.filter(m => m.id !== miId).map(m => {
-                    const val = balanceNet[m.id] ?? 0
-                    const alDia = Math.abs(val) < EPS
-                    return (
-                      <div key={m.id} style={{
-                        display: 'flex', alignItems: 'center', gap: 7,
-                        background: 'white', border: '1.5px solid #EAD8C8',
-                        borderRadius: 12, padding: '7px 12px', fontSize: '0.8rem',
-                      }}>
-                        <div style={{ width: 24, height: 24, borderRadius: '50%', background: m.color, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: '0.65rem', fontWeight: 700, flexShrink: 0 }}>
-                          {m.nombre[0].toUpperCase()}
-                        </div>
-                        <div>
-                          <div style={{ fontWeight: 600, color: '#2A1A0E', fontSize: '0.78rem' }}>{m.nombre}</div>
-                          <div style={{ fontSize: '0.7rem', color: alDia ? '#2E7D52' : val > 0 ? '#1E6BA8' : '#C05A3B', fontWeight: 600 }}>
-                            {alDia ? 'al día' : val > 0 ? `+${fmtUYU(Math.round(val))}` : fmtUYU(Math.round(val))}
-                          </div>
-                        </div>
-                      </div>
-                    )
-                  })}
-                </div>
-              )}
 
               {loading && (
                 <div className="g-balance-list">
@@ -1509,7 +1922,7 @@ export default function GastosPage() {
                 </div>
               )}
 
-              {!loading && debts.length > 0 && (
+              {!loading && debts.filter(d => d.from === miId || d.to === miId).length > 0 && (
                 <div className="g-balance-list">
                   {debts.filter(d => d.from === miId || d.to === miId).map((d, idx) => {
                     const fromM = miembros.find(m => m.id === d.from)
@@ -1535,7 +1948,9 @@ export default function GastosPage() {
                           </div>
                           <div className="g-debt-body">
                             <div className="g-debt-text">
-                              <strong>{fromM.nombre}</strong> le debe a <strong>{toM.nombre}</strong>
+                              {d.from === miId
+                                ? <>Le debés a <strong>{toM.nombre}</strong></>
+                                : <><strong>{fromM.nombre}</strong> te debe</>}
                             </div>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 2 }}>
                               <div className="g-debt-amount">{fmtUYU(d.amount)}</div>
@@ -1636,36 +2051,12 @@ export default function GastosPage() {
                     )
                   })}
 
-                  {/* Per-person summary */}
-                  {miembros.length > 0 && (
-                    <div style={{ marginTop: 12, background: 'white', border: '1.5px solid #EAD8C8', borderRadius: 16, padding: '1rem 1.25rem', boxShadow: '0 2px 8px rgba(150,80,40,0.06)' }}>
-                      <div style={{ fontSize: '0.68rem', fontWeight: 700, color: '#B09080', textTransform: 'uppercase', letterSpacing: '0.09em', marginBottom: 10 }}>
-                        Resumen por persona
-                      </div>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                        {miembros.map(m => {
-                          const balance = balanceNet[m.id] ?? 0
-                          return (
-                            <div key={m.id} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                              <div className="g-debt-av" style={{ background: m.color, width: 28, height: 28, fontSize: '0.65rem' }}>
-                                {m.nombre[0].toUpperCase()}
-                              </div>
-                              <span style={{ fontSize: '0.84rem', color: '#6B4030', flex: 1, fontWeight: 500 }}>{m.nombre}</span>
-                              <span style={{ fontFamily: 'var(--font-code), monospace', fontSize: '0.88rem', fontWeight: 500, color: balance >= 0 ? '#2E7D52' : '#C04040' }}>
-                                {balance >= 0 ? '+' : ''}{fmtUYU(Math.round(balance))}
-                              </span>
-                            </div>
-                          )
-                        })}
-                      </div>
-                    </div>
-                  )}
 
                   {/* Historial de pagos */}
                   {pagos.length > 0 && (
                     <div className="g-pagos-hist">
                       <div className="g-pagos-label">Pagos registrados</div>
-                      {pagos.map(p => {
+                      {pagos.filter(p => p.de_id === miId || p.a_id === miId).map(p => {
                         const deM = miembros.find(m => m.id === p.de_id)
                         const aM  = miembros.find(m => m.id === p.a_id)
                         if (!deM || !aM) return null
@@ -1728,6 +2119,103 @@ export default function GastosPage() {
               )}
             </>
           )}
+
+          </div>{/* end main col */}
+
+          {/* ── BALANCE SIDEBAR (desktop only) ── */}
+          <aside className="g-balance-panel">
+            <div className="g-balance-panel-header">
+              <span className="g-balance-panel-title">Balance</span>
+              {!loading && debts.length === 0 && (
+                <span style={{ fontSize: '0.72rem', color: '#2E7D52', fontWeight: 700 }}>✓ Todo ok</span>
+              )}
+            </div>
+            <div className="g-balance-panel-body">
+              {loading && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {[1, 2, 3].map(i => <div key={i} className="g-skeleton" style={{ height: 38, borderRadius: 10 }}/>)}
+                </div>
+              )}
+
+              {!loading && (() => {
+                const miNet = balanceNet[miId] ?? 0
+                const alDia = Math.abs(miNet) < EPS
+                const meDeban = miNet > EPS
+                return (
+                  <div className="g-bp-net" style={{
+                    background: alDia ? 'linear-gradient(135deg,#edfbf3,#d6f5e5)' : meDeban ? 'linear-gradient(135deg,#edf6ff,#d6eaff)' : 'linear-gradient(135deg,#fff4f0,#ffe0d6)',
+                    border: `1.5px solid ${alDia ? 'rgba(46,125,82,0.2)' : meDeban ? 'rgba(30,107,168,0.2)' : 'rgba(192,90,59,0.2)'}`,
+                  }}>
+                    <div>
+                      <div className="g-bp-net-label" style={{ color: alDia ? '#2E7D52' : meDeban ? '#1E6BA8' : '#C05A3B' }}>
+                        {alDia ? 'Al día' : meDeban ? 'Te deben' : 'Debés'}
+                      </div>
+                      <div className="g-bp-net-val" style={{ color: alDia ? '#2E7D52' : meDeban ? '#1E6BA8' : '#C05A3B' }}>
+                        {alDia ? '✓' : fmtUYU(Math.round(Math.abs(miNet)))}
+                      </div>
+                    </div>
+                    <span style={{ fontSize: '1.5rem' }}>{alDia ? '🎉' : meDeban ? '🤑' : '😬'}</span>
+                  </div>
+                )
+              })()}
+
+              {!loading && debts.filter(d => d.from === miId || d.to === miId).length > 0 && (
+                <div className="g-bp-chips">
+                  {debts.filter(d => d.from === miId || d.to === miId).map((d, i) => {
+                    const otherId = d.from === miId ? d.to : d.from
+                    const other = miembros.find(m => m.id === otherId)
+                    if (!other) return null
+                    const iOwe = d.from === miId
+                    return (
+                      <div key={i} className="g-bp-chip">
+                        <div className="g-bp-chip-av" style={{ background: other.color }}>{other.nombre[0].toUpperCase()}</div>
+                        <span className="g-bp-chip-name">{iOwe ? `A ${other.nombre}` : `De ${other.nombre}`}</span>
+                        <span className="g-bp-chip-val" style={{ color: iOwe ? '#C05A3B' : '#1E6BA8' }}>
+                          {iOwe ? `−${fmtUYU(Math.round(d.amount))}` : `+${fmtUYU(Math.round(d.amount))}`}
+                        </span>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+
+              {!loading && debts.filter(d => d.from === miId || d.to === miId).length > 0 && (
+                <div>
+                  <div style={{ fontSize: '0.66rem', fontWeight: 700, color: '#B09080', textTransform: 'uppercase', letterSpacing: '0.09em', marginBottom: 6 }}>Mis deudas</div>
+                  <div className="g-bp-debts">
+                    {debts.filter(d => d.from === miId || d.to === miId).map((d, i) => {
+                      const fromM = miembros.find(m => m.id === d.from)
+                      const toM   = miembros.find(m => m.id === d.to)
+                      if (!fromM || !toM) return null
+                      return (
+                        <div key={i} className="g-bp-debt">
+                          <div style={{ display: 'flex', gap: 4, flexShrink: 0, alignItems: 'center' }}>
+                            <div className="g-debt-av" style={{ background: fromM.color, width: 22, height: 22, fontSize: '0.58rem' }}>{fromM.nombre[0].toUpperCase()}</div>
+                            <span style={{ color: '#C0A898', fontSize: '0.75rem' }}>→</span>
+                            <div className="g-debt-av" style={{ background: toM.color, width: 22, height: 22, fontSize: '0.58rem' }}>{toM.nombre[0].toUpperCase()}</div>
+                          </div>
+                          <div className="g-bp-debt-text">
+                            {d.from === miId
+                              ? <>Debés a <strong>{toM.nombre}</strong></>
+                              : <><strong>{fromM.nombre}</strong> te debe</>}
+                          </div>
+                          <div className="g-bp-debt-amount">{fmtUYU(Math.round(d.amount))}</div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {!loading && debts.length === 0 && miembros.length <= 1 && (
+                <div style={{ textAlign: 'center', padding: '0.75rem 0', color: '#B09080', fontSize: '0.8rem' }}>
+                  Sin compañeros aún
+                </div>
+              )}
+            </div>
+          </aside>
+
+          </div>{/* end g-desktop-cols */}
 
         </div>
       </div>
@@ -1851,6 +2339,14 @@ export default function GastosPage() {
       })()}
 
       {/* ── MODAL: AÑADIR GASTO ── */}
+      <ConfirmModal
+        open={!!confirmDialog}
+        title={confirmDialog?.title}
+        message={confirmDialog?.message ?? ''}
+        onConfirm={() => confirmDialog?.onConfirm()}
+        onCancel={() => setConfirmDialog(null)}
+      />
+
       {modalOpen && (
         <div className="g-overlay" onClick={e => e.target === e.currentTarget && setModalOpen(false)}>
           <div className="g-modal">
@@ -1939,18 +2435,13 @@ export default function GastosPage() {
                           required
                         />
                         {importeNum > 0 && (
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 10 }}>
-                            {miembros.map(m => (
-                              <div key={m.id} className="g-split-row">
-                                <div className="g-split-av" style={{ background: m.color }}>
-                                  {m.nombre[0].toUpperCase()}
-                                </div>
-                                <span className="g-split-name">{m.nombre}</span>
-                                <span style={{ fontFamily: 'var(--font-code), monospace', fontSize: '0.9rem', fontWeight: 500, color: '#C05A3B' }}>
-                                  {fmtUYU(Math.round(importeNum / miembros.length))}
-                                </span>
-                              </div>
-                            ))}
+                          <div style={{ marginTop: 8, padding: '6px 10px', background: 'rgba(192,90,59,0.06)', borderRadius: 8, border: '1px solid rgba(192,90,59,0.15)', display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <span style={{ fontSize: '0.75rem', color: '#A07060', fontFamily: 'var(--font-body), Nunito, sans-serif' }}>
+                              {miembros.length} personas →
+                            </span>
+                            <span style={{ fontFamily: 'var(--font-code), monospace', fontSize: '0.88rem', fontWeight: 700, color: '#C05A3B' }}>
+                              {fmtUYU(Math.round(importeNum / miembros.length))} c/u
+                            </span>
                           </div>
                         )}
                       </div>
@@ -2031,6 +2522,25 @@ export default function GastosPage() {
                   </>
                 )
               })()}
+
+              {/* Más opciones toggle */}
+              <button
+                type="button"
+                onClick={() => setMasOpciones(v => !v)}
+                style={{
+                  width: '100%', padding: '8px 12px', borderRadius: 10,
+                  border: '1.5px dashed #E0C8B8', background: 'transparent',
+                  color: '#A07060', cursor: 'pointer', fontSize: '0.78rem', fontWeight: 600,
+                  fontFamily: 'var(--font-body), Nunito, sans-serif',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                  marginBottom: '0.75rem', transition: 'all 0.18s',
+                }}
+              >
+                <span style={{ fontSize: '0.7rem', transition: 'transform 0.2s', display: 'inline-block', transform: masOpciones ? 'rotate(180deg)' : 'rotate(0deg)' }}>▼</span>
+                {masOpciones ? 'Menos opciones' : 'Más opciones (tipo, categoría, fecha)'}
+              </button>
+
+              {masOpciones && <>
 
               {/* Tipo */}
               <div className="g-field">
@@ -2137,6 +2647,8 @@ export default function GastosPage() {
                   onChange={v => setForm(f => ({ ...f, fecha: v }))}
                 />
               </div>
+
+              </>}
 
               {formError && (
                 <div className="g-error">

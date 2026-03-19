@@ -7,6 +7,7 @@ import { createClient } from '@/lib/supabase'
 import { getSession } from '@/lib/session'
 import type { ItemCompra, Miembro } from '@/lib/types'
 import { notificarSala } from '@/lib/push'
+import { ConfirmModal } from '@/components/ConfirmModal'
 
 const fraunces = Fraunces({
   weight: 'variable',
@@ -39,6 +40,7 @@ export default function ComprasPage() {
   const [borrando, setBorrando] = useState<string | null>(null)
   const [pendientesPag, setPendientesPag] = useState(25)
   const [completadosPag, setCompletadosPag] = useState(10)
+  const [confirmDialog, setConfirmDialog] = useState<{ title?: string; message: string; onConfirm: () => void } | null>(null)
 
   const cargarDatos = useCallback(async () => {
     if (!session) return
@@ -46,7 +48,7 @@ export default function ComprasPage() {
     setLoading(true)
     const [{ data: itemsData }, { data: miembrosData }] = await Promise.all([
       supabase.from('items_compra').select().eq('sala_id', session.salaId).order('creado_en', { ascending: true }),
-      supabase.from('miembros').select().eq('sala_id', session.salaId),
+      supabase.from('miembros').select().eq('sala_id', session.salaId).not('user_id', 'is', null),
     ])
     if (itemsData) setItems(itemsData as ItemCompra[])
     if (miembrosData) setMiembros(miembrosData as Miembro[])
@@ -121,18 +123,26 @@ export default function ComprasPage() {
 
   async function handleEliminar(id: string) {
     setBorrando(id)
-    setItems(prev => prev.filter(i => i.id !== id))
     const supabase = createClient()
-    await supabase.from('items_compra').delete().eq('id', id)
+    const { error } = await supabase.from('items_compra').delete().eq('id', id)
+    if (error) {
+      setFormError('Error al eliminar el ítem')
+    }
     setBorrando(null)
   }
 
-  async function handleLimpiarCompletados() {
+  function handleLimpiarCompletados() {
     const ids = items.filter(i => i.completado).map(i => i.id)
     if (ids.length === 0) return
-    setItems(prev => prev.filter(i => !i.completado))
-    const supabase = createClient()
-    await supabase.from('items_compra').delete().in('id', ids)
+    setConfirmDialog({
+      title: 'Limpiar completados',
+      message: `Se eliminarán ${ids.length} ítem${ids.length !== 1 ? 's' : ''} completado${ids.length !== 1 ? 's' : ''}. Esta acción no se puede deshacer.`,
+      onConfirm: async () => {
+        setConfirmDialog(null)
+        const supabase = createClient()
+        await supabase.from('items_compra').delete().in('id', ids)
+      },
+    })
   }
 
   if (!session) return null
@@ -182,6 +192,18 @@ export default function ComprasPage() {
         .c-wrap {
           position: relative; z-index: 1;
           max-width: 760px; margin: 0 auto; padding: 0 1.5rem 5rem;
+        }
+        @media (min-width: 1024px) {
+          .c-wrap { max-width: none; padding: 0 2.5rem 5rem; }
+          .c-desktop-cols { display: grid; grid-template-columns: minmax(0,1fr) 340px; gap: 2rem; align-items: start; }
+        }
+        @media (min-width: 1280px) {
+          .c-wrap { max-width: 1380px; margin: 0 auto; padding: 0 3rem 5rem; }
+          .c-desktop-cols { grid-template-columns: minmax(0,1fr) 380px; gap: 2.5rem; }
+        }
+        @media (min-width: 1536px) {
+          .c-wrap { max-width: 1560px; padding: 0 4rem 5rem; }
+          .c-desktop-cols { grid-template-columns: minmax(0,1fr) 420px; gap: 3rem; }
         }
 
         /* ── Header ── */
@@ -551,6 +573,7 @@ export default function ComprasPage() {
             </div>
           )}
 
+          <div className="c-desktop-cols">
           {/* ── PENDIENTES ── */}
           {!loading && pendientes.length > 0 && (
             <>
@@ -697,6 +720,7 @@ export default function ComprasPage() {
               )}
             </>
           )}
+          </div>{/* end c-desktop-cols */}
 
         </div>
       </div>
@@ -768,6 +792,14 @@ export default function ComprasPage() {
           </div>
         </div>
       )}
+
+      <ConfirmModal
+        open={!!confirmDialog}
+        title={confirmDialog?.title}
+        message={confirmDialog?.message ?? ''}
+        onConfirm={() => confirmDialog?.onConfirm()}
+        onCancel={() => setConfirmDialog(null)}
+      />
     </div>
   )
 }

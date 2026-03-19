@@ -509,7 +509,7 @@ export default function Home() {
 
           <div className="l-brand">
             <div className="l-brand-icon">
-              <img src="/nido-icon.png" alt="Nido" width={30} height={30} style={{ display:'block', width:'100%', height:'100%', objectFit:'cover' }}/>
+              <img src="/nido-icon-192.png" alt="Nido" width={30} height={30} style={{ display:'block', width:'100%', height:'100%', objectFit:'contain' }}/>
             </div>
             <span className="l-brand-name">Nido</span>
           </div>

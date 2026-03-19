@@ -7,7 +7,7 @@ import type { Database } from '@/lib/types'
  */
 export function createAdminClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL!
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY!
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY
 
   if (!key) throw new Error('SUPABASE_SERVICE_ROLE_KEY no configurada')
 

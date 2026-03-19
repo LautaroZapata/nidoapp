@@ -1,24 +1,73 @@
 import { createAdminClient } from './supabase-admin'
 
 export type PlanType = 'free' | 'pro'
+export type TierType = 'nido' | 'casa'
 
-export const PLAN_LIMITS = {
-  free: {
-    maxNidos: 1,
-    maxMiembros: 4,
-    historialMeses: 3,
+export const TIERS = {
+  nido: {
+    nombre: 'Nido',
+    label: 'hasta 8 miembros',
+    maxMiembros: 8,
+    precio: 290,
+    variantKey: 'LEMONSQUEEZY_VARIANT_NIDO',
+    features: [
+      'Hasta 8 miembros',
+      'Historial de gastos ilimitado',
+      'Bot de WhatsApp incluido',
+      'Gastos, compras y aptos sin límites',
+    ],
   },
-  pro: {
-    maxNidos: Infinity,
+  casa: {
+    nombre: 'Casa',
+    label: 'miembros ilimitados',
     maxMiembros: Infinity,
-    historialMeses: Infinity,
+    precio: 590,
+    variantKey: 'LEMONSQUEEZY_VARIANT_CASA',
+    features: [
+      'Miembros ilimitados',
+      'Historial de gastos ilimitado',
+      'Bot de WhatsApp incluido',
+      'Estadísticas avanzadas de gastos',
+      'Exportar datos en CSV',
+      'Soporte prioritario',
+    ],
   },
 } as const
 
-/**
- * Obtiene el plan activo de una sala, verificando que la suscripción esté vigente.
- * Siempre se ejecuta server-side con el cliente admin.
- */
+export const FREE_LIMITS = {
+  historialMeses: 2,
+  maxMiembros: 3,
+}
+
+export const FREE_FEATURES = [
+  'Hasta 3 miembros',
+  '2 meses de historial de gastos',
+  'Gastos, compras y aptos',
+]
+
+/** Devuelve el tier recomendado según la cantidad de miembros */
+export function getTierParaMiembros(count: number): TierType {
+  return count <= 8 ? 'nido' : 'casa'
+}
+
+/** Normaliza valores legacy del DB al nuevo sistema */
+export function normalizeTier(tier: string | null | undefined): TierType | null {
+  if (!tier) return null
+  if (tier === 'nido' || tier === 'starter' || tier === 'hogar') return 'nido'
+  if (tier === 'casa' || tier === 'casa_grande') return 'casa'
+  return null
+}
+
+/** Devuelve el variant ID de LS para un tier */
+export function getVariantId(tier: TierType): string | undefined {
+  const map: Record<TierType, string | undefined> = {
+    nido: process.env.LEMONSQUEEZY_VARIANT_NIDO,
+    casa: process.env.LEMONSQUEEZY_VARIANT_CASA,
+  }
+  return map[tier]
+}
+
+/** Obtiene el plan activo de una sala */
 export async function getSalaPlan(salaId: string): Promise<PlanType> {
   const supabase = createAdminClient()
   const { data } = await supabase
@@ -31,81 +80,19 @@ export async function getSalaPlan(salaId: string): Promise<PlanType> {
 
   const esPro =
     data.plan_type === 'pro' &&
-    data.subscription_status === 'active' &&
+    (data.subscription_status === 'active' || data.subscription_status === 'on_trial') &&
     (!data.subscription_end || new Date(data.subscription_end) > new Date())
 
   return esPro ? 'pro' : 'free'
 }
 
-/**
- * Cantidad de nidos que el usuario creó (como owner).
- */
-export async function getUserNidoCount(userId: string): Promise<number> {
-  const supabase = createAdminClient()
-  const { count } = await supabase
-    .from('salas')
-    .select('id', { count: 'exact', head: true })
-    .eq('owner_user_id', userId)
-  return count ?? 0
-}
-
-/**
- * Cantidad de miembros activos en una sala.
- */
+/** Cantidad de miembros activos en una sala */
 export async function getSalaMiembroCount(salaId: string): Promise<number> {
   const supabase = createAdminClient()
   const { count } = await supabase
     .from('miembros')
     .select('id', { count: 'exact', head: true })
     .eq('sala_id', salaId)
+    .not('user_id', 'is', null)
   return count ?? 0
-}
-
-/**
- * Verifica si una sala puede agregar un nuevo miembro según su plan.
- * Devuelve { permitido: true } o { permitido: false, plan, limite }
- */
-export async function puedeAgregarMiembro(salaId: string): Promise<
-  { permitido: true } | { permitido: false; plan: PlanType; limite: number }
-> {
-  const [plan, count] = await Promise.all([
-    getSalaPlan(salaId),
-    getSalaMiembroCount(salaId),
-  ])
-  const limite = PLAN_LIMITS[plan].maxMiembros
-  if (count < limite) return { permitido: true }
-  return { permitido: false, plan, limite }
-}
-
-/**
- * Verifica si un usuario puede crear un nuevo nido según su plan.
- * Devuelve { permitido: true } o { permitido: false, plan, limite, salaId }
- */
-export async function puedeCcrearNido(userId: string): Promise<
-  { permitido: true } | { permitido: false; plan: PlanType; limite: number; salaOwnerDeId?: string }
-> {
-  // Buscar si ya tiene un nido como owner
-  const supabase = createAdminClient()
-  const { data: salas } = await supabase
-    .from('salas')
-    .select('id, plan_type, subscription_status, subscription_end')
-    .eq('owner_user_id', userId)
-
-  if (!salas || salas.length === 0) return { permitido: true }
-
-  // Verificar si alguno de sus nidos tiene plan Pro
-  const tieneProActivo = salas.some(s =>
-    s.plan_type === 'pro' &&
-    s.subscription_status === 'active' &&
-    (!s.subscription_end || new Date(s.subscription_end) > new Date())
-  )
-
-  if (tieneProActivo) return { permitido: true }
-
-  // En Free: máximo 1 nido
-  if (salas.length >= PLAN_LIMITS.free.maxNidos) {
-    return { permitido: false, plan: 'free', limite: PLAN_LIMITS.free.maxNidos, salaOwnerDeId: salas[0].id }
-  }
-
-  return { permitido: true }
 }

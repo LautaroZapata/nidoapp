@@ -9,6 +9,8 @@ import type { Miembro, Invitacion } from '@/lib/types'
 import type { PostgrestError } from '@supabase/supabase-js'
 import dynamic from 'next/dynamic'
 import { registrarPush, estadoPush } from '@/lib/push'
+import { normalizeTier, TIERS, FREE_FEATURES, FREE_LIMITS, getTierParaMiembros } from '@/lib/features'
+import type { TierType } from '@/lib/features'
 
 const OnboardingModal = dynamic(() => import('@/components/OnboardingModal'), { ssr: false })
 
@@ -50,6 +52,91 @@ export default function SalaPage() {
   const [pushStatus, setPushStatus] = useState<'granted' | 'denied' | 'default' | 'unsupported'>('unsupported')
   const [pushLoading, setPushLoading] = useState(false)
 
+  // Plan
+  const [planInfo, setPlanInfo] = useState<{ plan_type: 'free' | 'pro'; plan_tier: string | null; owner_user_id: string | null; stripe_customer_id: string | null } | null>(null)
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null)
+  const [billingLoading, setBillingLoading] = useState(false)
+  const [billingError, setBillingError] = useState<string | null>(null)
+  const [showPlanes, setShowPlanes] = useState(false)
+
+  async function handleCheckout(tier: TierType) {
+    if (!session) return
+    setShowPlanes(false)
+    setBillingLoading(true)
+    setBillingError(null)
+    try {
+      const { data: { session: sbSession } } = await createClient().auth.getSession()
+      if (!sbSession) { setBillingError('Iniciá sesión para continuar'); return }
+      const res = await fetch('/api/billing/checkout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${sbSession.access_token}` },
+        body: JSON.stringify({ salaId: session.salaId, tier }),
+      })
+      const data = await res.json()
+      if (!res.ok) { setBillingError(data.error ?? 'Error al iniciar el pago'); return }
+      window.location.href = data.url
+    } catch (err) {
+      console.error('[Checkout]', err)
+      setBillingError('Error inesperado. Intentá de nuevo.')
+    } finally {
+      setBillingLoading(false)
+    }
+  }
+
+  function handleUpgradePro() {
+    setShowPlanes(true)
+  }
+
+  async function handleChangeTier() {
+    if (!session) return
+    setBillingError(null)
+    setBillingLoading(true)
+    try {
+      const supabase = createClient()
+      const { data: { session: authSession } } = await supabase.auth.getSession()
+      const token = authSession?.access_token
+      if (!token) { setBillingLoading(false); return }
+      const res = await fetch('/api/billing/change-tier', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ salaId: session.salaId }),
+      })
+      const data = await res.json()
+      if (data.ok) {
+        setPlanInfo(prev => prev ? { ...prev, plan_tier: data.tier } : prev)
+      }
+    } catch (err) {
+      console.error('[ChangeTier]', err)
+      setBillingError('Hubo un error. Intentá de nuevo.')
+    } finally {
+      setBillingLoading(false)
+    }
+  }
+
+  async function handleManageSubscription() {
+    if (!session) return
+    setBillingError(null)
+    setBillingLoading(true)
+    try {
+      const supabase = createClient()
+      const { data: { session: authSession } } = await supabase.auth.getSession()
+      const token = authSession?.access_token
+      if (!token) { setBillingLoading(false); return }
+      const res = await fetch('/api/billing/portal', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ salaId: session.salaId }),
+      })
+      const data = await res.json()
+      if (data.url) window.location.href = data.url
+    } catch (err) {
+      console.error('[Portal]', err)
+      setBillingError('Hubo un error. Intentá de nuevo.')
+    } finally {
+      setBillingLoading(false)
+    }
+  }
+
   useEffect(() => {
     const s = getSession()
     if (!s || s.salaCodigo !== codigo) { router.replace('/'); return }
@@ -62,8 +149,16 @@ export default function SalaPage() {
       if (!authSession) { clearSession(); router.replace('/'); return }
     })
 
-    supabase.from('miembros').select().eq('sala_id', s.salaId).then(({ data }) => {
+    supabase.from('miembros').select().eq('sala_id', s.salaId).not('user_id', 'is', null).then(({ data }) => {
       if (data) setMiembros(data as Miembro[])
+    })
+
+    supabase.from('salas').select('plan_type, plan_tier, owner_user_id, stripe_customer_id').eq('id', s.salaId).single().then(({ data }) => {
+      if (data) setPlanInfo(data as { plan_type: 'free' | 'pro'; plan_tier: string | null; owner_user_id: string | null; stripe_customer_id: string | null })
+    })
+
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (user) setCurrentUserId(user.id)
     })
 
     // Mostrar onboarding si es la primera vez
@@ -74,6 +169,42 @@ export default function SalaPage() {
 
     // Estado de notificaciones push
     estadoPush().then(setPushStatus)
+
+    // ── Realtime: miembros ──
+    const chMiembros = supabase
+      .channel(`miembros_sala_${s.salaId}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'miembros', filter: `sala_id=eq.${s.salaId}` }, (payload) => {
+        if (payload.eventType === 'INSERT') {
+          setMiembros(prev => [...prev, payload.new as Miembro])
+        } else if (payload.eventType === 'UPDATE') {
+          const updated = payload.new as Miembro
+          setMiembros(prev => {
+            const existing = prev.find(x => x.id === updated.id)
+            // Si tenía user_id antes y ahora es null → se fue (OAuth user leaving)
+            if (existing && existing.user_id != null && !updated.user_id) {
+              return prev.filter(x => x.id !== updated.id)
+            }
+            return prev.map(x => x.id === updated.id ? updated : x)
+          })
+        } else if (payload.eventType === 'DELETE') {
+          setMiembros(prev => prev.filter(x => x.id !== (payload.old as Partial<Miembro>).id))
+        }
+      })
+      .subscribe()
+
+    // ── Realtime: salas (plan, tier, subscription) ──
+    const chSala = supabase
+      .channel(`sala_plan_${s.salaId}`)
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'salas', filter: `id=eq.${s.salaId}` }, (payload) => {
+        const updated = payload.new as { plan_type: 'free' | 'pro'; plan_tier: string | null; owner_user_id: string | null; stripe_customer_id: string | null }
+        setPlanInfo(updated)
+      })
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(chMiembros)
+      supabase.removeChannel(chSala)
+    }
   }, [codigo, router])
 
   // Close menu on outside click
@@ -210,6 +341,7 @@ export default function SalaPage() {
         .s-miembro-av { width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 0.75rem; font-weight: 700; color: white; box-shadow: 0 2px 6px rgba(0,0,0,0.1); }
         .s-miembro-name { font-size: 0.85rem; font-weight: 600; color: #2A1A0E; }
         .s-miembro-you { font-size: 0.72rem; color: #C05A3B; font-weight: 500; }
+        .s-miembro-owner { font-size: 0.66rem; font-weight: 700; color: #C8823A; background: rgba(200,130,58,0.1); padding: 1px 6px; border-radius: 20px; border: 1px solid rgba(200,130,58,0.22); white-space: nowrap; }
 
         /* Module grid */
         .s-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; animation: s-fadeup 0.5s 0.1s cubic-bezier(0.22, 1, 0.36, 1) both; }
@@ -266,6 +398,113 @@ export default function SalaPage() {
           .s-sala-name { font-size: 1.1rem; }
           .s-header-right { gap: 6px; }
         }
+
+        /* Desktop layout — context panel left, modules right */
+        @media (min-width: 1024px) {
+          .s-wrap { max-width: none; padding: 0 2.5rem 2rem; }
+          .s-desktop-cols { display: grid; grid-template-columns: 260px 1fr; gap: 2rem; align-items: start; }
+          .s-miembros { grid-column: 1; grid-row: 1; margin-bottom: 0; position: sticky; top: 1.5rem; }
+          .s-miembros-list { flex-direction: column; gap: 6px; }
+          .s-miembro { padding: 6px 8px; background: rgba(234,216,200,0.25); border-radius: 10px; }
+          .s-grid { grid-column: 2; grid-row: 1 / span 2; grid-template-columns: 1fr 1fr; }
+          .s-plan { grid-column: 1; grid-row: 2; margin-top: 0; }
+          .s-mod { padding: 2rem 1.75rem; min-height: 170px; }
+          .s-mod-icon { font-size: 2.5rem; margin-bottom: 14px; }
+          .s-mod-name { font-size: 1.15rem; }
+          .s-mod-desc { font-size: 0.82rem; }
+        }
+        @media (min-width: 1280px) {
+          .s-wrap { max-width: 1380px; margin: 0 auto; padding: 0 3rem 2rem; }
+          .s-desktop-cols { grid-template-columns: 280px 1fr; gap: 2.5rem; }
+          .s-mod { padding: 2.25rem 2rem; min-height: 185px; }
+        }
+        @media (min-width: 1536px) {
+          .s-wrap { max-width: 1560px; padding: 0 4rem 2rem; }
+          .s-desktop-cols { grid-template-columns: 300px 1fr; gap: 3rem; }
+          .s-grid { grid-template-columns: 1fr 1fr 1fr 1fr; }
+          .s-mod { padding: 2.5rem 2rem; min-height: 200px; }
+          .s-mod-icon { font-size: 2.8rem; }
+          .s-mod-name { font-size: 1.2rem; }
+        }
+
+        /* Plan section */
+        .s-plan { margin-top: 1.25rem; border-radius: 18px; overflow: hidden; animation: s-fadeup 0.5s 0.2s cubic-bezier(0.22,1,0.36,1) both; }
+        .s-plan-free { background: #FFF8F2; border: 1.5px solid #EAD8C8; }
+        .s-plan-pro  { background: linear-gradient(135deg, #1E3D2C 0%, #2E5C40 100%); border: 1.5px solid rgba(46,125,82,0.4); }
+        .s-plan-body { padding: 1.15rem 1.25rem; }
+        .s-plan-top  { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 10px; }
+        .s-plan-label { font-size: 0.62rem; font-weight: 800; letter-spacing: 0.12em; text-transform: uppercase; margin-bottom: 3px; }
+        .s-plan-label-free { color: #B09080; }
+        .s-plan-label-pro  { color: rgba(74,222,128,0.7); }
+        .s-plan-name { font-family: var(--font-serif),'Georgia',serif; font-size: 1.2rem; font-weight: 700; letter-spacing: -0.02em; }
+        .s-plan-name-free { color: #2A1A0E; }
+        .s-plan-name-pro  { color: white; }
+        .s-plan-badge { font-size: 0.62rem; font-weight: 700; padding: 3px 9px; border-radius: 20px; white-space: nowrap; }
+        .s-plan-badge-free { background: rgba(192,90,59,0.1); color: #C05A3B; border: 1px solid rgba(192,90,59,0.2); }
+        .s-plan-badge-pro  { background: rgba(74,222,128,0.15); color: #4ADE80; border: 1px solid rgba(74,222,128,0.3); }
+        .s-plan-divider { height: 1px; margin: 10px 0; }
+        .s-plan-divider-free { background: rgba(192,90,59,0.1); }
+        .s-plan-divider-pro  { background: rgba(255,255,255,0.1); }
+        .s-plan-features { display: flex; flex-direction: column; gap: 5px; margin-bottom: 14px; }
+        .s-plan-feat { font-size: 0.78rem; display: flex; align-items: center; gap: 7px; }
+        .s-plan-feat-free { color: #8A6050; }
+        .s-plan-feat-locked { color: #C0A898; }
+        .s-plan-feat-pro  { color: rgba(255,255,255,0.8); }
+        .s-plan-price { border-radius: 10px; padding: 8px 11px; margin-bottom: 12px; }
+        .s-plan-price-free { background: rgba(192,90,59,0.06); border: 1px solid rgba(192,90,59,0.1); }
+        .s-plan-price-pro  { background: rgba(255,255,255,0.07); border: 1px solid rgba(255,255,255,0.12); }
+        .s-plan-price-main { font-size: 0.82rem; font-weight: 700; }
+        .s-plan-price-main-free { color: #2A1A0E; }
+        .s-plan-price-main-pro  { color: white; }
+        .s-plan-price-sub { font-size: 0.72rem; margin-top: 2px; }
+        .s-plan-price-sub-free { color: #A07060; }
+        .s-plan-price-sub-pro  { color: rgba(255,255,255,0.5); }
+        .s-plan-warn { border-radius: 10px; padding: 8px 11px; margin-bottom: 12px; background: rgba(200,130,58,0.15); border: 1px solid rgba(200,130,58,0.3); font-size: 0.78rem; color: #F5D08A; }
+        .s-plan-btn { width: 100%; padding: 11px; border: none; border-radius: 12px; font-size: 0.875rem; font-weight: 700; font-family: var(--font-body),'Nunito',sans-serif; cursor: pointer; transition: all 0.18s; margin-top: 4px; display: flex; align-items: center; justify-content: center; gap: 6px; }
+        .s-plan-btn + .s-plan-btn { margin-top: 7px; }
+        .s-plan-btn:disabled { opacity: 0.55; cursor: not-allowed; }
+        .s-plan-btn-upgrade { background: #C05A3B; color: white; }
+        .s-plan-btn-upgrade:hover:not(:disabled) { background: #A04730; transform: translateY(-1px); box-shadow: 0 6px 18px rgba(192,90,59,0.35); }
+        .s-plan-btn-manage  { background: rgba(255,255,255,0.1); color: rgba(255,255,255,0.85); border: 1px solid rgba(255,255,255,0.18) !important; }
+        .s-plan-btn-manage:hover:not(:disabled) { background: rgba(255,255,255,0.18); }
+        .s-plan-btn-change  { background: rgba(200,130,58,0.25); color: #F5D08A; border: 1px solid rgba(200,130,58,0.35) !important; }
+        .s-plan-btn-change:hover:not(:disabled) { background: rgba(200,130,58,0.38); }
+
+        /* Pricing modal */
+        @keyframes planes-in { from { opacity: 0; transform: scale(0.93) translateY(20px); } to { opacity: 1; transform: scale(1) translateY(0); } }
+        @keyframes s-fadein { from { opacity: 0; } to { opacity: 1; } }
+        .planes-overlay { position: fixed; inset: 0; z-index: 400; background: rgba(42,26,14,0.6); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); display: flex; align-items: center; justify-content: center; padding: 1rem; animation: s-fadein 0.18s ease both; }
+        .planes-modal { background: #FFF8F2; border-radius: 24px; border: 1.5px solid #EAD8C8; width: 100%; max-width: 680px; max-height: 92vh; overflow-y: auto; overscroll-behavior: contain; box-shadow: 0 32px 80px rgba(42,26,14,0.25); animation: planes-in 0.3s cubic-bezier(0.22,1,0.36,1) both; }
+        .planes-header { padding: 1.5rem 1.5rem 0; display: flex; align-items: flex-start; justify-content: space-between; }
+        .planes-title { font-family: var(--font-serif),'Georgia',serif; font-size: 1.45rem; font-weight: 700; color: #2A1A0E; letter-spacing: -0.025em; }
+        .planes-sub { font-size: 0.82rem; color: #A07060; margin-top: 3px; font-family: var(--font-body),'Nunito',sans-serif; }
+        .planes-close { width: 32px; height: 32px; border-radius: 8px; background: #F0E8DF; border: 1px solid #E0C8B8; display: flex; align-items: center; justify-content: center; cursor: pointer; color: #A07060; flex-shrink: 0; transition: background 0.15s; }
+        .planes-close:hover { background: #E0D0C0; }
+        .planes-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; padding: 1.25rem 1.5rem 1.5rem; }
+        @media (max-width: 600px) { .planes-grid { grid-template-columns: 1fr; } }
+        .plan-card { border-radius: 16px; padding: 1.25rem; border: 1.5px solid #EAD8C8; background: white; display: flex; flex-direction: column; position: relative; transition: border-color 0.2s, box-shadow 0.2s; }
+        .plan-card-recommended { border-color: #C05A3B; box-shadow: 0 0 0 3px rgba(192,90,59,0.12); }
+        .plan-card-casa { border-color: #5A8869; }
+        .plan-card-recom-badge { position: absolute; top: -11px; left: 50%; transform: translateX(-50%); background: #C05A3B; color: white; font-size: 0.6rem; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase; padding: 3px 10px; border-radius: 20px; white-space: nowrap; font-family: var(--font-body),'Nunito',sans-serif; }
+        .plan-card-icon { font-size: 1.5rem; margin-bottom: 0.6rem; }
+        .plan-card-name { font-family: var(--font-serif),'Georgia',serif; font-size: 1.1rem; font-weight: 700; color: #2A1A0E; letter-spacing: -0.02em; margin-bottom: 2px; }
+        .plan-card-label { font-size: 0.72rem; color: #A07060; font-family: var(--font-body),'Nunito',sans-serif; margin-bottom: 0.75rem; }
+        .plan-card-price { font-size: 1.5rem; font-weight: 800; color: #2A1A0E; letter-spacing: -0.03em; margin-bottom: 2px; font-family: var(--font-serif),'Georgia',serif; }
+        .plan-card-price-unit { font-size: 0.72rem; color: #A07060; font-family: var(--font-body),'Nunito',sans-serif; margin-bottom: 0.9rem; }
+        .plan-card-divider { height: 1px; background: #EAD8C8; margin-bottom: 0.75rem; }
+        .plan-card-feats { display: flex; flex-direction: column; gap: 6px; flex: 1; margin-bottom: 1rem; }
+        .plan-card-feat { font-size: 0.79rem; color: #5A3A20; display: flex; align-items: flex-start; gap: 7px; line-height: 1.4; font-family: var(--font-body),'Nunito',sans-serif; }
+        .plan-card-feat-locked { color: #C0A898; }
+        .plan-card-feat-check { color: #5A8869; flex-shrink: 0; margin-top: 1px; }
+        .plan-card-feat-x { color: #D0B0A0; flex-shrink: 0; margin-top: 1px; }
+        .plan-card-cta { width: 100%; padding: 10px; border-radius: 11px; border: none; font-size: 0.875rem; font-weight: 700; cursor: pointer; font-family: var(--font-body),'Nunito',sans-serif; transition: all 0.18s; }
+        .plan-card-cta-free { background: #F0E8DF; color: #A07060; cursor: default; }
+        .plan-card-cta-nido { background: #C05A3B; color: white; }
+        .plan-card-cta-nido:hover:not(:disabled) { background: #A04730; transform: translateY(-1px); box-shadow: 0 6px 18px rgba(192,90,59,0.3); }
+        .plan-card-cta-casa { background: #5A8869; color: white; }
+        .plan-card-cta-casa:hover:not(:disabled) { background: #3A6B4A; transform: translateY(-1px); box-shadow: 0 6px 18px rgba(90,136,105,0.3); }
+        .plan-card-cta:disabled { opacity: 0.55; cursor: not-allowed; transform: none !important; box-shadow: none !important; }
+        .planes-nota { padding: 0 1.5rem 1.5rem; font-size: 0.75rem; color: #A07060; text-align: center; font-family: var(--font-body),'Nunito',sans-serif; }
       `}</style>
 
       <div className="s-root">
@@ -276,7 +515,7 @@ export default function SalaPage() {
             <div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src="/nido-icon.png" alt="nido" width="28" height="28" style={{ objectFit:'contain' }}/>
+                <img src="/nido-icon-192.png" alt="nido" width="28" height="28" style={{ display:'block', borderRadius:'7px' }}/>
                 <div className="s-sala-name">{session.salaNombre}</div>
               </div>
               <button className="s-code-btn" onClick={copiarCodigo}>
@@ -309,8 +548,15 @@ export default function SalaPage() {
                       Mis nidos
                     </button>
                     {(() => {
+                      const esPro = planInfo?.plan_type === 'pro'
                       const miMiembro = miembros.find(m => m.id === session.miembroId)
                       const wppConectado = !!miMiembro?.whatsapp_phone
+                      if (!esPro) return (
+                        <div className="s-dropdown-item" style={{ cursor: 'default', opacity: 0.45 }}>
+                          <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M7 1.5C3.96 1.5 1.5 3.96 1.5 7c0 .94.24 1.83.66 2.6L1.5 12.5l2.98-.64A5.47 5.47 0 007 12.5c3.04 0 5.5-2.46 5.5-5.5S10.04 1.5 7 1.5z" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round"/><path d="M5 5.5s.5 1 1.5 2 2 1.5 2 1.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/></svg>
+                          WhatsApp · solo Pro
+                        </div>
+                      )
                       return wppConectado ? (
                         <div className="s-dropdown-item" style={{ cursor: 'default', opacity: 0.6 }}>
                           <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M7 1.5C3.96 1.5 1.5 3.96 1.5 7c0 .94.24 1.83.66 2.6L1.5 12.5l2.98-.64A5.47 5.47 0 007 12.5c3.04 0 5.5-2.46 5.5-5.5S10.04 1.5 7 1.5z" stroke="#25D366" strokeWidth="1.3" strokeLinejoin="round"/><path d="M5 5.5s.5 1 1.5 2 2 1.5 2 1.5" stroke="#25D366" strokeWidth="1.3" strokeLinecap="round"/></svg>
@@ -359,6 +605,7 @@ export default function SalaPage() {
             </div>
           </div>
 
+          <div className="s-desktop-cols">
           {/* Members */}
           <div className="s-miembros">
             <div className="s-miembros-label">Miembros · {miembros.length}</div>
@@ -369,7 +616,12 @@ export default function SalaPage() {
                     {m.nombre[0].toUpperCase()}
                   </div>
                   <div>
-                    <div className="s-miembro-name">{m.nombre}</div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '5px', flexWrap: 'wrap' }}>
+                      <div className="s-miembro-name">{m.nombre}</div>
+                      {m.user_id && planInfo?.owner_user_id && m.user_id === planInfo.owner_user_id && (
+                        <span className="s-miembro-owner">👑 dueño</span>
+                      )}
+                    </div>
                     {m.id === session.miembroId && <div className="s-miembro-you">tú</div>}
                   </div>
                 </div>
@@ -395,6 +647,110 @@ export default function SalaPage() {
               </button>
             ))}
           </div>
+
+          {/* Plan section */}
+          {planInfo && (() => {
+            const esPro    = planInfo.plan_type === 'pro'
+            const esOwner  = !!(currentUserId && planInfo.owner_user_id === currentUserId)
+            // Si es pro pero plan_tier es null (dato legacy/corrupto), inferir por cantidad de miembros
+            const tierKey  = normalizeTier(planInfo.plan_tier) ?? (esPro ? getTierParaMiembros(miembros.length) : null)
+            const td       = tierKey ? TIERS[tierKey] : null
+            const tierSugerido = getTierParaMiembros(miembros.length)
+            const necesitaUpgradeTier = esPro && td && miembros.length > td.maxMiembros
+            const precioPorPersona = td ? Math.ceil(td.precio / Math.max(miembros.length, 1)) : null
+
+            return (
+              <div className={`s-plan ${esPro ? 's-plan-pro' : 's-plan-free'}`}>
+                <div className="s-plan-body">
+
+                  {/* Header */}
+                  <div className="s-plan-top">
+                    <div>
+                      <div className={`s-plan-label ${esPro ? 's-plan-label-pro' : 's-plan-label-free'}`}>Plan actual</div>
+                      <div className={`s-plan-name ${esPro ? 's-plan-name-pro' : 's-plan-name-free'}`}>
+                        {esPro ? `✦ ${td?.nombre ?? 'Pro'}` : 'Gratuito'}
+                      </div>
+                    </div>
+                    <span className={esPro ? 's-plan-badge s-plan-badge-pro' : 's-plan-badge s-plan-badge-free'}>
+                      {esPro ? (td?.label ?? 'Pro') : 'Gratis'}
+                    </span>
+                  </div>
+
+                  <div className={`s-plan-divider ${esPro ? 's-plan-divider-pro' : 's-plan-divider-free'}`}/>
+
+                  {/* Features */}
+                  <div className="s-plan-features">
+                    {esPro && td ? (
+                      td.features.map((f, i) => (
+                        <div key={i} className="s-plan-feat s-plan-feat-pro">
+                          <span style={{ color: '#4ADE80', flexShrink: 0 }}>✓</span> {f}
+                        </div>
+                      ))
+                    ) : (
+                      <>
+                        {FREE_FEATURES.map((f, i) => (
+                          <div key={i} className="s-plan-feat s-plan-feat-free">
+                            <span style={{ color: '#A07060', flexShrink: 0 }}>·</span> {f}
+                          </div>
+                        ))}
+                        <div className="s-plan-feat s-plan-feat-locked">
+                          <span style={{ color: '#D0B0A0', flexShrink: 0 }}>✗</span> Sin bot de WhatsApp
+                        </div>
+                      </>
+                    )}
+                  </div>
+
+                  {/* Precio */}
+                  {esPro && td && (
+                    <div className="s-plan-price s-plan-price-pro">
+                      <div className="s-plan-price-main s-plan-price-main-pro">
+                        ${td.precio} UYU/mes{precioPorPersona ? ` · ~$${precioPorPersona} por persona` : ''}
+                      </div>
+                      <div className="s-plan-price-sub s-plan-price-sub-pro">
+                        {miembros.length} miembro{miembros.length !== 1 ? 's' : ''} · Plan {td.nombre}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Aviso upgrade de tier */}
+                  {necesitaUpgradeTier && esOwner && (
+                    <div className="s-plan-warn">
+                      ⚠ Tu nido tiene {miembros.length} miembros pero el plan {td?.nombre} permite hasta {td?.maxMiembros}. Actualizá el plan.
+                    </div>
+                  )}
+
+                  {/* Botones — solo owner */}
+                  {esOwner && (
+                    <>
+                      {!esPro && (
+                        <button className="s-plan-btn s-plan-btn-upgrade" disabled={billingLoading} onClick={() => setShowPlanes(true)}>
+                          {billingLoading ? 'Cargando...' : 'Ver planes Pro →'}
+                        </button>
+                      )}
+                      {esPro && necesitaUpgradeTier && (
+                        <button className="s-plan-btn s-plan-btn-change" disabled={billingLoading} onClick={handleChangeTier}>
+                          {billingLoading ? 'Actualizando...' : `Cambiar a ${TIERS[tierSugerido].nombre} · $${TIERS[tierSugerido].precio} UYU/mes →`}
+                        </button>
+                      )}
+                      {esPro && (
+                        <button className="s-plan-btn s-plan-btn-manage" disabled={billingLoading} onClick={handleManageSubscription}>
+                          {billingLoading ? 'Cargando...' : 'Gestionar suscripción'}
+                        </button>
+                      )}
+                      {billingError && (
+                        <div style={{ marginTop: 8, fontSize: '0.78rem', color: '#C05A3B', background: 'rgba(192,90,59,0.08)', border: '1px solid rgba(192,90,59,0.2)', borderRadius: 10, padding: '7px 11px' }}>
+                          ⚠ {billingError}
+                        </div>
+                      )}
+                    </>
+                  )}
+
+                </div>
+              </div>
+            )
+          })()}
+
+          </div>{/* end s-desktop-cols */}
 
         </div>
       </div>
@@ -460,6 +816,112 @@ export default function SalaPage() {
               <div style={{ color:'#C04040', fontSize:'0.85rem' }}>Error al generar el código</div>
             )}
             <button className="s-modal-close" onClick={() => setShowWpp(false)}>Cerrar</button>
+          </div>
+        </div>
+      )}
+
+      {/* ── PRICING MODAL ── */}
+      {showPlanes && (
+        <div className="planes-overlay" onClick={e => { if (e.target === e.currentTarget) setShowPlanes(false) }}>
+          <div className="planes-modal">
+            <div className="planes-header">
+              <div>
+                <div className="planes-title">Elegí tu plan</div>
+                <div className="planes-sub">
+                  {miembros.length} miembro{miembros.length !== 1 ? 's' : ''} en tu nido · podés cambiar cuando quieras
+                </div>
+              </div>
+              <button className="planes-close" onClick={() => setShowPlanes(false)}>
+                <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                  <path d="M1 1l10 10M11 1L1 11" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
+                </svg>
+              </button>
+            </div>
+
+            <div className="planes-grid">
+              {/* FREE */}
+              <div className="plan-card">
+                <div className="plan-card-icon">🏠</div>
+                <div className="plan-card-name">Gratuito</div>
+                <div className="plan-card-label">Para empezar</div>
+                <div className="plan-card-price">$0</div>
+                <div className="plan-card-price-unit">para siempre</div>
+                <div className="plan-card-divider"/>
+                <div className="plan-card-feats">
+                  {FREE_FEATURES.map((f, i) => (
+                    <div key={i} className="plan-card-feat">
+                      <span className="plan-card-feat-check">✓</span> {f}
+                    </div>
+                  ))}
+                  <div className="plan-card-feat plan-card-feat-locked">
+                    <span className="plan-card-feat-x">✗</span> Sin bot de WhatsApp
+                  </div>
+                  <div className="plan-card-feat plan-card-feat-locked">
+                    <span className="plan-card-feat-x">✗</span> Máximo 3 miembros
+                  </div>
+                </div>
+                <button className="plan-card-cta plan-card-cta-free" disabled>
+                  Plan actual
+                </button>
+              </div>
+
+              {/* NIDO */}
+              <div className="plan-card plan-card-recommended">
+                <div className="plan-card-recom-badge">Recomendado</div>
+                <div className="plan-card-icon">🏡</div>
+                <div className="plan-card-name">Nido</div>
+                <div className="plan-card-label">hasta 8 miembros</div>
+                <div className="plan-card-price">${TIERS.nido.precio}</div>
+                <div className="plan-card-price-unit">
+                  UYU/mes · ~${Math.ceil(TIERS.nido.precio / Math.max(miembros.length, 1))} por persona
+                </div>
+                <div className="plan-card-divider"/>
+                <div className="plan-card-feats">
+                  {TIERS.nido.features.map((f, i) => (
+                    <div key={i} className="plan-card-feat">
+                      <span className="plan-card-feat-check">✓</span> {f}
+                    </div>
+                  ))}
+                </div>
+                <button
+                  className="plan-card-cta plan-card-cta-nido"
+                  disabled={billingLoading}
+                  onClick={() => handleCheckout('nido')}
+                >
+                  {billingLoading ? 'Cargando...' : 'Elegir Nido →'}
+                </button>
+              </div>
+
+              {/* CASA */}
+              <div className="plan-card plan-card-casa">
+                <div className="plan-card-icon">🏘️</div>
+                <div className="plan-card-name">Casa</div>
+                <div className="plan-card-label">miembros ilimitados</div>
+                <div className="plan-card-price">${TIERS.casa.precio}</div>
+                <div className="plan-card-price-unit">
+                  UYU/mes · ~${Math.ceil(TIERS.casa.precio / Math.max(miembros.length, 1))} por persona
+                </div>
+                <div className="plan-card-divider"/>
+                <div className="plan-card-feats">
+                  {TIERS.casa.features.map((f, i) => (
+                    <div key={i} className="plan-card-feat">
+                      <span className="plan-card-feat-check" style={{ color: '#5A8869' }}>✓</span> {f}
+                    </div>
+                  ))}
+                </div>
+                <button
+                  className="plan-card-cta plan-card-cta-casa"
+                  disabled={billingLoading}
+                  onClick={() => handleCheckout('casa')}
+                >
+                  {billingLoading ? 'Cargando...' : 'Elegir Casa →'}
+                </button>
+              </div>
+            </div>
+
+            <div className="planes-nota">
+              Podés cancelar en cualquier momento · Pago seguro por Lemon Squeezy · Precios en pesos uruguayos
+            </div>
           </div>
         </div>
       )}

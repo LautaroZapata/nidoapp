@@ -8,6 +8,7 @@ export type Database = {
           nombre: string
           creado_en: string
           plan_type: 'free' | 'pro'
+          plan_tier: 'nido' | 'casa' | null
           owner_user_id: string | null
           stripe_customer_id: string | null
           stripe_subscription_id: string | null
@@ -20,6 +21,7 @@ export type Database = {
           nombre: string
           creado_en?: string
           plan_type?: 'free' | 'pro'
+          plan_tier?: 'nido' | 'casa' | null
           owner_user_id?: string | null
           stripe_customer_id?: string | null
           stripe_subscription_id?: string | null
@@ -32,6 +34,7 @@ export type Database = {
           nombre?: string
           creado_en?: string
           plan_type?: 'free' | 'pro'
+          plan_tier?: 'nido' | 'casa' | null
           owner_user_id?: string | null
           stripe_customer_id?: string | null
           stripe_subscription_id?: string | null

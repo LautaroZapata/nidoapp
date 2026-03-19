@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient as createSupabaseClient } from '@supabase/supabase-js'
-import { stripe } from '@/lib/stripe'
+import { getCustomerPortalUrl } from '@/lib/lemonsqueezy'
 import { createAdminClient } from '@/lib/supabase-admin'
 
 /**
  * POST /api/billing/portal
- * Redirige al portal de Stripe para gestionar la suscripción (cancelar, cambiar tarjeta, etc.)
+ * Redirige al portal de Lemon Squeezy para gestionar la suscripción.
  *
  * Body: { salaId: string }
  * Requiere autenticación Supabase.
@@ -39,7 +39,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'salaId requerido' }, { status: 400 })
   }
 
-  // ── Verificar ownership y obtener stripe_customer_id ──
+  // ── Verificar ownership y obtener customer ID ──
   const supabaseAdmin = createAdminClient()
   const { data: sala } = await supabaseAdmin
     .from('salas')
@@ -59,13 +59,12 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'No hay suscripción activa para gestionar' }, { status: 400 })
   }
 
-  // ── Crear sesión del portal ──
-  const origin = req.headers.get('origin') ?? process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000'
-
-  const portalSession = await stripe.billingPortal.sessions.create({
-    customer: sala.stripe_customer_id,
-    return_url: `${origin}/sala/${encodeURIComponent(salaId)}`,
-  })
-
-  return NextResponse.json({ url: portalSession.url })
+  // ── Obtener URL del portal ──
+  try {
+    const url = await getCustomerPortalUrl(sala.stripe_customer_id)
+    return NextResponse.json({ url })
+  } catch (err) {
+    console.error('[Billing] Error obteniendo portal:', err)
+    return NextResponse.json({ error: 'Error abriendo portal' }, { status: 500 })
+  }
 }
