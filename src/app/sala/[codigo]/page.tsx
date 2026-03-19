@@ -639,7 +639,8 @@ export default function SalaPage() {
           {planInfo && (() => {
             const esPro    = planInfo.plan_type === 'pro'
             const esOwner  = !!(currentUserId && planInfo.owner_user_id === currentUserId)
-            const tierKey  = normalizeTier(planInfo.plan_tier)
+            // Si es pro pero plan_tier es null (dato legacy/corrupto), inferir por cantidad de miembros
+            const tierKey  = normalizeTier(planInfo.plan_tier) ?? (esPro ? getTierParaMiembros(miembros.length) : null)
             const td       = tierKey ? TIERS[tierKey] : null
             const tierSugerido = getTierParaMiembros(miembros.length)
             const necesitaUpgradeTier = esPro && td && miembros.length > td.maxMiembros
