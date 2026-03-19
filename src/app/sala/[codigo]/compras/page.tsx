@@ -195,7 +195,15 @@ export default function ComprasPage() {
         }
         @media (min-width: 1024px) {
           .c-wrap { max-width: none; padding: 0 2.5rem 5rem; }
-          .c-desktop-cols { display: grid; grid-template-columns: 3fr 2fr; gap: 2.5rem; align-items: start; }
+          .c-desktop-cols { display: grid; grid-template-columns: minmax(0,1fr) 340px; gap: 2rem; align-items: start; }
+        }
+        @media (min-width: 1280px) {
+          .c-wrap { max-width: 1380px; margin: 0 auto; padding: 0 3rem 5rem; }
+          .c-desktop-cols { grid-template-columns: minmax(0,1fr) 380px; gap: 2.5rem; }
+        }
+        @media (min-width: 1536px) {
+          .c-wrap { max-width: 1560px; padding: 0 4rem 5rem; }
+          .c-desktop-cols { grid-template-columns: minmax(0,1fr) 420px; gap: 3rem; }
         }
 
         /* ── Header ── */

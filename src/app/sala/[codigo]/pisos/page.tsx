@@ -301,6 +301,14 @@ export default function PisosPage() {
           .p-main-col { grid-column: 2; grid-row: 2 / span 10; min-width: 0; }
           .p-grid { grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); }
         }
+        @media (min-width: 1280px) {
+          .p-wrap { max-width: 1380px; margin: 0 auto; padding: 0 3rem 5rem; grid-template-columns: 260px 1fr; column-gap: 2.5rem; }
+          .p-grid { grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); }
+        }
+        @media (min-width: 1536px) {
+          .p-wrap { max-width: 1560px; padding: 0 4rem 5rem; grid-template-columns: 280px 1fr; column-gap: 3rem; }
+          .p-grid { grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); }
+        }
 
         .p-header {
           display: flex; align-items: center; justify-content: space-between;

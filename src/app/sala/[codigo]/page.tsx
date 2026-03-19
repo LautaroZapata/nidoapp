@@ -413,6 +413,19 @@ export default function SalaPage() {
           .s-mod-name { font-size: 1.15rem; }
           .s-mod-desc { font-size: 0.82rem; }
         }
+        @media (min-width: 1280px) {
+          .s-wrap { max-width: 1380px; margin: 0 auto; padding: 0 3rem 2rem; }
+          .s-desktop-cols { grid-template-columns: 280px 1fr; gap: 2.5rem; }
+          .s-mod { padding: 2.25rem 2rem; min-height: 185px; }
+        }
+        @media (min-width: 1536px) {
+          .s-wrap { max-width: 1560px; padding: 0 4rem 2rem; }
+          .s-desktop-cols { grid-template-columns: 300px 1fr; gap: 3rem; }
+          .s-grid { grid-template-columns: 1fr 1fr 1fr 1fr; }
+          .s-mod { padding: 2.5rem 2rem; min-height: 200px; }
+          .s-mod-icon { font-size: 2.8rem; }
+          .s-mod-name { font-size: 1.2rem; }
+        }
 
         /* Plan section */
         .s-plan { margin-top: 1.25rem; border-radius: 18px; overflow: hidden; animation: s-fadeup 0.5s 0.2s cubic-bezier(0.22,1,0.36,1) both; }

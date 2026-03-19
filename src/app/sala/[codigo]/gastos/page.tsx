@@ -638,9 +638,22 @@ export default function GastosPage() {
         @media (min-width: 1024px) {
           .g-wrap { max-width: none; padding: 0 2.5rem 5rem; }
           .g-stats { margin-bottom: 1.75rem; }
-          .g-desktop-cols { display: grid; grid-template-columns: 3fr 2fr; gap: 2.5rem; align-items: start; }
+          .g-desktop-cols { display: grid; grid-template-columns: minmax(0,1fr) 320px; gap: 2rem; align-items: start; }
           .g-balance-panel { display: block !important; }
           .g-tab-balance { display: none !important; }
+          .g-tabs-row { flex-direction: row; align-items: center; margin-bottom: 1.25rem; }
+          .g-tabs-row .g-tabs { margin-bottom: 0; }
+        }
+        @media (min-width: 1280px) {
+          .g-wrap { padding: 0 3rem 5rem; }
+          .g-desktop-cols { grid-template-columns: minmax(0,1fr) 360px; gap: 2.5rem; }
+        }
+        @media (min-width: 1536px) {
+          .g-wrap { padding: 0 4rem 5rem; max-width: 1560px; }
+          .g-desktop-cols { grid-template-columns: minmax(0,1fr) 400px; gap: 3rem; }
+          .g-stat { padding: 1rem 1.25rem; }
+          .g-stat-val { font-size: 1.5rem; }
+          .g-balance-panel-body { padding: 1.1rem 1.4rem; }
         }
         .g-balance-panel {
           display: none;
@@ -746,13 +759,27 @@ export default function GastosPage() {
         .g-stat-val { font-family: var(--font-serif), serif; font-size: 1.5rem; color: #2A1A0E; letter-spacing: -0.03em; line-height: 1.2; font-weight: 600; }
         .g-stat-label { font-size: 0.7rem; color: #B09080; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; }
 
+        /* ── Tabs row (tabs + export btn) ── */
+        .g-tabs-row {
+          display: flex; flex-direction: column; gap: 8px;
+          margin-bottom: 1.25rem;
+          animation: g-fadeup 0.5s 0.15s cubic-bezier(0.22, 1, 0.36, 1) both;
+        }
+        .g-export-btn {
+          display: flex; align-items: center; gap: 5px;
+          padding: 6px 13px;
+          background: rgba(90,136,105,0.1); border: 1.5px solid rgba(90,136,105,0.3);
+          border-radius: 9px; font-size: 0.75rem; font-weight: 700; color: #5A8869;
+          cursor: pointer; font-family: var(--font-body),'Nunito',sans-serif;
+          transition: background 0.18s; white-space: nowrap; align-self: flex-start;
+        }
+        .g-export-btn:hover:not(:disabled) { background: rgba(90,136,105,0.18); }
+        .g-export-btn:disabled { opacity: 0.45; cursor: not-allowed; }
         /* ── Tabs ── */
         .g-tabs {
           display: flex; gap: 4px;
           background: white; border: 1.5px solid #EAD8C8;
           border-radius: 14px; padding: 4px;
-          margin-bottom: 1.5rem;
-          animation: g-fadeup 0.5s 0.15s cubic-bezier(0.22, 1, 0.36, 1) both;
           width: fit-content;
           box-shadow: 0 2px 8px rgba(150,80,40,0.06);
         }
@@ -1129,8 +1156,10 @@ export default function GastosPage() {
           .g-stat { padding: 0.8rem 1rem; }
           .g-stat-val { font-size: 1.25rem; }
           /* Tabs */
+          .g-tabs-row { gap: 6px; }
           .g-tabs { width: 100%; }
           .g-tab { flex: 1; padding: 7px 10px; }
+          .g-export-btn { align-self: stretch; justify-content: center; }
           /* Gasto items: 2 filas */
           .g-item { flex-wrap: wrap; row-gap: 6px; padding: 0.85rem 0.9rem; gap: 0 0.65rem; }
           .g-cat-badge { align-self: flex-start; margin-top: 3px; }
@@ -1236,28 +1265,28 @@ export default function GastosPage() {
           <div className="g-desktop-cols">
           <div>{/* main col */}
           {/* ── TABS ── */}
-          <div className="g-tabs">
-            <button className={`g-tab${tab === 'gastos' ? ' active' : ''}`} onClick={() => setTab('gastos')}>Gastos</button>
-            <button className={`g-tab g-tab-balance${tab === 'balance' ? ' active' : ''}`} onClick={() => setTab('balance')}>Balance</button>
-            <button className={`g-tab${tab === 'historial' ? ' active' : ''}`} onClick={() => setTab('historial')}>
-              Historial
-              {pagos.length > 0 && tab !== 'historial' && (
-                <span style={{ marginLeft: 5, background: 'rgba(192,90,59,0.15)', color: '#C05A3B', borderRadius: 999, fontSize: '0.65rem', fontWeight: 700, padding: '1px 6px' }}>
-                  {pagos.length}
-                </span>
-              )}
-            </button>
-            {planSala === 'pro' && planTier === 'casa' && (
-              <button className={`g-tab${tab === 'stats' ? ' active' : ''}`} onClick={() => setTab('stats')}>
-                Estadísticas ✦
+          <div className="g-tabs-row">
+            <div className="g-tabs">
+              <button className={`g-tab${tab === 'gastos' ? ' active' : ''}`} onClick={() => setTab('gastos')}>Gastos</button>
+              <button className={`g-tab g-tab-balance${tab === 'balance' ? ' active' : ''}`} onClick={() => setTab('balance')}>Balance</button>
+              <button className={`g-tab${tab === 'historial' ? ' active' : ''}`} onClick={() => setTab('historial')}>
+                Historial
+                {pagos.length > 0 && tab !== 'historial' && (
+                  <span style={{ marginLeft: 5, background: 'rgba(192,90,59,0.15)', color: '#C05A3B', borderRadius: 999, fontSize: '0.65rem', fontWeight: 700, padding: '1px 6px' }}>
+                    {pagos.length}
+                  </span>
+                )}
               </button>
-            )}
+              {planSala === 'pro' && planTier === 'casa' && (
+                <button className={`g-tab${tab === 'stats' ? ' active' : ''}`} onClick={() => setTab('stats')}>
+                  Estadísticas ✦
+                </button>
+              )}
+            </div>
             {planSala === 'pro' && planTier === 'casa' && (
               <button
+                className="g-export-btn"
                 onClick={() => exportarCSV(gastos, pagos, miembros, session?.salaNombre ?? 'nido')}
-                style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 5, padding: '5px 12px', background: 'rgba(90,136,105,0.1)', border: '1.5px solid rgba(90,136,105,0.3)', borderRadius: 9, fontSize: '0.75rem', fontWeight: 700, color: '#5A8869', cursor: 'pointer', fontFamily: 'var(--font-body),Nunito,sans-serif', transition: 'all 0.18s', whiteSpace: 'nowrap' }}
-                onMouseOver={e => (e.currentTarget.style.background = 'rgba(90,136,105,0.18)')}
-                onMouseOut={e => (e.currentTarget.style.background = 'rgba(90,136,105,0.1)')}
                 disabled={loading || gastos.length === 0}
               >
                 <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M6 1v7M3 5.5L6 8.5 9 5.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/><path d="M1 10h10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>
