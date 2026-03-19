@@ -449,14 +449,19 @@ export async function POST(req: NextRequest) {
 
   // ── Pre-parsers regex (evitan llamada a IA para los casos más frecuentes) ──
 
-  // 1. Gasto simple: "pagué/gasté/puse/costó 500 en/de/por pizza"
+  // 1a. Gasto: "pagué/gasté/puse/costó/compré 500 en/de/por pizza"
   const gastoMatch = textoLower.match(
-    /(?:pagu[eé]|gast[eé]|puse|cost[oó]|salió|salio)\s+\$?(\d+(?:[.,]\d+)?)\s+(?:en|de|por)\s+(.+)/
+    /(?:pagu[eé]|gast[eé]|puse|cost[oó]|sali[oó]|compr[eé]|compramos|gastamos)\s+\$?(\d+(?:[.,]\d+)?)\s+(?:en|de|por|a)\s+(.+)/
   )
 
-  // 2. Compra simple: "falta/faltan/necesitamos X" o "agregar/añadir X a la lista"
+  // 1b. Gasto orden invertido: "pagué pizza por/de 500"
+  const gastoMatchInv = !gastoMatch ? textoLower.match(
+    /(?:pagu[eé]|gast[eé]|puse|cost[oó]|sali[oó]|compr[eé]|compramos|gastamos)\s+(.+?)\s+(?:por|de|a)\s+\$?(\d+(?:[.,]\d+)?)$/
+  ) : null
+
+  // 2. Compra futura: "falta/faltan/necesitamos X" o "agregar/añadir X a la lista"
   const compraMatch = textoLower.match(
-    /^(?:falta|faltan|necesitamos|hay que comprar|agreg[ao]r?|a[ñn]adir?)\s+(.+?)(?:\s+a\s+la\s+lista)?$/
+    /^(?:falta[n]?|necesitamos|hay que comprar|agreg[ao]r?|a[ñn]adir?)\s+(.+?)(?:\s+a\s+la\s+lista)?$/
   )
 
   // 3. Keywords de balance
@@ -513,6 +518,17 @@ export async function POST(req: NextRequest) {
       split:        'igual',
       categoria:    detectarCategoria(desc),
       confirmacion: `¿Confirmás este gasto?\n\n📌 *${desc}*\n💵 $${Math.round(monto).toLocaleString('es-UY')}\n👤 Pagado por: ${miembro.nombre}\n👥 División: entre todos\n\nRespondé *si* o *no*`,
+    }
+  } else if (gastoMatchInv) {
+    const desc  = gastoMatchInv[1].trim()
+    const monto = parseFloat(gastoMatchInv[2].replace(',', '.'))
+    accion = {
+      accion:       'crear_gasto',
+      monto,
+      descripcion:  desc,
+      split:        'igual',
+      categoria:    detectarCategoria(desc),
+      confirmacion: `¿Confirmo que ${miembro.nombre} pagó $${Math.round(monto).toLocaleString('es-UY')} de ${desc} entre todos? Respondé *si* o *no*`,
     }
   } else if (compraMatch) {
     const items = compraMatch[1].split(/,\s*|\s+y\s+/).map((i: string) => i.trim()).filter(Boolean)
@@ -617,13 +633,30 @@ export async function POST(req: NextRequest) {
   }
 
   // ── 8. Acciones que requieren confirmación (gasto, compra) ──
-  if (accion.accion === 'crear_gasto' || accion.accion === 'agregar_compra') {
+  if (accion.accion === 'crear_gasto') {
+    // Si el monto es 0 o inválido, pedir aclaración en vez de guardar
+    if (!accion.monto || accion.monto <= 0) {
+      await enviarMensaje(deFono, `¿Cuánto fue el gasto de "${accion.descripcion}"? 💸\nEjemplo: *pagué 350 de ${accion.descripcion}*`)
+      return NextResponse.json({ status: 'ok' })
+    }
+    await guardarPendiente(miembro.id, accion)
+    await enviarMensaje(deFono, accion.confirmacion)
+    return NextResponse.json({ status: 'ok' })
+  }
+
+  if (accion.accion === 'agregar_compra') {
     await guardarPendiente(miembro.id, accion)
     await enviarMensaje(deFono, accion.confirmacion)
     return NextResponse.json({ status: 'ok' })
   }
 
   // ── 9. Desconocido ──
-  await enviarMensaje(deFono, accion.confirmacion)
+  await enviarMensaje(deFono,
+    `No entendí bien 🤔\n\n` +
+    `Podés decirme:\n` +
+    `• *pagué 300 de pizza* → registra un gasto\n` +
+    `• *falta leche* → agrega a la lista de compras\n` +
+    `• *balance* → ver quién debe qué`
+  )
   return NextResponse.json({ status: 'ok' })
 }
