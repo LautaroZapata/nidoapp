@@ -447,6 +447,58 @@ export async function POST(req: NextRequest) {
     }
 
     // Respondió otra cosa mientras hay pendiente
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const accionPendiente = pendiente.accion as any
+
+    // Si es un gasto con división pendiente, interpretar la respuesta como elección de split
+    if (accionPendiente.accion === 'crear_gasto' && accionPendiente.split_pendiente) {
+      await eliminarPendiente(miembro.id)
+      const r = respuesta
+
+      const esMio = ['mío', 'mio', 'mía', 'mia', 'solo yo', 'solo mío', 'solo mio', 'personal', 'para mí', 'para mi'].some(k => r.includes(k))
+
+      let splits: Record<string, number> | null = null
+      let divisionLabel = 'entre todos'
+
+      if (esMio) {
+        splits = { [miembro.id]: accionPendiente.monto }
+        divisionLabel = 'gasto personal'
+      } else {
+        // Intentar matchear nombres de miembros en la respuesta
+        const { data: miembrosData } = await supabase.from('miembros').select('id, nombre').eq('sala_id', miembro.sala_id).not('user_id', 'is', null)
+        if (miembrosData) {
+          const palabras = r.split(/\s+y\s+|\s*,\s*|\s+/).map((s: string) => s.trim()).filter((s: string) => s.length > 1)
+          const splitCon = miembrosData.filter((m: { id: string; nombre: string }) => {
+            if (m.id === miembro.id) return false
+            const mNom = m.nombre.toLowerCase()
+            return palabras.some((p: string) => mNom === p || mNom.startsWith(p) || p.startsWith(mNom) || mNom.includes(p) || p.includes(mNom))
+          })
+          if (splitCon.length > 0) {
+            const porcion = accionPendiente.monto / (splitCon.length + 1)
+            splits = {}
+            splitCon.forEach((m: { id: string; nombre: string }) => { splits![m.id] = Math.round(porcion * 100) / 100 })
+            divisionLabel = `con ${splitCon.map((m: { nombre: string }) => m.nombre).join(' y ')}`
+          }
+        }
+      }
+
+      const { error } = await supabase.from('gastos').insert({
+        sala_id:     miembro.sala_id,
+        descripcion: accionPendiente.descripcion,
+        importe:     accionPendiente.monto,
+        categoria:   accionPendiente.categoria ?? 'otro',
+        pagado_por:  miembro.id,
+        tipo:        'variable',
+        fecha:       fechaLocalDesdeTelefono(deFono),
+        splits,
+      })
+      if (error) { await enviarMensaje(deFono, `❌ *Error al registrar el gasto*\n\nNo se pudo guardar. Intentá de nuevo.`); return NextResponse.json({ status: 'ok' }) }
+      const netPost = await calcularNetMiembro(miembro.sala_id, miembro.id)
+      const netTxt = Math.abs(netPost) < 0.5 ? '✅ Estás al día con el nido.' : netPost > 0 ? `💰 Tu balance actual: te deben $${Math.round(netPost).toLocaleString('es-UY')}` : `📊 Tu balance actual: debés $${Math.round(-netPost).toLocaleString('es-UY')}`
+      await enviarMensaje(deFono, `✅ *Gasto registrado*\n\n📌 ${accionPendiente.descripcion}\n💵 $${Math.round(accionPendiente.monto).toLocaleString('es-UY')}\n👤 Pagado por: ${miembro.nombre}\n👥 División: ${divisionLabel}\n\n${netTxt}`)
+      return NextResponse.json({ status: 'ok' })
+    }
+
     await enviarMensaje(deFono, `⏳ *Acción pendiente de confirmación*\n\nTenés una acción sin confirmar. Por favor respondé:\n• *si* — para confirmar ✅\n• *no* — para cancelar ❌`)
     return NextResponse.json({ status: 'ok' })
   }
@@ -664,8 +716,31 @@ export async function POST(req: NextRequest) {
       await enviarMensaje(deFono, `¿Cuánto fue el gasto de "${accion.descripcion}"? 💸\nEjemplo: *pagué 350 de ${accion.descripcion}*`)
       return NextResponse.json({ status: 'ok' })
     }
-    await guardarPendiente(miembro.id, accion)
-    await enviarMensaje(deFono, accion.confirmacion)
+
+    // Si el split es "igual" y no fue explícitamente especificado (sin "con X" ni "personal")
+    // y hay 3 o más miembros → preguntar antes de guardar para evitar splits incorrectos
+    const nMiembros = (compañeros ?? []).length
+    const splitAmbiguo = accion.split === 'igual' && nMiembros >= 3
+
+    if (splitAmbiguo) {
+      const otrosNombres = (compañeros ?? [])
+        .filter(m => m.nombre !== miembro.nombre)
+        .map(m => `*${m.nombre}*`)
+        .join(', ')
+      const ejemploNombre = (compañeros ?? []).find(m => m.nombre !== miembro.nombre)?.nombre ?? 'compañero'
+      await guardarPendiente(miembro.id, { ...accion, split_pendiente: true })
+      await enviarMensaje(deFono,
+        `¿Confirmás este gasto?\n\n📌 *${accion.descripcion}*\n💵 $${Math.round(accion.monto).toLocaleString('es-UY')}\n👤 Pagado por: ${miembro.nombre}\n\n` +
+        `👥 *¿Entre quiénes lo dividimos?*\n` +
+        `• *si* → entre todos (${otrosNombres} y vos)\n` +
+        `• nombre(s) → solo con esos (ej: _${ejemploNombre}_)\n` +
+        `• *mío* → solo mi gasto personal\n` +
+        `• *no* → cancelar`
+      )
+    } else {
+      await guardarPendiente(miembro.id, accion)
+      await enviarMensaje(deFono, accion.confirmacion)
+    }
     return NextResponse.json({ status: 'ok' })
   }
 
