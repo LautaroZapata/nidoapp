@@ -87,15 +87,15 @@ function exportarCSV(gastos: Gasto[], pagos: Pago[], miembros: Miembro[], salaNo
 }
 
 function isPersonal(g: Gasto): boolean {
-  if (!g.splits) return false
-  const nonZero = Object.values(g.splits as Record<string, number>).filter(v => v > 0)
-  return nonZero.length === 1
+  if (!g.splits || !g.pagado_por) return false
+  const nonZero = Object.entries(g.splits as Record<string, number>).filter(([, v]) => v > 0)
+  // Personal = un solo entry y ese entry ES el mismo que pagó (no otros miembros)
+  return nonZero.length === 1 && nonZero[0][0] === g.pagado_por
 }
 
 function personalOwner(g: Gasto): string | null {
   if (!isPersonal(g)) return null
-  const entry = Object.entries(g.splits as Record<string, number>).find(([, v]) => v > 0)
-  return entry ? entry[0] : null
+  return g.pagado_por
 }
 
 function fmtFecha(iso: string) {
