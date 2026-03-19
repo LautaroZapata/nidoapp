@@ -166,7 +166,7 @@ export default function PisoDetallePage() {
     const [{ data: pisoData }, { data: votosData }, { data: miembrosData }] = await Promise.all([
       supabase.from('pisos').select().eq('id', pisoId).single(),
       supabase.from('votos_piso').select().eq('piso_id', pisoId),
-      supabase.from('miembros').select().eq('sala_id', session.salaId),
+      supabase.from('miembros').select().eq('sala_id', session.salaId).not('user_id', 'is', null),
     ])
     if (!pisoData) { router.replace(`/sala/${codigo}/pisos`); return }
     setPiso(pisoData as Piso)

@@ -60,7 +60,7 @@ export function normalizeTier(tier: string | null | undefined): TierType | null 
 /** Devuelve el variant ID de LS para un tier */
 export function getVariantId(tier: TierType): string | undefined {
   const map: Record<TierType, string | undefined> = {
-    nido: process.env.LEMONSQUEEZY_VARIANT_NIDO ?? process.env.LEMONSQUEEZY_VARIANT_HOGAR,
+    nido: process.env.LEMONSQUEEZY_VARIANT_NIDO,
     casa: process.env.LEMONSQUEEZY_VARIANT_CASA,
   }
   return map[tier]
@@ -92,5 +92,6 @@ export async function getSalaMiembroCount(salaId: string): Promise<number> {
     .from('miembros')
     .select('id', { count: 'exact', head: true })
     .eq('sala_id', salaId)
+    .not('user_id', 'is', null)
   return count ?? 0
 }

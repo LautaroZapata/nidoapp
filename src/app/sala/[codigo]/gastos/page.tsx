@@ -300,7 +300,7 @@ export default function GastosPage() {
 
     const [{ data: gastosData }, { data: miembrosData }, { data: pagosData }] = await Promise.all([
       gastosQuery,
-      supabase.from('miembros').select().eq('sala_id', session.salaId),
+      supabase.from('miembros').select().eq('sala_id', session.salaId).not('user_id', 'is', null),
       supabase.from('pagos').select().eq('sala_id', session.salaId).order('creado_en', { ascending: false }),
     ])
     if (gastosData) {

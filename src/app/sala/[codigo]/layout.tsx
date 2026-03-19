@@ -68,7 +68,7 @@ function SalaLayoutInner({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!session) return
     const supabase = createClient()
-    supabase.from('miembros').select().eq('sala_id', session.salaId).then(({ data }) => {
+    supabase.from('miembros').select().eq('sala_id', session.salaId).not('user_id', 'is', null).then(({ data }) => {
       if (data) miembrosRef.current = data as Miembro[]
     })
 

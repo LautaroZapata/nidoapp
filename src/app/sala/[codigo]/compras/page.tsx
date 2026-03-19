@@ -48,7 +48,7 @@ export default function ComprasPage() {
     setLoading(true)
     const [{ data: itemsData }, { data: miembrosData }] = await Promise.all([
       supabase.from('items_compra').select().eq('sala_id', session.salaId).order('creado_en', { ascending: true }),
-      supabase.from('miembros').select().eq('sala_id', session.salaId),
+      supabase.from('miembros').select().eq('sala_id', session.salaId).not('user_id', 'is', null),
     ])
     if (itemsData) setItems(itemsData as ItemCompra[])
     if (miembrosData) setMiembros(miembrosData as Miembro[])

@@ -70,7 +70,7 @@ export async function POST(req: NextRequest) {
         .from('salas')
         .update({
           plan_type: esPro ? 'pro' : 'free',
-          plan_tier: esPro ? tier : null,
+          plan_tier: esPro ? tier as 'nido' | 'casa' | null : null,
           stripe_subscription_id: data.id,
           stripe_customer_id: String(data.attributes.customer_id),
           subscription_status: data.attributes.status,

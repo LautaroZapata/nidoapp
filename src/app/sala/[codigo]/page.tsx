@@ -857,9 +857,9 @@ export default function SalaPage() {
                 <div className="plan-card-icon">🏡</div>
                 <div className="plan-card-name">Nido</div>
                 <div className="plan-card-label">hasta 8 miembros</div>
-                <div className="plan-card-price">$290</div>
+                <div className="plan-card-price">${TIERS.nido.precio}</div>
                 <div className="plan-card-price-unit">
-                  UYU/mes · ~${Math.ceil(290 / Math.max(miembros.length, 1))} por persona
+                  UYU/mes · ~${Math.ceil(TIERS.nido.precio / Math.max(miembros.length, 1))} por persona
                 </div>
                 <div className="plan-card-divider"/>
                 <div className="plan-card-feats">
@@ -883,9 +883,9 @@ export default function SalaPage() {
                 <div className="plan-card-icon">🏘️</div>
                 <div className="plan-card-name">Casa</div>
                 <div className="plan-card-label">miembros ilimitados</div>
-                <div className="plan-card-price">$590</div>
+                <div className="plan-card-price">${TIERS.casa.precio}</div>
                 <div className="plan-card-price-unit">
-                  UYU/mes · ~${Math.ceil(590 / Math.max(miembros.length, 1))} por persona
+                  UYU/mes · ~${Math.ceil(TIERS.casa.precio / Math.max(miembros.length, 1))} por persona
                 </div>
                 <div className="plan-card-divider"/>
                 <div className="plan-card-feats">

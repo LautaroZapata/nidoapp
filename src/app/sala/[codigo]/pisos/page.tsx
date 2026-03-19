@@ -127,7 +127,7 @@ export default function PisosPage() {
     const [{ data: pisosData }, { data: votosData }, { data: miembrosData }] = await Promise.all([
       supabase.from('pisos').select().eq('sala_id', session.salaId).order('creado_en', { ascending: false }),
       supabase.from('votos_piso').select(),
-      supabase.from('miembros').select().eq('sala_id', session.salaId),
+      supabase.from('miembros').select().eq('sala_id', session.salaId).not('user_id', 'is', null),
     ])
     if (miembrosData) setMiembros(miembrosData as Miembro[])
     const pisosConVotos: PisoConVotos[] = ((pisosData as Piso[]) ?? []).map((piso) => {

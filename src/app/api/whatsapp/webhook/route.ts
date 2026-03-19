@@ -149,7 +149,7 @@ async function consultarBalance(
   const [{ data: gastos }, { data: pagos }, { data: miembros }] = await Promise.all([
     supabase.from('gastos').select('*').eq('sala_id', salaId) as any,
     supabase.from('pagos').select('*').eq('sala_id', salaId) as any,
-    supabase.from('miembros').select('id, nombre').eq('sala_id', salaId),
+    supabase.from('miembros').select('id, nombre').eq('sala_id', salaId).not('user_id', 'is', null),
   ])
 
   if (!miembros || miembros.length === 0) return 'No hay miembros en la sala.'
@@ -255,7 +255,7 @@ async function calcularNetMiembro(salaId: string, miembroId: string): Promise<nu
   const [{ data: gastos }, { data: pagos }, { data: miembros }] = await Promise.all([
     supabase.from('gastos').select('tipo, pagado_por, importe, splits').eq('sala_id', salaId),
     supabase.from('pagos').select('de_id, a_id, importe').eq('sala_id', salaId),
-    supabase.from('miembros').select('id').eq('sala_id', salaId),
+    supabase.from('miembros').select('id').eq('sala_id', salaId).not('user_id', 'is', null),
   ])
   const n = miembros?.length ?? 1
   const net: Record<string, number> = {}
@@ -421,7 +421,7 @@ export async function POST(req: NextRequest) {
   }
 
   // ── 4. Procesar mensaje ──
-  const { data: compañeros } = await supabase.from('miembros').select('id, nombre').eq('sala_id', miembro.sala_id)
+  const { data: compañeros } = await supabase.from('miembros').select('id, nombre').eq('sala_id', miembro.sala_id).not('user_id', 'is', null)
   const nombresMiembros = (compañeros ?? []).map((m: { nombre: string }) => m.nombre)
   const textoLower = texto.toLowerCase()
 
