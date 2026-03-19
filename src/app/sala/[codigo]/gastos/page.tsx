@@ -265,6 +265,7 @@ export default function GastosPage() {
   const [notaAbierta, setNotaAbierta] = useState(false)
   const [planSala, setPlanSala] = useState<'free' | 'pro'>('free')
   const [historialLimitado, setHistorialLimitado] = useState(false)
+  const [masOpciones, setMasOpciones] = useState(false)
 
   const { addNotif } = useNotif()
 
@@ -410,6 +411,7 @@ export default function GastosPage() {
     setAutoSplit(true)
     setCustomSplits({})
     setEditandoId(null)
+    setMasOpciones(false)
     setModalOpen(true)
   }
 
@@ -431,6 +433,7 @@ export default function GastosPage() {
     )
     setEditandoId(g.id)
     setFormError('')
+    setMasOpciones(true)
     setModalOpen(true)
   }
 
@@ -2033,18 +2036,13 @@ export default function GastosPage() {
                           required
                         />
                         {importeNum > 0 && (
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 10 }}>
-                            {miembros.map(m => (
-                              <div key={m.id} className="g-split-row">
-                                <div className="g-split-av" style={{ background: m.color }}>
-                                  {m.nombre[0].toUpperCase()}
-                                </div>
-                                <span className="g-split-name">{m.nombre}</span>
-                                <span style={{ fontFamily: 'var(--font-code), monospace', fontSize: '0.9rem', fontWeight: 500, color: '#C05A3B' }}>
-                                  {fmtUYU(Math.round(importeNum / miembros.length))}
-                                </span>
-                              </div>
-                            ))}
+                          <div style={{ marginTop: 8, padding: '6px 10px', background: 'rgba(192,90,59,0.06)', borderRadius: 8, border: '1px solid rgba(192,90,59,0.15)', display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <span style={{ fontSize: '0.75rem', color: '#A07060', fontFamily: 'var(--font-body), Nunito, sans-serif' }}>
+                              {miembros.length} personas →
+                            </span>
+                            <span style={{ fontFamily: 'var(--font-code), monospace', fontSize: '0.88rem', fontWeight: 700, color: '#C05A3B' }}>
+                              {fmtUYU(Math.round(importeNum / miembros.length))} c/u
+                            </span>
                           </div>
                         )}
                       </div>
@@ -2125,6 +2123,25 @@ export default function GastosPage() {
                   </>
                 )
               })()}
+
+              {/* Más opciones toggle */}
+              <button
+                type="button"
+                onClick={() => setMasOpciones(v => !v)}
+                style={{
+                  width: '100%', padding: '8px 12px', borderRadius: 10,
+                  border: '1.5px dashed #E0C8B8', background: 'transparent',
+                  color: '#A07060', cursor: 'pointer', fontSize: '0.78rem', fontWeight: 600,
+                  fontFamily: 'var(--font-body), Nunito, sans-serif',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                  marginBottom: '0.75rem', transition: 'all 0.18s',
+                }}
+              >
+                <span style={{ fontSize: '0.7rem', transition: 'transform 0.2s', display: 'inline-block', transform: masOpciones ? 'rotate(180deg)' : 'rotate(0deg)' }}>▼</span>
+                {masOpciones ? 'Menos opciones' : 'Más opciones (tipo, categoría, fecha)'}
+              </button>
+
+              {masOpciones && <>
 
               {/* Tipo */}
               <div className="g-field">
@@ -2231,6 +2248,8 @@ export default function GastosPage() {
                   onChange={v => setForm(f => ({ ...f, fecha: v }))}
                 />
               </div>
+
+              </>}
 
               {formError && (
                 <div className="g-error">

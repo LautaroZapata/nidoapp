@@ -207,8 +207,8 @@ function SalaLayoutInner({ children }: { children: React.ReactNode }) {
 
         /* ── Notification panel ── */
         @keyframes notif-panel-in {
-          from { transform: translateY(100%); opacity: 0.5; }
-          to   { transform: translateY(0);    opacity: 1;   }
+          from { transform: translateY(-100%); opacity: 0.5; }
+          to   { transform: translateY(0);     opacity: 1;   }
         }
         .notif-panel {
           animation: notif-panel-in 0.32s cubic-bezier(0.22, 1, 0.36, 1) both;
@@ -280,7 +280,7 @@ function SalaLayoutInner({ children }: { children: React.ReactNode }) {
           .sidebar { display: flex; }
           .sala-content { padding-bottom: 0 !important; padding-left: 224px; }
           .bnav { display: none !important; }
-          .notif-panel { left: 224px; right: auto !important; width: 360px; border-radius: 22px 22px 0 0; }
+          .notif-panel { left: 224px; right: auto !important; width: 360px; border-radius: 0 0 22px 22px; }
         }
       `}</style>
 
@@ -345,13 +345,13 @@ function SalaLayoutInner({ children }: { children: React.ReactNode }) {
           <div
             className="notif-panel"
             style={{
-              position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 250,
+              position: 'fixed', top: 0, left: 0, right: 0, zIndex: 250,
               background: '#FFF8F2',
-              borderRadius: '22px 22px 0 0',
-              border: '1.5px solid #EAD8C8', borderBottom: 'none',
+              borderRadius: '0 0 22px 22px',
+              border: '1.5px solid #EAD8C8', borderTop: 'none',
               maxHeight: '72vh', display: 'flex', flexDirection: 'column',
-              paddingBottom: 'env(safe-area-inset-bottom, 0px)',
-              boxShadow: '0 -12px 48px rgba(42,26,14,0.18)',
+              paddingTop: 'env(safe-area-inset-top, 0px)',
+              boxShadow: '0 12px 48px rgba(42,26,14,0.18)',
             }}
           >
             {/* Header */}
