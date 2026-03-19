@@ -25,8 +25,9 @@ export const TIERS = {
     variantKey: 'LEMONSQUEEZY_VARIANT_CASA',
     features: [
       'Miembros ilimitados',
-      'Todo lo del plan Nido',
-      'Estadísticas avanzadas',
+      'Historial de gastos ilimitado',
+      'Bot de WhatsApp incluido',
+      'Estadísticas avanzadas de gastos',
       'Soporte prioritario',
     ],
   },

@@ -11,6 +11,7 @@ import type { Debt } from '@/lib/balance'
 import { notificarSala } from '@/lib/push'
 import { useNotif } from '@/lib/notif-context'
 import { ConfirmModal } from '@/components/ConfirmModal'
+import { FREE_LIMITS } from '@/lib/features'
 
 const fraunces = Fraunces({
   weight: 'variable',
@@ -246,7 +247,7 @@ export default function GastosPage() {
   const miembrosRef = useRef<Miembro[]>([])
   const [pagos, setPagos] = useState<Pago[]>([])
   const [loading, setLoading] = useState(true)
-  const [tab, setTab] = useState<'gastos' | 'balance' | 'historial'>('gastos')
+  const [tab, setTab] = useState<'gastos' | 'balance' | 'historial' | 'stats'>('gastos')
   const [modalOpen, setModalOpen] = useState(false)
   const [guardando, setGuardando] = useState(false)
   const [form, setForm] = useState(FORM_INIT)
@@ -265,6 +266,7 @@ export default function GastosPage() {
   const [editandoMonto, setEditandoMonto] = useState(false)
   const [notaAbierta, setNotaAbierta] = useState(false)
   const [planSala, setPlanSala] = useState<'free' | 'pro'>('free')
+  const [planTier, setPlanTier] = useState<string | null>(null)
   const [historialLimitado, setHistorialLimitado] = useState(false)
   const [masOpciones, setMasOpciones] = useState(false)
   const [confirmDialog, setConfirmDialog] = useState<{ title?: string; message: string; onConfirm: () => void } | null>(null)
@@ -284,15 +286,16 @@ export default function GastosPage() {
         const planData = await planRes.json()
         plan = planData.plan ?? 'free'
         setPlanSala(plan)
+        if (planData.tier) setPlanTier(planData.tier)
       }
     } catch { /* si falla, asumimos free */ }
 
-    // En plan Free: solo últimos 3 meses de historial
+    // En plan Free: solo últimos N meses de historial
     let gastosQuery = supabase.from('gastos').select().eq('sala_id', session.salaId).order('fecha', { ascending: false })
     if (plan === 'free') {
-      const hace3Meses = new Date()
-      hace3Meses.setMonth(hace3Meses.getMonth() - 3)
-      gastosQuery = gastosQuery.gte('fecha', hace3Meses.toISOString().slice(0, 10))
+      const fechaLimite = new Date()
+      fechaLimite.setMonth(fechaLimite.getMonth() - FREE_LIMITS.historialMeses)
+      gastosQuery = gastosQuery.gte('fecha', fechaLimite.toISOString().slice(0, 10))
     }
 
     const [{ data: gastosData }, { data: miembrosData }, { data: pagosData }] = await Promise.all([
@@ -1202,6 +1205,11 @@ export default function GastosPage() {
                 </span>
               )}
             </button>
+            {planSala === 'pro' && planTier === 'casa' && (
+              <button className={`g-tab${tab === 'stats' ? ' active' : ''}`} onClick={() => setTab('stats')}>
+                Estadísticas ✦
+              </button>
+            )}
           </div>
 
           {/* ── BANNER: Historial limitado (plan Free) ── */}
@@ -1215,7 +1223,7 @@ export default function GastosPage() {
             }}>
               <div>
                 <div style={{ fontSize: '0.82rem', fontWeight: 700, color: '#2A1A0E', marginBottom: 2 }}>
-                  📅 Historial de los últimos 3 meses
+                  📅 Historial de los últimos {FREE_LIMITS.historialMeses} meses
                 </div>
                 <div style={{ fontSize: '0.75rem', color: '#8A5A40', lineHeight: 1.4 }}>
                   Con Nido Pro accedés a todo el historial sin límite.
@@ -1471,6 +1479,131 @@ export default function GastosPage() {
               )}
             </>
           )}
+
+          {/* ── TAB: ESTADÍSTICAS (Casa) ── */}
+          {tab === 'stats' && (() => {
+            if (loading) return <div style={{ display:'flex', justifyContent:'center', padding:'2rem' }}><div style={{ width:28, height:28, borderRadius:'50%', border:'2.5px solid #C05A3B', borderTopColor:'transparent', animation:'g-spin 0.8s linear infinite' }}/></div>
+            if (gastos.length === 0) return (
+              <div className="g-empty"><div className="g-empty-icon">📊</div><div className="g-empty-title">Sin datos aún</div><p className="g-empty-sub">Registrá gastos para ver estadísticas.</p></div>
+            )
+
+            // ── Cálculos ──
+            const totalGastado = gastos.reduce((s, g) => s + g.importe, 0)
+
+            // Gasto por miembro (quién pagó)
+            const porMiembro: Record<string, number> = {}
+            gastos.forEach(g => { if (g.pagado_por) porMiembro[g.pagado_por] = (porMiembro[g.pagado_por] ?? 0) + g.importe })
+            const topMiembroId = Object.entries(porMiembro).sort((a, b) => b[1] - a[1])[0]?.[0]
+            const topMiembro = miembros.find(m => m.id === topMiembroId)
+
+            // Gasto por categoría
+            const porCategoria: Record<string, number> = {}
+            gastos.forEach(g => { if (g.categoria) { porCategoria[g.categoria] = (porCategoria[g.categoria] ?? 0) + g.importe } })
+            const categoriasOrdenadas = Object.entries(porCategoria).sort((a, b) => b[1] - a[1])
+
+            // Gasto por mes
+            const porMes: Record<string, number> = {}
+            gastos.forEach(g => {
+              const mes = g.fecha?.slice(0, 7) ?? ''
+              if (mes) porMes[mes] = (porMes[mes] ?? 0) + g.importe
+            })
+            const mesesOrdenados = Object.entries(porMes).sort((a, b) => b[0].localeCompare(a[0])).slice(0, 6)
+            const maxMes = Math.max(...mesesOrdenados.map(([, v]) => v), 1)
+            const mesNombres: Record<string, string> = { '01':'Ene','02':'Feb','03':'Mar','04':'Abr','05':'May','06':'Jun','07':'Jul','08':'Ago','09':'Sep','10':'Oct','11':'Nov','12':'Dic' }
+
+            const promPorPersona = miembros.length > 0 ? totalGastado / miembros.length : 0
+
+            return (
+              <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
+                {/* KPIs */}
+                <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10 }}>
+                  {[
+                    { label:'Total gastado', value: fmtUYU(totalGastado), icon:'💸' },
+                    { label:'Promedio por persona', value: fmtUYU(promPorPersona), icon:'👤' },
+                    { label:'Gastos registrados', value: `${gastos.length}`, icon:'📋' },
+                    { label:'Top pagador', value: topMiembro?.nombre ?? '—', icon:'🏆', color: topMiembro?.color },
+                  ].map((kpi, i) => (
+                    <div key={i} style={{ background:'white', border:'1.5px solid #EAD8C8', borderRadius:16, padding:'1rem 1.1rem' }}>
+                      <div style={{ fontSize:'1.2rem', marginBottom:4 }}>{kpi.icon}</div>
+                      <div style={{ fontSize:'0.68rem', color:'#B09080', fontWeight:700, textTransform:'uppercase', letterSpacing:'0.08em', marginBottom:3 }}>{kpi.label}</div>
+                      <div style={{ fontSize:'1.05rem', fontWeight:800, color: kpi.color ?? '#2A1A0E', fontFamily:'var(--font-serif),Georgia,serif' }}>{kpi.value}</div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Gasto por mes */}
+                {mesesOrdenados.length > 0 && (
+                  <div style={{ background:'white', border:'1.5px solid #EAD8C8', borderRadius:16, padding:'1rem 1.1rem' }}>
+                    <div style={{ fontSize:'0.7rem', color:'#B09080', fontWeight:700, textTransform:'uppercase', letterSpacing:'0.08em', marginBottom:12 }}>Gasto mensual</div>
+                    <div style={{ display:'flex', alignItems:'flex-end', gap:6, height:80 }}>
+                      {mesesOrdenados.slice().reverse().map(([mes, val]) => {
+                        const [y, m] = mes.split('-')
+                        const pct = (val / maxMes) * 100
+                        return (
+                          <div key={mes} style={{ flex:1, display:'flex', flexDirection:'column', alignItems:'center', gap:4 }}>
+                            <div style={{ fontSize:'0.6rem', color:'#B09080', fontWeight:600 }}>{fmtUYU(val).replace('$','')}</div>
+                            <div style={{ width:'100%', background:'rgba(192,90,59,0.12)', borderRadius:6, height:56, display:'flex', alignItems:'flex-end' }}>
+                              <div style={{ width:'100%', background:'#C05A3B', borderRadius:6, height:`${pct}%`, minHeight:4, transition:'height 0.3s' }}/>
+                            </div>
+                            <div style={{ fontSize:'0.6rem', color:'#A07060', fontWeight:600 }}>{mesNombres[m]} {y?.slice(2)}</div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* Top categorías */}
+                {categoriasOrdenadas.length > 0 && (
+                  <div style={{ background:'white', border:'1.5px solid #EAD8C8', borderRadius:16, padding:'1rem 1.1rem' }}>
+                    <div style={{ fontSize:'0.7rem', color:'#B09080', fontWeight:700, textTransform:'uppercase', letterSpacing:'0.08em', marginBottom:10 }}>Por categoría</div>
+                    <div style={{ display:'flex', flexDirection:'column', gap:7 }}>
+                      {categoriasOrdenadas.slice(0, 5).map(([cat, val]) => {
+                        const pct = (val / totalGastado) * 100
+                        return (
+                          <div key={cat}>
+                            <div style={{ display:'flex', justifyContent:'space-between', fontSize:'0.78rem', marginBottom:3 }}>
+                              <span style={{ color:'#2A1A0E', fontWeight:600, textTransform:'capitalize' }}>{cat}</span>
+                              <span style={{ color:'#8A6050', fontFamily:'var(--font-code),monospace' }}>{fmtUYU(val)} · {pct.toFixed(0)}%</span>
+                            </div>
+                            <div style={{ height:5, background:'#F0E8DF', borderRadius:4, overflow:'hidden' }}>
+                              <div style={{ height:'100%', background:'#C05A3B', width:`${pct}%`, borderRadius:4, transition:'width 0.3s' }}/>
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* Gasto por miembro */}
+                <div style={{ background:'white', border:'1.5px solid #EAD8C8', borderRadius:16, padding:'1rem 1.1rem' }}>
+                  <div style={{ fontSize:'0.7rem', color:'#B09080', fontWeight:700, textTransform:'uppercase', letterSpacing:'0.08em', marginBottom:10 }}>Quién más pagó</div>
+                  <div style={{ display:'flex', flexDirection:'column', gap:7 }}>
+                    {Object.entries(porMiembro).sort((a, b) => b[1] - a[1]).map(([id, val]) => {
+                      const m = miembros.find(x => x.id === id)
+                      if (!m) return null
+                      const pct = (val / totalGastado) * 100
+                      return (
+                        <div key={id}>
+                          <div style={{ display:'flex', justifyContent:'space-between', fontSize:'0.78rem', marginBottom:3, alignItems:'center' }}>
+                            <div style={{ display:'flex', alignItems:'center', gap:7 }}>
+                              <div style={{ width:20, height:20, borderRadius:'50%', background:m.color, display:'flex', alignItems:'center', justifyContent:'center', fontSize:'0.6rem', color:'white', fontWeight:700 }}>{m.nombre[0].toUpperCase()}</div>
+                              <span style={{ color:'#2A1A0E', fontWeight:600 }}>{m.nombre}</span>
+                            </div>
+                            <span style={{ color:'#8A6050', fontFamily:'var(--font-code),monospace' }}>{fmtUYU(val)}</span>
+                          </div>
+                          <div style={{ height:5, background:'#F0E8DF', borderRadius:4, overflow:'hidden' }}>
+                            <div style={{ height:'100%', background:m.color, width:`${pct}%`, borderRadius:4, transition:'width 0.3s' }}/>
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              </div>
+            )
+          })()}
 
           {/* ── TAB: BALANCE ── */}
           {tab === 'balance' && (
