@@ -254,19 +254,20 @@ async function eliminarPendiente(miembroId: string) {
 
 async function calcularNetMiembro(salaId: string, miembroId: string): Promise<number> {
   const [{ data: gastos }, { data: pagos }, { data: miembros }] = await Promise.all([
-    supabase.from('gastos').select('tipo, pagado_por, importe, splits').eq('sala_id', salaId),
+    supabase.from('gastos').select('tipo, pagado_por, importe, splits, creado_en').eq('sala_id', salaId),
     supabase.from('pagos').select('de_id, a_id, importe').eq('sala_id', salaId),
-    supabase.from('miembros').select('id').eq('sala_id', salaId).not('user_id', 'is', null),
+    supabase.from('miembros').select('id, creado_en').eq('sala_id', salaId).not('user_id', 'is', null),
   ])
-  const n = miembros?.length ?? 1
   const net: Record<string, number> = {}
   ;(miembros ?? []).forEach((m: { id: string }) => { net[m.id] = 0 })
-  ;(gastos ?? []).forEach((g: { tipo: string; pagado_por: string | null; importe: number; splits: Record<string, number> | null }) => {
+  ;(gastos ?? []).forEach((g: { tipo: string; pagado_por: string | null; importe: number; splits: Record<string, number> | null; creado_en: string }) => {
     if (g.tipo === 'fijo' || !g.pagado_por) return
     if (!g.splits) {
-      const share = g.importe / n
+      // Solo incluir miembros que existían cuando se creó el gasto
+      const participantes = (miembros ?? []).filter((m: { id: string; creado_en: string }) => m.creado_en <= g.creado_en)
+      const share = g.importe / (participantes.length || 1)
       net[g.pagado_por] = (net[g.pagado_por] ?? 0) + g.importe - share
-      ;(miembros ?? []).forEach((m: { id: string }) => {
+      participantes.forEach((m: { id: string }) => {
         if (m.id !== g.pagado_por) net[m.id] = (net[m.id] ?? 0) - share
       })
     } else {
@@ -387,10 +388,18 @@ export async function POST(req: NextRequest) {
           const { data: miembrosData } = await supabase
             .from('miembros').select('id, nombre').eq('sala_id', miembro.sala_id).not('user_id', 'is', null)
           if (miembrosData) {
-            const splitNombres = (accion.split_con as string[]).map(n => n.toLowerCase())
-            const grupo = miembrosData.filter(m =>
-              m.id === miembro.id || splitNombres.includes(m.nombre.toLowerCase())
-            )
+            const splitNombres = (accion.split_con as string[]).map(n => n.toLowerCase().trim())
+            const grupo = miembrosData.filter(m => {
+              if (m.id === miembro.id) return true
+              const mNombre = m.nombre.toLowerCase()
+              return splitNombres.some(n =>
+                mNombre === n ||
+                mNombre.startsWith(n) ||
+                n.startsWith(mNombre) ||
+                mNombre.includes(n) ||
+                n.includes(mNombre)
+              )
+            })
             if (grupo.length > 1) {
               const porcion = accion.monto / grupo.length
               splits = {}
@@ -503,6 +512,18 @@ export async function POST(req: NextRequest) {
     return 'otro'
   }
 
+  // Detecta "con [nombre(s)]" en el mensaje para aplicar split parcial en pre-parsers
+  function detectarSplitParcial(texto: string): { split: 'igual' | 'parcial'; split_con?: string[] } {
+    const conMatch = texto.match(/\bcon\s+([\w\s]+?)(?=\s+(?:por|de|a)\s+\$?\d|\s*$)/i)
+    if (!conMatch) return { split: 'igual' }
+    const mencionados = conMatch[1].toLowerCase().trim().split(/\s+y\s+|\s*,\s*/).map(s => s.trim()).filter(Boolean)
+    const splitCon = nombresMiembros.filter(n => {
+      const nLow = n.toLowerCase()
+      return mencionados.some(m => nLow === m || nLow.startsWith(m) || m.startsWith(nLow) || nLow.includes(m) || m.includes(nLow))
+    })
+    return splitCon.length > 0 ? { split: 'parcial', split_con: splitCon } : { split: 'igual' }
+  }
+
   let accion: Awaited<ReturnType<typeof parsearMensaje>>
 
   if (gastoMatch) {
@@ -511,24 +532,28 @@ export async function POST(req: NextRequest) {
       .replace(/^(?:una?|el|la|los|las|unos|unas)\s+/i, '')  // quitar artículos al inicio
       .replace(/\s+(?:para|por|de|del|en)\s+.*$/i, '')       // quitar "para/por/de..." al final
       .trim()
+    const splitInfo = detectarSplitParcial(textoLower)
+    const divTxt = splitInfo.split === 'parcial' ? splitInfo.split_con!.join(' y ') : 'entre todos'
     accion = {
       accion:       'crear_gasto',
       monto,
       descripcion:  desc,
-      split:        'igual',
+      ...splitInfo,
       categoria:    detectarCategoria(desc),
-      confirmacion: `¿Confirmás este gasto?\n\n📌 *${desc}*\n💵 $${Math.round(monto).toLocaleString('es-UY')}\n👤 Pagado por: ${miembro.nombre}\n👥 División: entre todos\n\nRespondé *si* o *no*`,
+      confirmacion: `¿Confirmás este gasto?\n\n📌 *${desc}*\n💵 $${Math.round(monto).toLocaleString('es-UY')}\n👤 Pagado por: ${miembro.nombre}\n👥 División: ${divTxt}\n\nRespondé *si* o *no*`,
     }
   } else if (gastoMatchInv) {
     const desc  = gastoMatchInv[1].trim()
     const monto = parseFloat(gastoMatchInv[2].replace(',', '.'))
+    const splitInfo = detectarSplitParcial(textoLower)
+    const divTxt = splitInfo.split === 'parcial' ? splitInfo.split_con!.join(' y ') : 'entre todos'
     accion = {
       accion:       'crear_gasto',
       monto,
       descripcion:  desc,
-      split:        'igual',
+      ...splitInfo,
       categoria:    detectarCategoria(desc),
-      confirmacion: `¿Confirmo que ${miembro.nombre} pagó $${Math.round(monto).toLocaleString('es-UY')} de ${desc} entre todos? Respondé *si* o *no*`,
+      confirmacion: `¿Confirmás este gasto?\n\n📌 *${desc}*\n💵 $${Math.round(monto).toLocaleString('es-UY')}\n👤 Pagado por: ${miembro.nombre}\n👥 División: ${divTxt}\n\nRespondé *si* o *no*`,
     }
   } else if (compraMatch) {
     const items = compraMatch[1].split(/,\s*|\s+y\s+/).map((i: string) => i.trim()).filter(Boolean)
