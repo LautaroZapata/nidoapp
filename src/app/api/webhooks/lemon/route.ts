@@ -65,7 +65,7 @@ export async function POST(req: NextRequest) {
       if (!salaId) break
       const esPro = data.attributes.status === 'active' || data.attributes.status === 'on_trial'
       const tierRaw = (meta.custom_data as Record<string, string>)?.tier ?? null
-      const tier = (tierRaw === 'starter' || tierRaw === 'hogar' || tierRaw === 'casa_grande') ? tierRaw : null
+      const tier = (tierRaw === 'nido' || tierRaw === 'casa') ? tierRaw : null
       await supabase
         .from('salas')
         .update({
