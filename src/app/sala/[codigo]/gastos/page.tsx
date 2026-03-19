@@ -633,7 +633,13 @@ export default function GastosPage() {
     })
     const totalMes = mes.reduce((s, g) => s + g.importe, 0)
     const miParte = mes.reduce((s, g) => {
-      const parte = g.splits?.[miId] !== undefined ? g.splits[miId] : g.importe / (miembros.length || 1)
+      let parte: number
+      if (g.splits?.[miId] !== undefined) {
+        parte = g.splits[miId]
+      } else {
+        const ps = miembros.filter(m => m.creado_en <= g.creado_en)
+        parte = ps.some(m => m.id === miId) ? g.importe / (ps.length || 1) : 0
+      }
       return s + parte
     }, 0)
     return { totalMes, miParte }
@@ -1558,7 +1564,13 @@ export default function GastosPage() {
                 const renderGasto = (g: Gasto, idx: number) => {
                   const cat = CATEGORIA_META[g.categoria]
                   const miId = session.miembroId
-                  const miParte = Math.round(g.splits?.[miId] !== undefined ? g.splits[miId] : g.importe / (miembros.length || 1))
+                  const miParte = Math.round(g.splits?.[miId] !== undefined
+                    ? g.splits[miId]
+                    : (() => {
+                        const ps = miembros.filter(m => m.creado_en <= g.creado_en)
+                        return ps.some(m => m.id === miId) ? g.importe / (ps.length || 1) : 0
+                      })()
+                  )
                   return (
                     <div key={g.id} className={`g-item${g.tipo === 'fijo' ? ' g-item-fijo' : ''}`} style={{ animationDelay: `${idx * 0.05}s` }}>
                       <div className="g-cat-badge" style={{ background: cat.bg, borderColor: cat.border }}>
@@ -1598,7 +1610,7 @@ export default function GastosPage() {
                       <div className="g-item-end">
                         <div className="g-item-right">
                           <div className="g-item-importe">{fmtUYU(g.importe)}</div>
-                          <div className="g-item-parte">Tu parte: {fmtUYU(miParte)}</div>
+                          {miParte > 0 && <div className="g-item-parte">Tu parte: {fmtUYU(miParte)}</div>}
                         </div>
                         <div className="g-item-btns">
                           <button className="g-edit-btn" onClick={() => abrirEditar(g)} title="Editar gasto">
