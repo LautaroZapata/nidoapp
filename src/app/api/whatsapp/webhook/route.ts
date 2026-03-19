@@ -185,26 +185,27 @@ async function consultarBalance(
   const nombrePor = (id: string) => miembros.find((m: { id: string; nombre: string }) => m.id === id)?.nombre ?? id
 
   const miBalance = net[miembroId] ?? 0
-  const lines: string[] = ['📊 *Balance del nido*\n']
+  const sep = '─────────────────'
+  const lines: string[] = [`📊 *Balance del Nido*\n${sep}`]
 
   miembros.forEach((m: { id: string; nombre: string }) => {
     const val = net[m.id] ?? 0
     if (Math.abs(val) < EPS) {
-      lines.push(`${m.nombre}: ✅ al día`)
+      lines.push(`• ${m.nombre} ✅ Al día`)
     } else if (val > 0) {
-      lines.push(`${m.nombre}: le deben $${Math.round(val).toLocaleString('es-UY')}`)
+      lines.push(`• ${m.nombre} 💰 Le deben $${Math.round(val).toLocaleString('es-UY')}`)
     } else {
-      lines.push(`${m.nombre}: debe $${Math.round(-val).toLocaleString('es-UY')}`)
+      lines.push(`• ${m.nombre} 📉 Debe $${Math.round(-val).toLocaleString('es-UY')}`)
     }
   })
 
-  if (Math.abs(miBalance) >= EPS) {
-    lines.push('')
-    if (miBalance > 0) {
-      lines.push(`🤑 Te deben $${Math.round(miBalance).toLocaleString('es-UY')} en total`)
-    } else {
-      lines.push(`😬 Debés $${Math.round(-miBalance).toLocaleString('es-UY')} en total`)
-    }
+  lines.push(sep)
+  if (Math.abs(miBalance) < EPS) {
+    lines.push(`Tu posición: ✅ Al día`)
+  } else if (miBalance > 0) {
+    lines.push(`Tu posición: Te deben $${Math.round(miBalance).toLocaleString('es-UY')}`)
+  } else {
+    lines.push(`Tu posición: Debés $${Math.round(-miBalance).toLocaleString('es-UY')}`)
   }
 
   return lines.join('\n')
@@ -328,9 +329,9 @@ export async function POST(req: NextRequest) {
   if (esCodigoLink) {
     const nombre = await vincularConCodigo(deFono, texto.toUpperCase())
     if (nombre) {
-      await enviarMensaje(deFono, `¡Hola ${nombre}! 🎉 Tu WhatsApp quedó vinculado a Nido. Ya podés enviarme gastos, compras y consultas directamente desde acá.`)
+      await enviarMensaje(deFono, `¡Hola, ${nombre}! 🎉\n\nTu número quedó vinculado exitosamente a *NidoApp*.\n\nDesde acá podés:\n• Registrar gastos: _"pagué 500 en pizza"_\n• Consultar el balance: _"¿cuánto debo?"_\n• Agregar compras: _"falta leche y pan"_\n• Ver gastos recientes: _"ver gastos"_`)
     } else {
-      await enviarMensaje(deFono, `Ese código no es válido o ya expiró. Generá uno nuevo desde la app de Nido. ⏱️`)
+      await enviarMensaje(deFono, `⚠️ *Código inválido o expirado*\n\nLos códigos tienen una vigencia de 15 minutos. Para obtener uno nuevo:\n\n1. Abrí la app NidoApp\n2. Ingresá a tu sala\n3. Tocá *"Conectar WhatsApp"*`)
     }
     return NextResponse.json({ status: 'ok' })
   }
@@ -338,7 +339,7 @@ export async function POST(req: NextRequest) {
   // ── 2. ¿Conocemos a este número? ──
   const miembro = await buscarMiembro(deFono)
   if (!miembro) {
-    await enviarMensaje(deFono, `Hola! Todavía no vinculé tu número con Nido. 👋\n\nAbrí la app, andá a tu sala y tocá "Conectar WhatsApp" para obtener tu código.`)
+    await enviarMensaje(deFono, `👋 *Hola*\n\nTu número aún no está vinculado a ninguna sala de *NidoApp*.\n\nPara conectarte:\n1. Abrí la app NidoApp\n2. Ingresá a tu sala\n3. Tocá *"Conectar WhatsApp"* e ingresá aquí el código que aparece`)
     return NextResponse.json({ status: 'ok' })
   }
 
@@ -355,7 +356,7 @@ export async function POST(req: NextRequest) {
     (!sala?.subscription_end || new Date(sala.subscription_end) > ahora)
 
   if (!esPro) {
-    await enviarMensaje(deFono, `⚠️ El bot de WhatsApp es una función exclusiva del plan *Pro*.\n\nEl nido al que pertenecés está en plan gratuito. El dueño del nido debe activar Pro desde la app para usar esta función. 🏠`)
+    await enviarMensaje(deFono, `⚠️ *Función exclusiva del plan Pro*\n\nEl bot de WhatsApp no está disponible para tu nido, que se encuentra en el plan gratuito.\n\nPara activarlo, el administrador del nido debe upgradear a *Plan Nido* o *Plan Casa* desde la app NidoApp.`)
     return NextResponse.json({ status: 'ok' })
   }
 
@@ -368,7 +369,7 @@ export async function POST(req: NextRequest) {
   if (pendiente) {
     if (esCancelacion) {
       await eliminarPendiente(miembro.id)
-      await enviarMensaje(deFono, `✋ Cancelado, no se registró nada. ¿Necesitás algo más?`)
+      await enviarMensaje(deFono, `✋ *Acción cancelada*\n\nNo se registró ningún cambio. Podés enviarme un nuevo mensaje cuando quieras.`)
       return NextResponse.json({ status: 'ok' })
     }
 
@@ -409,17 +410,17 @@ export async function POST(req: NextRequest) {
           fecha:       fechaLocalDesdeTelefono(deFono),
           splits,
         })
-        if (error) { await enviarMensaje(deFono, `😓 Hubo un error al guardar el gasto. Intentá de nuevo.`); return NextResponse.json({ status: 'ok' }) }
+        if (error) { await enviarMensaje(deFono, `❌ *Error al registrar el gasto*\n\nNo se pudo guardar en este momento. Por favor, intentá nuevamente en unos segundos.`); return NextResponse.json({ status: 'ok' }) }
         const netPost = await calcularNetMiembro(miembro.sala_id, miembro.id)
-        const netTxt = Math.abs(netPost) < 0.5 ? '🎉 ¡Estás al día!' : netPost > 0 ? `💰 Te deben $${Math.round(netPost).toLocaleString('es-UY')} en total` : `📊 Debés $${Math.round(-netPost).toLocaleString('es-UY')} en total`
-        await enviarMensaje(deFono, `✅ *${accion.descripcion}* — $${Math.round(accion.monto).toLocaleString('es-UY')} guardado.\n\n${netTxt}`)
+        const netTxt = Math.abs(netPost) < 0.5 ? '✅ Estás al día con el nido.' : netPost > 0 ? `💰 Tu balance actual: te deben $${Math.round(netPost).toLocaleString('es-UY')}` : `📊 Tu balance actual: debés $${Math.round(-netPost).toLocaleString('es-UY')}`
+        await enviarMensaje(deFono, `✅ *Gasto registrado*\n\n📌 ${accion.descripcion}\n💵 $${Math.round(accion.monto).toLocaleString('es-UY')}\n👤 Pagado por: ${miembro.nombre}\n\n${netTxt}`)
       }
 
       if (accion.accion === 'agregar_compra') {
         const items = accion.items.map((nombre: string) => ({ sala_id: miembro.sala_id, nombre, completado: false }))
         const { error } = await supabase.from('items_compra').insert(items)
-        if (error) { await enviarMensaje(deFono, `😓 Hubo un error al guardar la compra. Intentá de nuevo.`); return NextResponse.json({ status: 'ok' }) }
-        await enviarMensaje(deFono, `🛒 ¡Listo! Agregué a la lista:\n${accion.items.map((it: string) => `  • ${it}`).join('\n')}`)
+        if (error) { await enviarMensaje(deFono, `❌ *Error al actualizar la lista*\n\nNo se pudieron agregar los ítems en este momento. Por favor, intentá nuevamente.`); return NextResponse.json({ status: 'ok' }) }
+        await enviarMensaje(deFono, `🛒 *Lista de compras actualizada*\n\nSe agregaron los siguientes ítems:\n${accion.items.map((it: string) => `• ${it}`).join('\n')}`)
       }
 
       if (accion.accion === 'liquidar_deuda') {
@@ -430,14 +431,14 @@ export async function POST(req: NextRequest) {
           importe:  Math.round(Math.abs(accion.monto)),
           fecha:    fechaLocalDesdeTelefono(deFono),
         })
-        await enviarMensaje(deFono, `💸 ¡Pago registrado! Tu deuda quedó saldada. 🎉\n\nSi el monto no era exacto, podés ajustarlo desde la app.`)
+        await enviarMensaje(deFono, `💸 *Pago registrado*\n\nTu deuda quedó saldada exitosamente. 🎉\n\nSi el importe no era exacto, podés ajustarlo desde la app NidoApp.`)
       }
 
       return NextResponse.json({ status: 'ok' })
     }
 
     // Respondió otra cosa mientras hay pendiente
-    await enviarMensaje(deFono, `⏳ Tenés una acción pendiente de confirmar.\n\nRespondé *si* ✅ para confirmar o *no* ❌ para cancelar.`)
+    await enviarMensaje(deFono, `⏳ *Acción pendiente de confirmación*\n\nTenés una acción sin confirmar. Por favor respondé:\n• *si* — para confirmar ✅\n• *no* — para cancelar ❌`)
     return NextResponse.json({ status: 'ok' })
   }
 
@@ -511,14 +512,14 @@ export async function POST(req: NextRequest) {
       descripcion:  desc,
       split:        'igual',
       categoria:    detectarCategoria(desc),
-      confirmacion: `¿Confirmo que ${miembro.nombre} pagó $${Math.round(monto).toLocaleString('es-UY')} de ${desc} entre todos? Respondé *si* o *no*`,
+      confirmacion: `¿Confirmás este gasto?\n\n📌 *${desc}*\n💵 $${Math.round(monto).toLocaleString('es-UY')}\n👤 Pagado por: ${miembro.nombre}\n👥 División: entre todos\n\nRespondé *si* o *no*`,
     }
   } else if (compraMatch) {
     const items = compraMatch[1].split(/,\s*|\s+y\s+/).map((i: string) => i.trim()).filter(Boolean)
     accion = {
       accion:       'agregar_compra',
       items,
-      confirmacion: `¿Agrego ${items.join(', ')} a la lista de compras? Respondé *si* o *no*`,
+      confirmacion: `¿Agregamos a la lista de compras?\n\n${items.map((i: string) => `• ${i}`).join('\n')}\n\nRespondé *si* o *no*`,
     }
   } else if (esBalance) {
     accion = { accion: 'consultar_balance', confirmacion: 'Consultando...' }
@@ -539,9 +540,12 @@ export async function POST(req: NextRequest) {
     if (preguntaSiDebe) {
       const miNet = await calcularNetMiembro(miembro.sala_id, miembro.id)
       if (miNet >= -0.5) {
-        await enviarMensaje(deFono, `No debés nada 😊 Al contrario, te deben $${Math.round(Math.abs(miNet)).toLocaleString('es-UY')}.`)
+        const msg = miNet > 0.5
+          ? `✅ No tenés deudas pendientes.\n\nAl contrario, te deben $${Math.round(miNet).toLocaleString('es-UY')} en total.`
+          : `✅ Estás al día, no tenés deudas pendientes.`
+        await enviarMensaje(deFono, msg)
       } else {
-        await enviarMensaje(deFono, `Debés $${Math.round(Math.abs(miNet)).toLocaleString('es-UY')} en total 😬\n\nSi ya lo pagaste, escribí "liquidé mis deudas".`)
+        await enviarMensaje(deFono, `📊 Tenés una deuda de $${Math.round(Math.abs(miNet)).toLocaleString('es-UY')} en total.\n\nSi ya lo abonaste, escribí _"ya pagué"_ para registrarlo.`)
       }
       return NextResponse.json({ status: 'ok' })
     }
@@ -561,7 +565,7 @@ export async function POST(req: NextRequest) {
       .limit(8)
 
     if (!gastos || gastos.length === 0) {
-      await enviarMensaje(deFono, `No hay gastos registrados todavía en el nido. 📭`)
+      await enviarMensaje(deFono, `📭 *Sin gastos registrados*\n\nTodavía no hay gastos en el nido. Podés registrar el primero escribiendo, por ejemplo:\n_"pagué 500 en pizza"_`)
       return NextResponse.json({ status: 'ok' })
     }
 
@@ -570,13 +574,13 @@ export async function POST(req: NextRequest) {
       comida: '🍕', limpieza: '🧹', otro: '📦',
     }
 
-    const lines = ['🧾 *Últimos gastos del nido*\n']
+    const lines = ['🧾 *Últimos gastos del nido*\n─────────────────']
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     gastos.forEach((g: any) => {
       const emoji = categoriaEmoji[g.categoria] ?? '📦'
       const quien = Array.isArray(g.miembros) ? (g.miembros[0]?.nombre ?? '?') : (g.miembros?.nombre ?? '?')
-      const tipo  = g.splits && Object.keys(g.splits).length === 1 ? '(personal)' : '(compartido)'
-      lines.push(`${emoji} *${g.descripcion}* — $${Math.round(g.importe).toLocaleString('es-UY')} — ${quien} ${tipo}`)
+      const tipo  = g.splits && Object.keys(g.splits).length === 1 ? 'personal' : 'compartido'
+      lines.push(`${emoji} *${g.descripcion}* — $${Math.round(g.importe).toLocaleString('es-UY')}\n   👤 ${quien} · ${tipo}`)
     })
 
     await enviarMensaje(deFono, lines.join('\n'))
@@ -587,7 +591,7 @@ export async function POST(req: NextRequest) {
   if (accion.accion === 'liquidar_deuda') {
     const miNet = await calcularNetMiembro(miembro.sala_id, miembro.id)
     if (miNet >= -0.5) {
-      await enviarMensaje(deFono, `No tenés deudas pendientes para liquidar. 😊 Estás al día con todos.`)
+      await enviarMensaje(deFono, `✅ *Sin deudas pendientes*\n\nEstás al día con todos los miembros del nido.`)
       return NextResponse.json({ status: 'ok' })
     }
     // Encontrar el acreedor principal (quien más le debe)
@@ -608,7 +612,7 @@ export async function POST(req: NextRequest) {
       monto: Math.abs(miNet),
       acreedor_id: acreedorId,
     })
-    await enviarMensaje(deFono, `Tenés una deuda de $${Math.round(Math.abs(miNet)).toLocaleString('es-UY')}. ¿Confirmás que ya la pagaste? Respondé *si* o *no*`)
+    await enviarMensaje(deFono, `💸 *Confirmar liquidación de deuda*\n\n💵 Monto a saldar: $${Math.round(Math.abs(miNet)).toLocaleString('es-UY')}\n\n¿Confirmás que ya realizaste el pago?\nRespondé *si* o *no*`)
     return NextResponse.json({ status: 'ok' })
   }
 

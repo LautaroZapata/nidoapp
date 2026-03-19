@@ -17,15 +17,15 @@
 | Caza de pisos integrada | Resuelve el ciclo completo: buscar, mudarse, convivir |
 | Privacidad por diseño | Mínimo dato personal, RLS en DB, sin tracking |
 
-### El problema crítico: **No hay modelo de negocio**
+### ✅ Modelo de negocio implementado
 
 ```
-Revenue actual: $0
-Sin Stripe, sin tier premium, sin publicidad
-El único camino es crecer usuarios → buscar monetización → tarde
+Billing: Lemon Squeezy (activo)
+Planes: Free / Nido ($290 UYU/mes) / Casa ($590 UYU/mes)
+Tiers: implementados, con feature gating completo
 ```
 
-Esto no es un insulto — es el error #1 que mata startups con buena tracción.
+El modelo freemium está operativo. El próximo paso es escalar la base de usuarios que convierte a Pro.
 
 ---
 
@@ -51,47 +51,43 @@ Nadie combina **convivencia + WhatsApp bot + búsqueda de pisos** en LatAm. Eso 
 
 ## 3. Las 6 Palancas para Llegar a Unicornio
 
-### PALANCA 1: Monetización — Lo más urgente 🔴
+### PALANCA 1: Monetización — ✅ Base implementada, foco en conversión 🟡
 
-**Problema:** "Gratis para siempre" no construye valuación.
+**Estado actual:** Freemium con billing operativo vía Lemon Squeezy.
 
-**Modelo recomendado: Freemium B2C + B2B2C**
+**Planes actuales (implementados):**
 
-#### Tier Free (mantener)
-- 1 Nido
-- Hasta 6 miembros
-- Funciones básicas de gastos y lista de compras
-- WhatsApp bot básico
+#### Tier Free — $0/mes
+- Hasta 3 miembros
+- 2 meses de historial de gastos
+- Gastos, compras y búsqueda de aptos
+- Sin bot de WhatsApp
 
-#### Nido Pro — $5 USD/mes por nido (~$60/año)
-| Feature | Justificación |
-|---------|--------------|
-| Nidos ilimitados | Para quien se muda frecuentemente |
-| Historial ilimitado | Free: últimos 3 meses |
-| Reportes y estadísticas de gastos | Analytics del hogar |
-| Recordatorios automáticos de deudas | Push + WhatsApp automático |
-| Categorías personalizadas | Power users |
-| Exportar a PDF/Excel | Importante para declaración impositiva |
+#### Plan Nido — $290 UYU/mes (~$7 USD)
+- Hasta 8 miembros
+- Historial ilimitado
+- Bot de WhatsApp incluido
+- Gastos, compras y aptos sin límite
 
-#### Nido Familiar — $9 USD/mes
-- Todo Pro +
-- Hasta 10 miembros
-- Tareas con turnos y recordatorios
-- Roles (admin, miembro, visitante)
-- Integración bancaria (ver más abajo)
+#### Plan Casa — $590 UYU/mes (~$14 USD)
+- Miembros ilimitados
+- Historial ilimitado
+- Bot de WhatsApp incluido
+- Estadísticas avanzadas de gastos
+- Exportar datos en Excel (.xlsx)
+- Soporte prioritario
 
-#### B2B: Nido para Propietarios — $29 USD/mes por propiedad
+#### B2B: Nido para Propietarios — $29 USD/mes por propiedad (pendiente)
 Esto es el **verdadero multiplicador de valuación**:
 - Propietarios gestionan múltiples propiedades compartidas
 - Cobro automatizado de alquiler y expensas
-- Firmeza de contrato digital
 - Historial de pagos para referencias
 - **TAM adicional: $8B+ en property management software**
 
 **Proyección conservadora:**
-- 100K nidos activos × 30% conversión Pro × $5/mes = **$1.8M ARR**
+- 100K nidos activos × 30% conversión Pro × $7/mes = **$2.5M ARR**
 - 5K propietarios × $29/mes = **$1.74M ARR**
-- Total año 2: ~**$3.5M ARR** → valuación 10x = **$35M** (Serie A territory)
+- Total año 2: ~**$4.2M ARR** → valuación 10x = **$42M** (Serie A territory)
 - Año 4-5 con crecimiento LatAm: **$50-100M ARR** → **$500M-1B** valuación
 
 ---
@@ -230,10 +226,10 @@ Siguiendo el framework **ICE (Impact × Confidence × Ease)**:
 | Scoring crediticio (partnership banco) | 10 | 4 | 2 | **80** |
 
 **Orden recomendado:**
-1. 🔴 Nido Pro con Stripe/MercadoPago — **Semana 1-4**
-2. 🟡 UI de tareas/turnos — **Semana 2-6**
-3. 🟡 Landing pública de pisos + referidos — **Semana 4-8**
-4. 🟠 Integración pagos reales entre miembros — **Mes 3-4**
+1. ✅ Planes Pro con Lemon Squeezy — **COMPLETADO**
+2. 🟡 UI de tareas/turnos — **Próximo**
+3. 🟡 Landing pública de pisos + referidos — **Próximo**
+4. 🟠 Integración pagos reales entre miembros (Mercado Pago, Bizum) — **Mes 3-4**
 5. 🟢 Expansión México/Colombia — **Mes 5-8**
 
 ---
@@ -299,15 +295,15 @@ Para que los inversores te crean (y para que vos sepas si vas bien):
 | Categoría | Estado Actual | Para ser Unicornio |
 |-----------|--------------|-------------------|
 | Producto | ✅ Sólido y diferenciado | Agregar pagos reales + tareas |
-| Monetización | ❌ No existe | Lanzar Pro en 30 días |
+| Monetización | ✅ Freemium operativo (Free/Nido/Casa) | Escalar conversión + B2B propietarios |
 | Viralidad | 🟡 Orgánica pero no estructurada | Referidos + landing pública |
 | Mercado | ✅ LatAm es el momento | Expandir a México/Colombia |
 | Equipo | ⚠️ Desconocido desde el código | Contratar growth + dev |
 | Datos | 🟡 Sin explotar | Pipeline de insights a proptech/fintech |
 | Inversores | ⚠️ No hay señales en el código | Seed raise con métricas claras |
 
-**El producto ya tiene alma de unicornio. Le falta el modelo de negocio.**
+**El producto tiene alma de unicornio y modelo de negocio. El foco ahora es crecimiento y conversión.**
 
 ---
 
-*Análisis generado el 18 de marzo de 2026. Basado en análisis completo del codebase de nidoapp.*
+*Análisis actualizado el 19 de marzo de 2026. Basado en análisis completo del codebase de nidoapp.*

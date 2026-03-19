@@ -15,10 +15,12 @@
 - **Notificaciones push**: alertas en tiempo real de gastos y compras nuevas
 
 **Stack técnico:**
-- Frontend: Next.js 15 App Router, React 19, TypeScript
+- Frontend: Next.js 16.1.6 App Router, React 19, TypeScript, Tailwind CSS v4
 - Backend: Supabase (Auth + PostgreSQL + Realtime)
 - Pagos: Lemon Squeezy (no Stripe)
-- Notificaciones: Web Push API + Supabase Edge Functions
+- AI/NLP: Groq SDK (llama-3.1-8b-instant) para parsing de mensajes WhatsApp
+- Notificaciones: Web Push API
+- Exportación: xlsx-js-style (Excel .xlsx)
 - Deployment: Vercel
 
 ---
@@ -213,16 +215,17 @@ const tier = (tierRaw === 'nido' || tierRaw === 'casa') ? tierRaw : null
 - Exportar datos en CSV exclusivo plan Casa
 
 **Tab Estadísticas (solo Casa):**
-- KPIs: total gastado, promedio por persona, cantidad de gastos, top pagador
+- KPIs: total gastado, promedio por persona, cantidad de gastos
 - Gráfico de barras por mes (últimos 6 meses)
 - Breakdown por categoría con barras de progreso
 - Ranking de miembros por monto pagado
 
-**Exportar CSV (solo Casa):**
+**Exportar Excel (solo Casa):**
 - Botón en la sección de gastos, solo visible si `planSala === 'pro' && planTier === 'casa'`
 - Descarga client-side (sin servidor), datos ya cargados en memoria
-- Archivo: `nido-gastos-[fecha].csv`
-- Contenido: dos secciones en el mismo archivo — Gastos (fecha, descripción, importe, categoría, tipo, pagado por) y Liquidaciones (fecha, de, a, importe, nota)
+- Formato: `.xlsx` con estilos (librería `xlsx-js-style`)
+- Archivo: `nido-gastos-[fecha].xlsx`
+- Contenido: 3 hojas — Gastos, Liquidaciones, Resumen/Balance por miembro
 
 ### 7.2 Compras
 
@@ -355,7 +358,7 @@ NEXT_PUBLIC_APP_URL=
 | Límite miembros Nido (8)         | ✅ Completo  |                                            |
 | Tab Estadísticas Casa            | ✅ Completo  | KPIs, barras, categorías, ranking          |
 | Estadísticas avanzadas Casa      | ⚠️ Básico   | Implementado pero puede expandirse         |
-| Exportar datos CSV Casa          | ✅ Completo  | Gastos + liquidaciones, descarga directa   |
+| Exportar datos Excel Casa        | ✅ Completo  | .xlsx con 3 hojas (gastos, liquid., resumen)|
 | Soporte prioritario Casa         | ❌ UI only   | No hay sistema de tickets implementado     |
 | Panel de admin                   | ❌ Pendiente | No existe                                  |
 | Multi-sala por usuario           | ⚠️ Parcial  | Un usuario puede tener 1 sala Free         |

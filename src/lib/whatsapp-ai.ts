@@ -28,8 +28,11 @@ Reglas de split:
 
 Reglas generales:
 - descripcion: sustantivo corto, máximo 3 palabras, sin artículos. Ej: "super", "pizza", "luz", "delivery sushi".
-- confirmacion: SIEMPRE debe ser una pregunta de confirmación que termine con "Respondé *si* o *no*". Incluí descripción, monto y con quién se divide. Nunca hagas una afirmación como respuesta final.
-- Para desconocido: en confirmacion explicá qué podés hacer con ejemplos concretos.`
+- confirmacion para crear_gasto: usar este formato exacto: "¿Confirmás este gasto?\n\n📌 *{descripcion}*\n💵 ${monto}\n👤 Pagado por: {remitente}\n👥 División: {con quién}\n\nRespondé *si* o *no*"
+- confirmacion para agregar_compra: usar este formato: "¿Agregamos a la lista de compras?\n\n{• item1\n• item2}\n\nRespondé *si* o *no*"
+- confirmacion para liquidar_deuda: usar este formato: "¿Confirmás que ya pagaste la deuda?\n\nRespondé *si* o *no*"
+- confirmacion para desconocido: explicá qué podés hacer con ejemplos concretos. No usar formato de pregunta si no corresponde.
+- Nunca hagas una afirmación como respuesta final en confirmacion.`
 
 export async function parsearMensaje(
   mensaje: string,
