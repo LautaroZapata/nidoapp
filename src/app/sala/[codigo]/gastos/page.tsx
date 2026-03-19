@@ -192,9 +192,10 @@ async function exportarExcel(gastos: Gasto[], pagos: Pago[], miembros: Miembro[]
   gastos.forEach(g => {
     if (g.tipo === 'fijo' || !g.pagado_por) return
     if (!g.splits) {
-      const share = g.importe / miembros.length
+      const participantes = miembros.filter(m => m.creado_en <= g.creado_en)
+      const share = g.importe / (participantes.length || 1)
       net[g.pagado_por] = (net[g.pagado_por] ?? 0) + g.importe - share
-      miembros.forEach(m => { if (m.id !== g.pagado_por) net[m.id] = (net[m.id] ?? 0) - share })
+      participantes.forEach(m => { if (m.id !== g.pagado_por) net[m.id] = (net[m.id] ?? 0) - share })
     } else {
       miembros.forEach(m => {
         if (m.id === g.pagado_por) return
@@ -780,7 +781,13 @@ export default function GastosPage() {
   }
 
   async function handleEliminarPago(id: string) {
-    await createClient().from('pagos').delete().eq('id', id)
+    const { error } = await createClient().from('pagos').delete().eq('id', id)
+    if (error) {
+      console.error('Error eliminando pago:', error)
+      addNotif('No se pudo eliminar el pago', '❌')
+    } else {
+      setPagos(prev => prev.filter(p => p.id !== id))
+    }
   }
 
   function handleEliminar(id: string) {

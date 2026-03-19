@@ -149,7 +149,7 @@ async function consultarBalance(
   const [{ data: gastos }, { data: pagos }, { data: miembros }] = await Promise.all([
     supabase.from('gastos').select('*').eq('sala_id', salaId) as any,
     supabase.from('pagos').select('*').eq('sala_id', salaId) as any,
-    supabase.from('miembros').select('id, nombre').eq('sala_id', salaId).not('user_id', 'is', null),
+    supabase.from('miembros').select('id, nombre, creado_en').eq('sala_id', salaId).not('user_id', 'is', null),
   ])
 
   if (!miembros || miembros.length === 0) return 'No hay miembros en la sala.'
@@ -158,12 +158,14 @@ async function consultarBalance(
   const net: Record<string, number> = {}
   miembros.forEach((m: { id: string }) => { net[m.id] = 0 })
 
-  ;(gastos ?? []).forEach((g: { tipo: string; pagado_por: string | null; importe: number; splits: Record<string, number> | null }) => {
+  ;(gastos ?? []).forEach((g: { tipo: string; pagado_por: string | null; importe: number; splits: Record<string, number> | null; creado_en: string }) => {
     if (g.tipo === 'fijo' || !g.pagado_por) return
     if (!g.splits) {
-      const share = g.importe / miembros.length
+      // Solo incluir miembros que existían cuando se creó el gasto
+      const participantes = miembros.filter((m: { id: string; creado_en: string }) => m.creado_en <= g.creado_en)
+      const share = g.importe / (participantes.length || 1)
       net[g.pagado_por] = (net[g.pagado_por] ?? 0) + g.importe - share
-      miembros.forEach((m: { id: string }) => {
+      participantes.forEach((m: { id: string }) => {
         if (m.id !== g.pagado_por) net[m.id] = (net[m.id] ?? 0) - share
       })
     } else {
@@ -447,6 +449,58 @@ export async function POST(req: NextRequest) {
     }
 
     // Respondió otra cosa mientras hay pendiente
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const accionPendiente = pendiente.accion as any
+
+    // Si es un gasto con división pendiente, interpretar la respuesta como elección de split
+    if (accionPendiente.accion === 'crear_gasto' && accionPendiente.split_pendiente) {
+      await eliminarPendiente(miembro.id)
+      const r = respuesta
+
+      const esMio = ['mío', 'mio', 'mía', 'mia', 'solo yo', 'solo mío', 'solo mio', 'personal', 'para mí', 'para mi'].some(k => r.includes(k))
+
+      let splits: Record<string, number> | null = null
+      let divisionLabel = 'entre todos'
+
+      if (esMio) {
+        splits = { [miembro.id]: accionPendiente.monto }
+        divisionLabel = 'gasto personal'
+      } else {
+        // Intentar matchear nombres de miembros en la respuesta
+        const { data: miembrosData } = await supabase.from('miembros').select('id, nombre').eq('sala_id', miembro.sala_id).not('user_id', 'is', null)
+        if (miembrosData) {
+          const palabras = r.split(/\s+y\s+|\s*,\s*|\s+/).map((s: string) => s.trim()).filter((s: string) => s.length > 1)
+          const splitCon = miembrosData.filter((m: { id: string; nombre: string }) => {
+            if (m.id === miembro.id) return false
+            const mNom = m.nombre.toLowerCase()
+            return palabras.some((p: string) => mNom === p || mNom.startsWith(p) || p.startsWith(mNom) || mNom.includes(p) || p.includes(mNom))
+          })
+          if (splitCon.length > 0) {
+            const porcion = accionPendiente.monto / (splitCon.length + 1)
+            splits = {}
+            splitCon.forEach((m: { id: string; nombre: string }) => { splits![m.id] = Math.round(porcion * 100) / 100 })
+            divisionLabel = `con ${splitCon.map((m: { nombre: string }) => m.nombre).join(' y ')}`
+          }
+        }
+      }
+
+      const { error } = await supabase.from('gastos').insert({
+        sala_id:     miembro.sala_id,
+        descripcion: accionPendiente.descripcion,
+        importe:     accionPendiente.monto,
+        categoria:   accionPendiente.categoria ?? 'otro',
+        pagado_por:  miembro.id,
+        tipo:        'variable',
+        fecha:       fechaLocalDesdeTelefono(deFono),
+        splits,
+      })
+      if (error) { await enviarMensaje(deFono, `❌ *Error al registrar el gasto*\n\nNo se pudo guardar. Intentá de nuevo.`); return NextResponse.json({ status: 'ok' }) }
+      const netPost = await calcularNetMiembro(miembro.sala_id, miembro.id)
+      const netTxt = Math.abs(netPost) < 0.5 ? '✅ Estás al día con el nido.' : netPost > 0 ? `💰 Tu balance actual: te deben $${Math.round(netPost).toLocaleString('es-UY')}` : `📊 Tu balance actual: debés $${Math.round(-netPost).toLocaleString('es-UY')}`
+      await enviarMensaje(deFono, `✅ *Gasto registrado*\n\n📌 ${accionPendiente.descripcion}\n💵 $${Math.round(accionPendiente.monto).toLocaleString('es-UY')}\n👤 Pagado por: ${miembro.nombre}\n👥 División: ${divisionLabel}\n\n${netTxt}`)
+      return NextResponse.json({ status: 'ok' })
+    }
+
     await enviarMensaje(deFono, `⏳ *Acción pendiente de confirmación*\n\nTenés una acción sin confirmar. Por favor respondé:\n• *si* — para confirmar ✅\n• *no* — para cancelar ❌`)
     return NextResponse.json({ status: 'ok' })
   }
@@ -635,9 +689,8 @@ export async function POST(req: NextRequest) {
       await enviarMensaje(deFono, `✅ *Sin deudas pendientes*\n\nEstás al día con todos los miembros del nido.`)
       return NextResponse.json({ status: 'ok' })
     }
-    // Encontrar el acreedor principal (quien más le debe)
-    const { data: todosNet } = await supabase.from('miembros').select('id, nombre').eq('sala_id', miembro.sala_id)
-    // Encontrar el acreedor real: el miembro al que más le debe el usuario
+    // Encontrar el acreedor principal (miembro con mayor balance positivo)
+    const { data: todosNet } = await supabase.from('miembros').select('id, nombre').eq('sala_id', miembro.sala_id).not('user_id', 'is', null)
     let acreedorId = ''
     let maxPositivo = 0
     for (const m of (todosNet ?? [])) {
@@ -647,6 +700,10 @@ export async function POST(req: NextRequest) {
         maxPositivo = netM
         acreedorId = m.id
       }
+    }
+    if (!acreedorId) {
+      await enviarMensaje(deFono, `⚠️ No se pudo determinar a quién debés. Revisá el balance desde la app NidoApp.`)
+      return NextResponse.json({ status: 'ok' })
     }
     await guardarPendiente(miembro.id, {
       accion: 'liquidar_deuda',
@@ -664,8 +721,31 @@ export async function POST(req: NextRequest) {
       await enviarMensaje(deFono, `¿Cuánto fue el gasto de "${accion.descripcion}"? 💸\nEjemplo: *pagué 350 de ${accion.descripcion}*`)
       return NextResponse.json({ status: 'ok' })
     }
-    await guardarPendiente(miembro.id, accion)
-    await enviarMensaje(deFono, accion.confirmacion)
+
+    // Si el split es "igual" y no fue explícitamente especificado (sin "con X" ni "personal")
+    // y hay 3 o más miembros → preguntar antes de guardar para evitar splits incorrectos
+    const nMiembros = (compañeros ?? []).length
+    const splitAmbiguo = accion.split === 'igual' && nMiembros >= 3
+
+    if (splitAmbiguo) {
+      const otrosNombres = (compañeros ?? [])
+        .filter(m => m.nombre !== miembro.nombre)
+        .map(m => `*${m.nombre}*`)
+        .join(', ')
+      const ejemploNombre = (compañeros ?? []).find(m => m.nombre !== miembro.nombre)?.nombre ?? 'compañero'
+      await guardarPendiente(miembro.id, { ...accion, split_pendiente: true })
+      await enviarMensaje(deFono,
+        `¿Confirmás este gasto?\n\n📌 *${accion.descripcion}*\n💵 $${Math.round(accion.monto).toLocaleString('es-UY')}\n👤 Pagado por: ${miembro.nombre}\n\n` +
+        `👥 *¿Entre quiénes lo dividimos?*\n` +
+        `• *si* → entre todos (${otrosNombres} y vos)\n` +
+        `• nombre(s) → solo con esos (ej: _${ejemploNombre}_)\n` +
+        `• *mío* → solo mi gasto personal\n` +
+        `• *no* → cancelar`
+      )
+    } else {
+      await guardarPendiente(miembro.id, accion)
+      await enviarMensaje(deFono, accion.confirmacion)
+    }
     return NextResponse.json({ status: 'ok' })
   }
 
