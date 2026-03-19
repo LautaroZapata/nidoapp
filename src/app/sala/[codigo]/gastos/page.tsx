@@ -44,6 +44,48 @@ function fmtUYU(n: number) {
   return `$ ${n.toLocaleString('es-UY')}`
 }
 
+function exportarCSV(gastos: Gasto[], pagos: Pago[], miembros: Miembro[], salaNombre: string) {
+  const nombrePor = (id: string | null) => miembros.find(m => m.id === id)?.nombre ?? id ?? '—'
+  const rows: string[] = []
+
+  // Sección gastos
+  rows.push('=== GASTOS ===')
+  rows.push('Fecha,Descripción,Importe (UYU),Categoría,Tipo,Pagado por')
+  gastos.forEach(g => {
+    rows.push([
+      g.fecha,
+      `"${g.descripcion.replace(/"/g, '""')}"`,
+      g.importe,
+      g.categoria ?? '',
+      g.tipo,
+      nombrePor(g.pagado_por),
+    ].join(','))
+  })
+
+  // Sección liquidaciones
+  rows.push('')
+  rows.push('=== LIQUIDACIONES ===')
+  rows.push('Fecha,De,A,Importe (UYU),Nota')
+  pagos.forEach(p => {
+    rows.push([
+      p.fecha,
+      nombrePor(p.de_id),
+      nombrePor(p.a_id),
+      p.importe,
+      `"${(p.nota ?? '').replace(/"/g, '""')}"`,
+    ].join(','))
+  })
+
+  const csv = rows.join('\n')
+  const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `nido-gastos-${salaNombre.replace(/\s+/g, '-')}-${new Date().toISOString().slice(0, 10)}.csv`
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
 function isPersonal(g: Gasto): boolean {
   if (!g.splits) return false
   const nonZero = Object.values(g.splits as Record<string, number>).filter(v => v > 0)
@@ -1208,6 +1250,18 @@ export default function GastosPage() {
             {planSala === 'pro' && planTier === 'casa' && (
               <button className={`g-tab${tab === 'stats' ? ' active' : ''}`} onClick={() => setTab('stats')}>
                 Estadísticas ✦
+              </button>
+            )}
+            {planSala === 'pro' && planTier === 'casa' && (
+              <button
+                onClick={() => exportarCSV(gastos, pagos, miembros, session?.salaNombre ?? 'nido')}
+                style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 5, padding: '5px 12px', background: 'rgba(90,136,105,0.1)', border: '1.5px solid rgba(90,136,105,0.3)', borderRadius: 9, fontSize: '0.75rem', fontWeight: 700, color: '#5A8869', cursor: 'pointer', fontFamily: 'var(--font-body),Nunito,sans-serif', transition: 'all 0.18s', whiteSpace: 'nowrap' }}
+                onMouseOver={e => (e.currentTarget.style.background = 'rgba(90,136,105,0.18)')}
+                onMouseOut={e => (e.currentTarget.style.background = 'rgba(90,136,105,0.1)')}
+                disabled={loading || gastos.length === 0}
+              >
+                <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M6 1v7M3 5.5L6 8.5 9 5.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/><path d="M1 10h10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>
+                Exportar CSV
               </button>
             )}
           </div>

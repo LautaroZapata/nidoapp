@@ -28,6 +28,7 @@ export const TIERS = {
       'Historial de gastos ilimitado',
       'Bot de WhatsApp incluido',
       'Estadísticas avanzadas de gastos',
+      'Exportar datos en CSV',
       'Soporte prioritario',
     ],
   },

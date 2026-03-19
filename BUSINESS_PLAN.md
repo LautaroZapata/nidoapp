@@ -80,6 +80,7 @@ Los planes son **por sala**, no por usuario. Un usuario podría tener múltiples
 | Historial de gastos         | Ilimitado          |
 | Bot de WhatsApp             | ✅ Incluido        |
 | Estadísticas avanzadas      | ✅ Incluido (tab en Gastos) |
+| Exportar datos              | ✅ Incluido (CSV de gastos y liquidaciones) |
 | Gastos / Compras / Aptos    | ✅ Sin límite       |
 | Notificaciones push         | ✅ Incluido         |
 | Soporte                     | Prioritario        |
@@ -209,12 +210,19 @@ const tier = (tierRaw === 'nido' || tierRaw === 'casa') ? tierRaw : null
 - Realtime: nuevos gastos aparecen sin recargar
 - Push notifications al agregar gasto
 - Tab "Estadísticas" exclusivo plan Casa
+- Exportar datos en CSV exclusivo plan Casa
 
 **Tab Estadísticas (solo Casa):**
 - KPIs: total gastado, promedio por persona, cantidad de gastos, top pagador
 - Gráfico de barras por mes (últimos 6 meses)
 - Breakdown por categoría con barras de progreso
 - Ranking de miembros por monto pagado
+
+**Exportar CSV (solo Casa):**
+- Botón en la sección de gastos, solo visible si `planSala === 'pro' && planTier === 'casa'`
+- Descarga client-side (sin servidor), datos ya cargados en memoria
+- Archivo: `nido-gastos-[fecha].csv`
+- Contenido: dos secciones en el mismo archivo — Gastos (fecha, descripción, importe, categoría, tipo, pagado por) y Liquidaciones (fecha, de, a, importe, nota)
 
 ### 7.2 Compras
 
@@ -285,7 +293,7 @@ Texto suave:#A07060
 2. **Tiers válidos en DB:** solo `'nido'` y `'casa'`. No usar nombres legacy (`starter`, `hogar`, `casa_grande`)
 3. **Mostrar miembros activos:** siempre filtrar `.not('user_id', 'is', null)` en el fetch inicial
 4. **WhatsApp bot:** verificar plan antes de procesar en el webhook
-5. **Estadísticas:** solo renderizar el tab si `planSala === 'pro' && planTier === 'casa'`
+5. **Estadísticas y Exportar:** solo renderizar si `planSala === 'pro' && planTier === 'casa'`
 6. **Historial de gastos:** usar `FREE_LIMITS.historialMeses`, nunca escribir el número directamente
 7. **Checkout:** el `customData` debe incluir `tier: 'nido' | 'casa'` para que el webhook lo procese
 8. **Webhook:** validar tier con `tierRaw === 'nido' || tierRaw === 'casa'`
@@ -347,6 +355,7 @@ NEXT_PUBLIC_APP_URL=
 | Límite miembros Nido (8)         | ✅ Completo  |                                            |
 | Tab Estadísticas Casa            | ✅ Completo  | KPIs, barras, categorías, ranking          |
 | Estadísticas avanzadas Casa      | ⚠️ Básico   | Implementado pero puede expandirse         |
+| Exportar datos CSV Casa          | ✅ Completo  | Gastos + liquidaciones, descarga directa   |
 | Soporte prioritario Casa         | ❌ UI only   | No hay sistema de tickets implementado     |
 | Panel de admin                   | ❌ Pendiente | No existe                                  |
 | Multi-sala por usuario           | ⚠️ Parcial  | Un usuario puede tener 1 sala Free         |
