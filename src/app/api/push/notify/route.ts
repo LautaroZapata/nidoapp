@@ -26,13 +26,15 @@ export interface PushPayload {
  * - Desde un Supabase Database Webhook (agregar PUSH_NOTIFY_SECRET como header)
  */
 export async function POST(req: NextRequest) {
-  // Autenticación mínima: secret en header o llamada interna
+  // Autenticación: PUSH_NOTIFY_SECRET debe estar configurado
   const secret = process.env.PUSH_NOTIFY_SECRET
-  if (secret) {
-    const headerSecret = req.headers.get('x-push-secret')
-    if (headerSecret !== secret) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+  if (!secret) {
+    console.error('[Push Notify] PUSH_NOTIFY_SECRET no configurado')
+    return NextResponse.json({ error: 'Server misconfigured' }, { status: 500 })
+  }
+  const headerSecret = req.headers.get('x-push-secret')
+  if (headerSecret !== secret) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
   let payload: PushPayload

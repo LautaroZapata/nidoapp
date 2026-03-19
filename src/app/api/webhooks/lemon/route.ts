@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase-admin'
-import crypto from 'crypto'
+import crypto, { timingSafeEqual } from 'crypto'
 
 interface LsWebhookPayload {
   meta: {
@@ -38,9 +38,13 @@ export async function POST(req: NextRequest) {
 
   // ── Verificar firma HMAC-SHA256 ──
   const digest = crypto.createHmac('sha256', secret).update(rawBody).digest('hex')
-  if (digest !== signature) {
-    console.error('[LS Webhook] Firma inválida')
-    return NextResponse.json({ error: 'Firma inválida' }, { status: 400 })
+  try {
+    if (!timingSafeEqual(Buffer.from(digest, 'hex'), Buffer.from(signature, 'hex'))) {
+      console.error('[LS Webhook] Firma inválida')
+      return NextResponse.json({ error: 'Invalid signature' }, { status: 401 })
+    }
+  } catch {
+    return NextResponse.json({ error: 'Invalid signature' }, { status: 401 })
   }
 
   let payload: LsWebhookPayload

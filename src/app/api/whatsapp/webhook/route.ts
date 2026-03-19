@@ -57,18 +57,8 @@ function fechaLocalDesdeTelefono(telefono: string): string {
   return new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date())
 }
 
-// Cliente admin (service role) — lazy init para no romper el build sin la env var
-let _supabase: ReturnType<typeof createAdminClient> | null = null
-function getSupabase() {
-  if (!_supabase) _supabase = createAdminClient()
-  return _supabase
-}
-const supabase = new Proxy({} as ReturnType<typeof createAdminClient>, {
-  get(_target, prop) {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    return (getSupabase() as any)[prop]
-  },
-})
+// Cliente admin (service role)
+const supabase = createAdminClient()
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -154,8 +144,6 @@ async function vincularConCodigo(telefono: string, code: string): Promise<string
 async function consultarBalance(
   salaId: string,
   miembroId: string,
-  nombresMiembros: string[],
-  miembrosData: { nombre: string }[]
 ): Promise<string> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [{ data: gastos }, { data: pagos }, { data: miembros }] = await Promise.all([
@@ -245,7 +233,8 @@ export async function GET(req: NextRequest) {
 async function guardarPendiente(miembroId: string, accion: object) {
   const expires_at = new Date(Date.now() + 5 * 60 * 1000).toISOString() // 5 min
   await supabase.from('whatsapp_pending_confirmations').delete().eq('miembro_id', miembroId)
-  await supabase.from('whatsapp_pending_confirmations').insert({ miembro_id: miembroId, accion, expires_at })
+  const { error } = await supabase.from('whatsapp_pending_confirmations').insert({ miembro_id: miembroId, accion, expires_at })
+  if (error) console.error('[WhatsApp] Error guardando pendiente:', error)
 }
 
 async function obtenerPendiente(miembroId: string) {
@@ -535,7 +524,7 @@ export async function POST(req: NextRequest) {
       }
       return NextResponse.json({ status: 'ok' })
     }
-    const respuestaBalance = await consultarBalance(miembro.sala_id, miembro.id, nombresMiembros, compañeros ?? [])
+    const respuestaBalance = await consultarBalance(miembro.sala_id, miembro.id)
     await enviarMensaje(deFono, respuestaBalance)
     return NextResponse.json({ status: 'ok' })
   }
@@ -582,12 +571,21 @@ export async function POST(req: NextRequest) {
     }
     // Encontrar el acreedor principal (quien más le debe)
     const { data: todosNet } = await supabase.from('miembros').select('id, nombre').eq('sala_id', miembro.sala_id)
-    // Guardamos la liquidación pendiente con el monto y el acreedor
-    // Por simplicidad liquidamos la deuda total (el acreedor se resuelve en la app)
+    // Encontrar el acreedor real: el miembro al que más le debe el usuario
+    let acreedorId = ''
+    let maxPositivo = 0
+    for (const m of (todosNet ?? [])) {
+      if (m.id === miembro.id) continue
+      const netM = await calcularNetMiembro(miembro.sala_id, m.id)
+      if (netM > maxPositivo) {
+        maxPositivo = netM
+        acreedorId = m.id
+      }
+    }
     await guardarPendiente(miembro.id, {
       accion: 'liquidar_deuda',
       monto: Math.abs(miNet),
-      acreedor_id: (todosNet ?? []).find((m: { id: string }) => m.id !== miembro.id)?.id ?? '',
+      acreedor_id: acreedorId,
     })
     await enviarMensaje(deFono, `Tenés una deuda de $${Math.round(Math.abs(miNet)).toLocaleString('es-UY')}. ¿Confirmás que ya la pagaste? Respondé *si* o *no*`)
     return NextResponse.json({ status: 'ok' })

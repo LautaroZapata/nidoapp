@@ -90,13 +90,11 @@ export function desglosarDeuda(
 
 /** Balance neto de UN miembro específico. Positivo = le deben, negativo = debe. */
 export function calcularNetMiembro(
-  salaId: string,
   miembroId: string,
   gastos: Array<{ tipo: string; pagado_por: string | null; importe: number; splits: Record<string, number> | null }>,
   pagos: Array<{ de_id: string; a_id: string; importe: number }>,
   miembros: Array<{ id: string }>,
 ): number {
-  void salaId // sala_id se usa solo para filtrar en la query, aquí ya vienen filtrados
   const net: Record<string, number> = {}
   miembros.forEach(m => { net[m.id] = 0 })
 

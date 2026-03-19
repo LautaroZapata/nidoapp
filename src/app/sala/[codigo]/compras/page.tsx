@@ -121,16 +121,18 @@ export default function ComprasPage() {
 
   async function handleEliminar(id: string) {
     setBorrando(id)
-    setItems(prev => prev.filter(i => i.id !== id))
     const supabase = createClient()
-    await supabase.from('items_compra').delete().eq('id', id)
+    const { error } = await supabase.from('items_compra').delete().eq('id', id)
+    if (error) {
+      setFormError('Error al eliminar el ítem')
+    }
     setBorrando(null)
   }
 
   async function handleLimpiarCompletados() {
     const ids = items.filter(i => i.completado).map(i => i.id)
     if (ids.length === 0) return
-    setItems(prev => prev.filter(i => !i.completado))
+    if (!confirm(`¿Eliminar ${ids.length} ítem${ids.length !== 1 ? 's' : ''} completado${ids.length !== 1 ? 's' : ''}? Esta acción no se puede deshacer.`)) return
     const supabase = createClient()
     await supabase.from('items_compra').delete().in('id', ids)
   }

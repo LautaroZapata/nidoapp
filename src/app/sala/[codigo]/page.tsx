@@ -54,9 +54,11 @@ export default function SalaPage() {
   const [planInfo, setPlanInfo] = useState<{ plan_type: 'free' | 'pro'; plan_tier: string | null; owner_user_id: string | null; stripe_customer_id: string | null } | null>(null)
   const [currentUserId, setCurrentUserId] = useState<string | null>(null)
   const [billingLoading, setBillingLoading] = useState(false)
+  const [billingError, setBillingError] = useState<string | null>(null)
 
   async function handleUpgradePro() {
     if (!session) return
+    setBillingError(null)
     setBillingLoading(true)
     try {
       const supabase = createClient()
@@ -72,6 +74,7 @@ export default function SalaPage() {
       if (data.url) window.location.href = data.url
     } catch (err) {
       console.error('[Upgrade]', err)
+      setBillingError('Hubo un error. Intentá de nuevo.')
     } finally {
       setBillingLoading(false)
     }
@@ -79,6 +82,7 @@ export default function SalaPage() {
 
   async function handleChangeTier() {
     if (!session) return
+    setBillingError(null)
     setBillingLoading(true)
     try {
       const supabase = createClient()
@@ -96,6 +100,7 @@ export default function SalaPage() {
       }
     } catch (err) {
       console.error('[ChangeTier]', err)
+      setBillingError('Hubo un error. Intentá de nuevo.')
     } finally {
       setBillingLoading(false)
     }
@@ -103,6 +108,7 @@ export default function SalaPage() {
 
   async function handleManageSubscription() {
     if (!session) return
+    setBillingError(null)
     setBillingLoading(true)
     try {
       const supabase = createClient()
@@ -118,6 +124,7 @@ export default function SalaPage() {
       if (data.url) window.location.href = data.url
     } catch (err) {
       console.error('[Portal]', err)
+      setBillingError('Hubo un error. Intentá de nuevo.')
     } finally {
       setBillingLoading(false)
     }
@@ -670,6 +677,11 @@ export default function SalaPage() {
                         <button className="s-plan-btn s-plan-btn-manage" disabled={billingLoading} onClick={handleManageSubscription}>
                           {billingLoading ? 'Cargando...' : 'Gestionar suscripción'}
                         </button>
+                      )}
+                      {billingError && (
+                        <div style={{ marginTop: 8, fontSize: '0.78rem', color: '#C05A3B', background: 'rgba(192,90,59,0.08)', border: '1px solid rgba(192,90,59,0.2)', borderRadius: 10, padding: '7px 11px' }}>
+                          ⚠ {billingError}
+                        </div>
                       )}
                     </>
                   )}

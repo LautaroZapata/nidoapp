@@ -55,7 +55,7 @@ function personalOwner(g: Gasto): string | null {
 }
 
 function fmtFecha(iso: string) {
-  const d = new Date(iso + 'T00:00:00')
+  const d = new Date(iso + 'T12:00:00')
   return d.toLocaleDateString('es-UY', { day: 'numeric', month: 'short' })
 }
 
@@ -490,7 +490,6 @@ export default function GastosPage() {
     setModalOpen(false)
     setGuardando(false)
     setEditandoId(null)
-    cargarDatos()
   }
 
   async function handleLiquidar() {
@@ -527,7 +526,6 @@ export default function GastosPage() {
           url: `/sala/${session!.salaCodigo}/gastos`,
         })
       }
-      await cargarDatos()
     }
     setLiquidando(null)
     setModalLiquidar(null)
@@ -535,17 +533,16 @@ export default function GastosPage() {
 
   async function handleEliminarPago(id: string) {
     await createClient().from('pagos').delete().eq('id', id)
-    await cargarDatos()
   }
 
   async function handleEliminar(id: string) {
-    if (!confirm('¿Eliminar este gasto? También se borrarán los pagos registrados de la sala para mantener el balance consistente.')) return
+    if (!confirm('¿Eliminar este gasto? Esta acción no se puede deshacer.')) return
     setBorrando(id)
-    setGastos(prev => prev.filter(g => g.id !== id))
     const supabase = createClient()
-    await supabase.from('pagos').delete().eq('sala_id', session!.salaId)
-    setPagos([])
-    await supabase.from('gastos').delete().eq('id', id)
+    const { error } = await supabase.from('gastos').delete().eq('id', id)
+    if (!error) {
+      setGastos(prev => prev.filter(g => g.id !== id))
+    }
     setBorrando(null)
   }
 
