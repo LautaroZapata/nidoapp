@@ -22,9 +22,10 @@ export function calcularBalance(
     const payer = g.pagado_por
 
     if (!g.splits) {
-      const share = g.importe / (miembros.length || 1)
+      const participantes = miembros.filter(m => m.creado_en.slice(0, 10) <= g.fecha)
+      const share = g.importe / (participantes.length || 1)
       net[payer] = (net[payer] ?? 0) + g.importe - share
-      miembros.forEach(m => {
+      participantes.forEach(m => {
         if (m.id !== payer) net[m.id] = (net[m.id] ?? 0) - share
       })
     } else {
@@ -71,14 +72,15 @@ export function desglosarDeuda(
   gastos: Gasto[],
   miembros: Miembro[],
 ): Array<{ gasto: Gasto; monto: number }> {
-  const n = miembros.length || 1
   const result: Array<{ gasto: Gasto; monto: number }> = []
   for (const g of gastos) {
     if (g.tipo === 'fijo') continue
     if (g.pagado_por !== toId) continue
     let monto: number
     if (!g.splits) {
-      monto = g.importe / n
+      const participantes = miembros.filter(m => m.creado_en.slice(0, 10) <= g.fecha)
+      if (!participantes.some(m => m.id === fromId)) continue
+      monto = g.importe / (participantes.length || 1)
     } else {
       monto = (g.splits as Record<string, number>)[fromId] ?? 0
       if (monto <= 0) continue
