@@ -181,7 +181,7 @@ export default function SalaPage() {
           setMiembros(prev => {
             const existing = prev.find(x => x.id === updated.id)
             // Si tenía user_id antes y ahora es null → se fue (OAuth user leaving)
-            if (existing && existing.user_id !== null && updated.user_id === null) {
+            if (existing && existing.user_id != null && !updated.user_id) {
               return prev.filter(x => x.id !== updated.id)
             }
             return prev.map(x => x.id === updated.id ? updated : x)

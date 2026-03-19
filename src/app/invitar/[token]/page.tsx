@@ -146,13 +146,33 @@ export default function InvitarPage() {
       await supabase.from('miembros').update({ user_id: null }).eq('id', nidoActual.miembroId)
     }
 
-    // Check if already a member of this sala
+    // Check if already a member of this sala (active)
     const { data: existing } = await supabase
       .from('miembros').select('*').eq('sala_id', invite.sala.id).eq('user_id', user.id).single() as DbResult<Miembro>
     if (existing) {
       setSession({
         salaId: invite.sala.id, salaCodigo: invite.sala.codigo, salaNombre: invite.sala.nombre,
         miembroId: existing.id, miembroNombre: existing.nombre, miembroColor: existing.color,
+      })
+      router.push(`/sala/${invite.sala.codigo}`)
+      return
+    }
+
+    // Check if there's an orphaned member with the same name (user previously left)
+    const { data: orphaned } = await supabase
+      .from('miembros').select('*')
+      .eq('sala_id', invite.sala.id)
+      .eq('nombre', nombre.trim().toLowerCase())
+      .is('user_id', null)
+      .single() as DbResult<Miembro>
+    if (orphaned) {
+      const { error: reErr } = await supabase
+        .from('miembros').update({ user_id: user.id }).eq('id', orphaned.id)
+      if (reErr) { setJoinError('Error al unirte'); setJoining(false); return }
+      await supabase.from('invitaciones').update({ usado_en: new Date().toISOString() }).eq('id', invite.invitacion.id as string)
+      setSession({
+        salaId: invite.sala.id, salaCodigo: invite.sala.codigo, salaNombre: invite.sala.nombre,
+        miembroId: orphaned.id, miembroNombre: orphaned.nombre, miembroColor: orphaned.color,
       })
       router.push(`/sala/${invite.sala.codigo}`)
       return
