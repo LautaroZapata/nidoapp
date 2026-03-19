@@ -44,46 +44,237 @@ function fmtUYU(n: number) {
   return `$ ${n.toLocaleString('es-UY')}`
 }
 
-function exportarCSV(gastos: Gasto[], pagos: Pago[], miembros: Miembro[], salaNombre: string) {
-  const nombrePor = (id: string | null) => miembros.find(m => m.id === id)?.nombre ?? id ?? '—'
-  const rows: string[] = []
+async function exportarExcel(gastos: Gasto[], pagos: Pago[], miembros: Miembro[], salaNombre: string) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const xlsxMod = await import('xlsx-js-style') as any
+  const XLSX = xlsxMod.default ?? xlsxMod
 
-  // Sección gastos
-  rows.push('=== GASTOS ===')
-  rows.push('Fecha,Descripción,Importe (UYU),Categoría,Tipo,Pagado por')
+  const fechaExport = new Date().toLocaleDateString('es-UY', { day: '2-digit', month: 'long', year: 'numeric' })
+  const nombrePor = (id: string | null) => miembros.find(m => m.id === id)?.nombre ?? '—'
+
+  const CAT_LABEL: Record<string, string> = {
+    alquiler: 'Alquiler', suministros: 'Suministros', internet: 'Internet',
+    comida: 'Comida', limpieza: 'Limpieza', otro: 'Otro',
+  }
+
+  // ── Helpers de estilo ──
+  const border = (color = 'EAD8C8', style = 'hair') => ({
+    top: { style, color: { rgb: color } }, bottom: { style, color: { rgb: color } },
+    left: { style, color: { rgb: color } }, right: { style, color: { rgb: color } },
+  })
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  function cell(ws: Record<string, any>, addr: string, style: unknown) {
+    if (ws[addr]) ws[addr].s = style
+    else ws[addr] = { t: 'z', s: style }
+  }
+  function enc(r: number, c: number) { return XLSX.utils.encode_cell({ r, c }) }
+
+  const S = {
+    brand:    { fill: { patternType: 'solid', fgColor: { rgb: 'C05A3B' } }, font: { bold: true, sz: 14, color: { rgb: 'FFFFFF' }, name: 'Calibri' }, alignment: { horizontal: 'left', vertical: 'center', indent: 1 } },
+    brandSub: { fill: { patternType: 'solid', fgColor: { rgb: 'C05A3B' } }, font: { sz: 9, color: { rgb: 'F2D0C4' }, name: 'Calibri', italic: true }, alignment: { horizontal: 'left', vertical: 'center', indent: 1 } },
+    gap:      { fill: { patternType: 'solid', fgColor: { rgb: 'FAF5EE' } } },
+    head:     { fill: { patternType: 'solid', fgColor: { rgb: '2A1A0E' } }, font: { bold: true, sz: 10, color: { rgb: 'FFFFFF' }, name: 'Calibri' }, alignment: { horizontal: 'center', vertical: 'center' }, border: border('1A0E04', 'thin') },
+    headL:    { fill: { patternType: 'solid', fgColor: { rgb: '2A1A0E' } }, font: { bold: true, sz: 10, color: { rgb: 'FFFFFF' }, name: 'Calibri' }, alignment: { horizontal: 'left', vertical: 'center', indent: 1 }, border: border('1A0E04', 'thin') },
+    sec:      { fill: { patternType: 'solid', fgColor: { rgb: 'F5EBE5' } }, font: { bold: true, sz: 9, color: { rgb: 'C05A3B' }, name: 'Calibri' }, alignment: { horizontal: 'left', vertical: 'center', indent: 1 }, border: border('EAD8C8', 'thin') },
+    d:   (alt: boolean) => ({ fill: { patternType: 'solid', fgColor: { rgb: alt ? 'FDF9F5' : 'FFFFFF' } }, font: { sz: 10, color: { rgb: '2A1A0E' }, name: 'Calibri' }, border: border(), alignment: { vertical: 'center', wrapText: false } }),
+    dR:  (alt: boolean) => ({ fill: { patternType: 'solid', fgColor: { rgb: alt ? 'FDF9F5' : 'FFFFFF' } }, font: { sz: 10, color: { rgb: '2A1A0E' }, name: 'Calibri' }, border: border(), alignment: { horizontal: 'right', vertical: 'center' }, numFmt: '#,##0' }),
+    tot:      { fill: { patternType: 'solid', fgColor: { rgb: 'EAF3ED' } }, font: { bold: true, sz: 10, color: { rgb: '2A5A40' }, name: 'Calibri' }, border: { ...border('5A8869', 'medium'), top: { style: 'medium', color: { rgb: '5A8869' } } }, alignment: { horizontal: 'left', vertical: 'center', indent: 1 } },
+    totR:     { fill: { patternType: 'solid', fgColor: { rgb: 'EAF3ED' } }, font: { bold: true, sz: 10, color: { rgb: '2A5A40' }, name: 'Calibri' }, border: { ...border('5A8869', 'medium'), top: { style: 'medium', color: { rgb: '5A8869' } } }, alignment: { horizontal: 'right', vertical: 'center' }, numFmt: '#,##0' },
+  }
+
+  // ── Sheet builder helpers ──
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  function applyBrandRows(ws: Record<string, any>, colCount: number) {
+    const merge = (r: number) => ({ s: { r, c: 0 }, e: { r, c: colCount - 1 } })
+    if (!ws['!merges']) ws['!merges'] = []
+    ws['!merges'].push(merge(0), merge(1), merge(2))
+    for (let c = 0; c < colCount; c++) {
+      cell(ws, enc(0, c), S.brand)
+      cell(ws, enc(1, c), S.brandSub)
+      cell(ws, enc(2, c), S.gap)
+    }
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  function applyHeaders(ws: Record<string, any>, row: number, colCount: number, leftCols: number[] = [0]) {
+    for (let c = 0; c < colCount; c++)
+      cell(ws, enc(row, c), leftCols.includes(c) ? S.headL : S.head)
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  function applyDataRows(ws: Record<string, any>, startRow: number, count: number, numCols: number[], colCount: number) {
+    for (let i = 0; i < count; i++) {
+      const r = startRow + i
+      const alt = i % 2 === 1
+      for (let c = 0; c < colCount; c++)
+        cell(ws, enc(r, c), numCols.includes(c) ? S.dR(alt) : S.d(alt))
+    }
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  function applyTotalRow(ws: Record<string, any>, row: number, numCols: number[], colCount: number) {
+    for (let c = 0; c < colCount; c++)
+      cell(ws, enc(row, c), numCols.includes(c) ? S.totR : S.tot)
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  function setRowHeights(ws: Record<string, any>, heights: number[]) {
+    ws['!rows'] = heights.map(hpt => hpt ? { hpt } : null)
+  }
+
+  // ─────────────────────────────────────────────
+  // SHEET 1 — GASTOS
+  // ─────────────────────────────────────────────
+  const sorted = [...gastos].sort((a, b) => b.fecha.localeCompare(a.fecha))
+  const totalG = gastos.reduce((s, g) => s + g.importe, 0)
+  const COLS_G = 7
+
+  const gastosAOA: unknown[][] = [
+    [`🏠 ${salaNombre}`, ...Array(COLS_G - 1).fill('')],
+    [`Exportado el ${fechaExport} · NidoApp`, ...Array(COLS_G - 1).fill('')],
+    Array(COLS_G).fill(''),
+    ['Fecha', 'Descripción', 'Categoría', 'Tipo', 'Pagado por', 'Dividido entre', 'Importe'],
+    ...sorted.map(g => {
+      const sp = g.splits as Record<string, number> | null
+      let dividido: string
+      if (!sp) { dividido = miembros.map(m => m.nombre).join(', ') }
+      else {
+        const keys = Object.keys(sp).filter(k => sp[k] > 0)
+        if (keys.length === 1 && keys[0] === g.pagado_por) { dividido = `${nombrePor(g.pagado_por)} (personal)` }
+        else { dividido = [...new Set([g.pagado_por, ...keys].filter(Boolean) as string[])].map(id => nombrePor(id)).join(', ') }
+      }
+      return [g.fecha, g.descripcion, CAT_LABEL[g.categoria] ?? g.categoria, g.tipo === 'fijo' ? 'Fijo' : 'Variable', nombrePor(g.pagado_por), dividido, g.importe]
+    }),
+    ['Total', ...Array(COLS_G - 2).fill(''), totalG],
+  ]
+
+  const wsG = XLSX.utils.aoa_to_sheet(gastosAOA)
+  wsG['!cols'] = [{ wch: 12 }, { wch: 32 }, { wch: 14 }, { wch: 10 }, { wch: 14 }, { wch: 26 }, { wch: 13 }]
+  applyBrandRows(wsG, COLS_G)
+  applyHeaders(wsG, 3, COLS_G, [0, 1, 4, 5])
+  applyDataRows(wsG, 4, sorted.length, [6], COLS_G)
+  applyTotalRow(wsG, 4 + sorted.length, [6], COLS_G)
+  setRowHeights(wsG, [28, 16, 6, 22, ...Array(sorted.length).fill(18), 20])
+  XLSX.utils.book_append_sheet(XLSX.utils.book_new(), wsG, 'Gastos') // temp, replaced below
+
+  // ─────────────────────────────────────────────
+  // SHEET 2 — LIQUIDACIONES
+  // ─────────────────────────────────────────────
+  const sortedP = [...pagos].sort((a, b) => b.fecha.localeCompare(a.fecha))
+  const totalP = pagos.reduce((s, p) => s + p.importe, 0)
+  const COLS_P = 5
+
+  const pagosAOA: unknown[][] = [
+    [`🏠 ${salaNombre}`, ...Array(COLS_P - 1).fill('')],
+    [`Liquidaciones · ${fechaExport} · NidoApp`, ...Array(COLS_P - 1).fill('')],
+    Array(COLS_P).fill(''),
+    ['Fecha', 'De', 'A', 'Importe', 'Nota'],
+    ...sortedP.map(p => [p.fecha, nombrePor(p.de_id), nombrePor(p.a_id), p.importe, p.nota ?? '']),
+    ['Total', '', '', totalP, ''],
+  ]
+
+  const wsP = XLSX.utils.aoa_to_sheet(pagosAOA)
+  wsP['!cols'] = [{ wch: 12 }, { wch: 16 }, { wch: 16 }, { wch: 13 }, { wch: 30 }]
+  applyBrandRows(wsP, COLS_P)
+  applyHeaders(wsP, 3, COLS_P, [0, 1, 2, 4])
+  applyDataRows(wsP, 4, sortedP.length, [3], COLS_P)
+  applyTotalRow(wsP, 4 + sortedP.length, [3], COLS_P)
+  setRowHeights(wsP, [28, 16, 6, 22, ...Array(sortedP.length).fill(18), 20])
+
+  // ─────────────────────────────────────────────
+  // SHEET 3 — RESUMEN
+  // ─────────────────────────────────────────────
+  // Balance
+  const EPS = 0.5
+  const net: Record<string, number> = {}
+  miembros.forEach(m => { net[m.id] = 0 })
   gastos.forEach(g => {
-    rows.push([
-      g.fecha,
-      `"${g.descripcion.replace(/"/g, '""')}"`,
-      g.importe,
-      g.categoria ?? '',
-      g.tipo,
-      nombrePor(g.pagado_por),
-    ].join(','))
+    if (g.tipo === 'fijo' || !g.pagado_por) return
+    if (!g.splits) {
+      const share = g.importe / miembros.length
+      net[g.pagado_por] = (net[g.pagado_por] ?? 0) + g.importe - share
+      miembros.forEach(m => { if (m.id !== g.pagado_por) net[m.id] = (net[m.id] ?? 0) - share })
+    } else {
+      miembros.forEach(m => {
+        if (m.id === g.pagado_por) return
+        const owes = (g.splits as Record<string, number>)[m.id] ?? 0
+        if (owes <= 0) return
+        net[m.id] = (net[m.id] ?? 0) - owes
+        net[g.pagado_por!] = (net[g.pagado_por!] ?? 0) + owes
+      })
+    }
   })
+  pagos.forEach(p => { net[p.de_id] = (net[p.de_id] ?? 0) + p.importe; net[p.a_id] = (net[p.a_id] ?? 0) - p.importe })
 
-  // Sección liquidaciones
-  rows.push('')
-  rows.push('=== LIQUIDACIONES ===')
-  rows.push('Fecha,De,A,Importe (UYU),Nota')
-  pagos.forEach(p => {
-    rows.push([
-      p.fecha,
-      nombrePor(p.de_id),
-      nombrePor(p.a_id),
-      p.importe,
-      `"${(p.nota ?? '').replace(/"/g, '""')}"`,
-    ].join(','))
-  })
+  const porCat = Object.entries(
+    gastos.reduce((acc, g) => { acc[g.categoria] = (acc[g.categoria] ?? 0) + g.importe; return acc }, {} as Record<string, number>)
+  ).sort((a, b) => b[1] - a[1])
 
-  const csv = rows.join('\n')
-  const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' })
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = `nido-gastos-${salaNombre.replace(/\s+/g, '-')}-${new Date().toISOString().slice(0, 10)}.csv`
-  a.click()
-  URL.revokeObjectURL(url)
+  const COLS_R = 3
+  const resumenAOA: unknown[][] = [
+    [`🏠 ${salaNombre}`, '', ''],
+    [`Resumen general · ${fechaExport} · NidoApp`, '', ''],
+    ['', '', ''],
+    // KPIs section
+    ['RESUMEN GENERAL', '', ''],
+    ['Total gastado', '', totalG],
+    ['Promedio por persona', '', miembros.length ? Math.round(totalG / miembros.length) : 0],
+    ['Gastos registrados', '', gastos.length],
+    ['Liquidaciones registradas', '', pagos.length],
+    ['', '', ''],
+    // Balance section
+    ['BALANCE POR MIEMBRO', '', ''],
+    ...miembros.map(m => {
+      const v = net[m.id] ?? 0
+      const estado = Math.abs(v) < EPS ? 'Al día ✅' : v > 0 ? 'Le deben' : 'Debe'
+      return [m.nombre, estado, Math.abs(v) < EPS ? 0 : Math.round(Math.abs(v))]
+    }),
+    ['', '', ''],
+    // Category section
+    ['GASTO POR CATEGORÍA', '', ''],
+    ...porCat.map(([cat, val]) => [CAT_LABEL[cat] ?? cat, `${Math.round((val / totalG) * 100)}%`, Math.round(val)]),
+  ]
+
+  const wsR = XLSX.utils.aoa_to_sheet(resumenAOA)
+  wsR['!cols'] = [{ wch: 26 }, { wch: 18 }, { wch: 14 }]
+  wsR['!merges'] = [
+    { s: { r: 0, c: 0 }, e: { r: 0, c: 2 } },
+    { s: { r: 1, c: 0 }, e: { r: 1, c: 2 } },
+    { s: { r: 2, c: 0 }, e: { r: 2, c: 2 } },
+  ]
+  for (let c = 0; c < COLS_R; c++) {
+    cell(wsR, enc(0, c), S.brand)
+    cell(wsR, enc(1, c), S.brandSub)
+    cell(wsR, enc(2, c), S.gap)
+  }
+  // Section headers + data
+  const applySection = (headerRow: number, dataCount: number, numCol: number) => {
+    for (let c = 0; c < COLS_R; c++) cell(wsR, enc(headerRow, c), S.sec)
+    for (let i = 0; i < dataCount; i++) {
+      const r = headerRow + 1 + i
+      const alt = i % 2 === 1
+      for (let c = 0; c < COLS_R; c++) cell(wsR, enc(r, c), c === numCol ? S.dR(alt) : S.d(alt))
+    }
+  }
+  applySection(3, 4, 2)  // KPIs
+  applySection(9, miembros.length, 2)  // Balance
+  applySection(10 + miembros.length + 1, porCat.length, 2)  // Categorías
+  // Empty separators
+  for (let c = 0; c < COLS_R; c++) {
+    cell(wsR, enc(8, c), S.gap)
+    cell(wsR, enc(10 + miembros.length, c), S.gap)
+  }
+  setRowHeights(wsR, [28, 16, 6])
+
+  // ── Build workbook ──
+  const wb = XLSX.utils.book_new()
+  XLSX.utils.book_append_sheet(wb, wsG, 'Gastos')
+  XLSX.utils.book_append_sheet(wb, wsP, 'Liquidaciones')
+  XLSX.utils.book_append_sheet(wb, wsR, 'Resumen')
+
+  const filename = `nido-${salaNombre.replace(/\s+/g, '-').toLowerCase()}-${new Date().toISOString().slice(0, 10)}.xlsx`
+  XLSX.writeFile(wb, filename)
 }
 
 function isPersonal(g: Gasto): boolean {
@@ -310,6 +501,7 @@ export default function GastosPage() {
   const [planSala, setPlanSala] = useState<'free' | 'pro'>('free')
   const [planTier, setPlanTier] = useState<string | null>(null)
   const [historialLimitado, setHistorialLimitado] = useState(false)
+  const [exportando, setExportando] = useState(false)
   const [masOpciones, setMasOpciones] = useState(false)
   const [confirmDialog, setConfirmDialog] = useState<{ title?: string; message: string; onConfirm: () => void } | null>(null)
 
@@ -1286,11 +1478,18 @@ export default function GastosPage() {
             {planSala === 'pro' && planTier === 'casa' && (
               <button
                 className="g-export-btn"
-                onClick={() => exportarCSV(gastos, pagos, miembros, session?.salaNombre ?? 'nido')}
-                disabled={loading || gastos.length === 0}
+                onClick={() => {
+                  if (exportando) return
+                  setExportando(true)
+                  exportarExcel(gastos, pagos, miembros, session?.salaNombre ?? 'nido')
+                    .finally(() => setExportando(false))
+                }}
+                disabled={loading || gastos.length === 0 || exportando}
               >
-                <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M6 1v7M3 5.5L6 8.5 9 5.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/><path d="M1 10h10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>
-                Exportar CSV
+                {exportando
+                  ? <><span style={{ width: 10, height: 10, borderRadius: '50%', border: '1.5px solid currentColor', borderTopColor: 'transparent', display: 'inline-block', animation: 'g-spin 0.7s linear infinite' }} />Generando...</>
+                  : <><svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M6 1v7M3 5.5L6 8.5 9 5.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/><path d="M1 10h10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>Exportar Excel</>
+                }
               </button>
             )}
           </div>
