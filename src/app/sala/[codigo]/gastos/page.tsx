@@ -1799,7 +1799,7 @@ export default function GastosPage() {
             const maxMes = Math.max(...mesesOrdenados.map(([, v]) => v), 1)
             const mesNombres: Record<string, string> = { '01':'Ene','02':'Feb','03':'Mar','04':'Abr','05':'May','06':'Jun','07':'Jul','08':'Ago','09':'Sep','10':'Oct','11':'Nov','12':'Dic' }
 
-            const promPorPersona = miembros.length > 0 ? totalGastado / miembros.length : 0
+            const promPorPersona = miembros.length > 0 ? Math.round(totalGastado / miembros.length) : 0
 
             return (
               <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
@@ -2199,19 +2199,45 @@ export default function GastosPage() {
                       const fromM = miembros.find(m => m.id === d.from)
                       const toM   = miembros.find(m => m.id === d.to)
                       if (!fromM || !toM) return null
+                      const key = `${d.from}-${d.to}`
+                      const isSaving = liquidando === key
+                      const isOk = liquidandoOk === key
                       return (
-                        <div key={i} className="g-bp-debt">
-                          <div style={{ display: 'flex', gap: 4, flexShrink: 0, alignItems: 'center' }}>
-                            <div className="g-debt-av" style={{ background: fromM.color, width: 22, height: 22, fontSize: '0.58rem' }}>{fromM.nombre[0].toUpperCase()}</div>
-                            <span style={{ color: '#C0A898', fontSize: '0.75rem' }}>→</span>
-                            <div className="g-debt-av" style={{ background: toM.color, width: 22, height: 22, fontSize: '0.58rem' }}>{toM.nombre[0].toUpperCase()}</div>
+                        <div key={i} className="g-bp-debt" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 6 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <div style={{ display: 'flex', gap: 4, flexShrink: 0, alignItems: 'center' }}>
+                              <div className="g-debt-av" style={{ background: fromM.color, width: 22, height: 22, fontSize: '0.58rem' }}>{fromM.nombre[0].toUpperCase()}</div>
+                              <span style={{ color: '#C0A898', fontSize: '0.75rem' }}>→</span>
+                              <div className="g-debt-av" style={{ background: toM.color, width: 22, height: 22, fontSize: '0.58rem' }}>{toM.nombre[0].toUpperCase()}</div>
+                            </div>
+                            <div className="g-bp-debt-text">
+                              {d.from === miId
+                                ? <>Debés a <strong>{toM.nombre}</strong></>
+                                : <><strong>{fromM.nombre}</strong> te debe</>}
+                            </div>
+                            <div className="g-bp-debt-amount">{fmtUYU(Math.round(d.amount))}</div>
                           </div>
-                          <div className="g-bp-debt-text">
-                            {d.from === miId
-                              ? <>Debés a <strong>{toM.nombre}</strong></>
-                              : <><strong>{fromM.nombre}</strong> te debe</>}
-                          </div>
-                          <div className="g-bp-debt-amount">{fmtUYU(Math.round(d.amount))}</div>
+                          {d.from === miId && (
+                            isOk ? (
+                              <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#2E7D52', textAlign: 'center' }}>✓ ¡Pago registrado!</div>
+                            ) : (
+                              <button
+                                className="g-liquidar-btn"
+                                style={{ width: '100%', justifyContent: 'center' }}
+                                onClick={() => { setModalLiquidar({ debt: d, importe: String(d.amount), nota: '' }); setEditandoMonto(false); setNotaAbierta(false) }}
+                                disabled={isSaving}
+                              >
+                                {isSaving ? (
+                                  <div style={{ width: 10, height: 10, borderRadius: '50%', border: '1.5px solid #5A8869', borderTopColor: 'transparent', animation: 'g-spin 0.7s linear infinite' }} />
+                                ) : (
+                                  <svg width="11" height="11" viewBox="0 0 11 11" fill="none">
+                                    <path d="M1.5 5.5L4.5 8.5L9.5 2.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
+                                  </svg>
+                                )}
+                                {isSaving ? 'Guardando...' : 'Liquidar deuda'}
+                              </button>
+                            )
+                          )}
                         </div>
                       )
                     })}
