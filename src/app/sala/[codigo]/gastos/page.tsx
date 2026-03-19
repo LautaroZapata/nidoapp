@@ -1573,12 +1573,6 @@ export default function GastosPage() {
             // ── Cálculos ──
             const totalGastado = gastos.reduce((s, g) => s + g.importe, 0)
 
-            // Gasto por miembro (quién pagó)
-            const porMiembro: Record<string, number> = {}
-            gastos.forEach(g => { if (g.pagado_por) porMiembro[g.pagado_por] = (porMiembro[g.pagado_por] ?? 0) + g.importe })
-            const topMiembroId = Object.entries(porMiembro).sort((a, b) => b[1] - a[1])[0]?.[0]
-            const topMiembro = miembros.find(m => m.id === topMiembroId)
-
             // Gasto por categoría
             const porCategoria: Record<string, number> = {}
             gastos.forEach(g => { if (g.categoria) { porCategoria[g.categoria] = (porCategoria[g.categoria] ?? 0) + g.importe } })
@@ -1599,17 +1593,16 @@ export default function GastosPage() {
             return (
               <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
                 {/* KPIs */}
-                <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10 }}>
+                <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:10 }}>
                   {[
                     { label:'Total gastado', value: fmtUYU(totalGastado), icon:'💸' },
                     { label:'Promedio por persona', value: fmtUYU(promPorPersona), icon:'👤' },
                     { label:'Gastos registrados', value: `${gastos.length}`, icon:'📋' },
-                    { label:'Top pagador', value: topMiembro?.nombre ?? '—', icon:'🏆', color: topMiembro?.color },
                   ].map((kpi, i) => (
                     <div key={i} style={{ background:'white', border:'1.5px solid #EAD8C8', borderRadius:16, padding:'1rem 1.1rem' }}>
                       <div style={{ fontSize:'1.2rem', marginBottom:4 }}>{kpi.icon}</div>
                       <div style={{ fontSize:'0.68rem', color:'#B09080', fontWeight:700, textTransform:'uppercase', letterSpacing:'0.08em', marginBottom:3 }}>{kpi.label}</div>
-                      <div style={{ fontSize:'1.05rem', fontWeight:800, color: kpi.color ?? '#2A1A0E', fontFamily:'var(--font-serif),Georgia,serif' }}>{kpi.value}</div>
+                      <div style={{ fontSize:'1.05rem', fontWeight:800, color:'#2A1A0E', fontFamily:'var(--font-serif),Georgia,serif' }}>{kpi.value}</div>
                     </div>
                   ))}
                 </div>
@@ -1659,31 +1652,6 @@ export default function GastosPage() {
                   </div>
                 )}
 
-                {/* Gasto por miembro */}
-                <div style={{ background:'white', border:'1.5px solid #EAD8C8', borderRadius:16, padding:'1rem 1.1rem' }}>
-                  <div style={{ fontSize:'0.7rem', color:'#B09080', fontWeight:700, textTransform:'uppercase', letterSpacing:'0.08em', marginBottom:10 }}>Quién más pagó</div>
-                  <div style={{ display:'flex', flexDirection:'column', gap:7 }}>
-                    {Object.entries(porMiembro).sort((a, b) => b[1] - a[1]).map(([id, val]) => {
-                      const m = miembros.find(x => x.id === id)
-                      if (!m) return null
-                      const pct = (val / totalGastado) * 100
-                      return (
-                        <div key={id}>
-                          <div style={{ display:'flex', justifyContent:'space-between', fontSize:'0.78rem', marginBottom:3, alignItems:'center' }}>
-                            <div style={{ display:'flex', alignItems:'center', gap:7 }}>
-                              <div style={{ width:20, height:20, borderRadius:'50%', background:m.color, display:'flex', alignItems:'center', justifyContent:'center', fontSize:'0.6rem', color:'white', fontWeight:700 }}>{m.nombre[0].toUpperCase()}</div>
-                              <span style={{ color:'#2A1A0E', fontWeight:600 }}>{m.nombre}</span>
-                            </div>
-                            <span style={{ color:'#8A6050', fontFamily:'var(--font-code),monospace' }}>{fmtUYU(val)}</span>
-                          </div>
-                          <div style={{ height:5, background:'#F0E8DF', borderRadius:4, overflow:'hidden' }}>
-                            <div style={{ height:'100%', background:m.color, width:`${pct}%`, borderRadius:4, transition:'width 0.3s' }}/>
-                          </div>
-                        </div>
-                      )
-                    })}
-                  </div>
-                </div>
               </div>
             )
           })()}
