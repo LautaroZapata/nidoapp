@@ -1,32 +1,66 @@
 import { createAdminClient } from './supabase-admin'
 
 export type PlanType = 'free' | 'pro'
-export type TierType = 'starter' | 'hogar' | 'casa_grande'
+export type TierType = 'nido' | 'casa'
 
 export const TIERS = {
-  starter:     { nombre: 'Starter',     label: 'hasta 3 miembros', maxMiembros: 3,        precio: 150, variantKey: 'LEMONSQUEEZY_VARIANT_STARTER' },
-  hogar:       { nombre: 'Hogar',       label: '4 a 8 miembros',   maxMiembros: 8,        precio: 400, variantKey: 'LEMONSQUEEZY_VARIANT_HOGAR'   },
-  casa_grande: { nombre: 'Casa Grande', label: '9+ miembros',      maxMiembros: Infinity, precio: 800, variantKey: 'LEMONSQUEEZY_VARIANT_CASA'    },
+  nido: {
+    nombre: 'Nido',
+    label: 'hasta 8 miembros',
+    maxMiembros: 8,
+    precio: 290,
+    variantKey: 'LEMONSQUEEZY_VARIANT_NIDO',
+    features: [
+      'Hasta 8 miembros',
+      'Historial de gastos ilimitado',
+      'Bot de WhatsApp incluido',
+      'Gastos, compras y aptos sin límites',
+    ],
+  },
+  casa: {
+    nombre: 'Casa',
+    label: 'miembros ilimitados',
+    maxMiembros: Infinity,
+    precio: 590,
+    variantKey: 'LEMONSQUEEZY_VARIANT_CASA',
+    features: [
+      'Miembros ilimitados',
+      'Todo lo del plan Nido',
+      'Estadísticas avanzadas',
+      'Soporte prioritario',
+    ],
+  },
 } as const
 
 export const FREE_LIMITS = {
-  historialMeses: 3,
+  historialMeses: 2,
   maxMiembros: 3,
 }
 
-/** Devuelve el tier que corresponde según la cantidad de miembros */
+export const FREE_FEATURES = [
+  'Hasta 3 miembros',
+  '2 meses de historial de gastos',
+  'Gastos, compras y aptos',
+]
+
+/** Devuelve el tier recomendado según la cantidad de miembros */
 export function getTierParaMiembros(count: number): TierType {
-  if (count <= 3) return 'starter'
-  if (count <= 8) return 'hogar'
-  return 'casa_grande'
+  return count <= 8 ? 'nido' : 'casa'
+}
+
+/** Normaliza valores legacy del DB al nuevo sistema */
+export function normalizeTier(tier: string | null | undefined): TierType | null {
+  if (!tier) return null
+  if (tier === 'nido' || tier === 'starter' || tier === 'hogar') return 'nido'
+  if (tier === 'casa' || tier === 'casa_grande') return 'casa'
+  return null
 }
 
 /** Devuelve el variant ID de LS para un tier */
 export function getVariantId(tier: TierType): string | undefined {
   const map: Record<TierType, string | undefined> = {
-    starter:     process.env.LEMONSQUEEZY_VARIANT_STARTER,
-    hogar:       process.env.LEMONSQUEEZY_VARIANT_HOGAR,
-    casa_grande: process.env.LEMONSQUEEZY_VARIANT_CASA,
+    nido: process.env.LEMONSQUEEZY_VARIANT_NIDO ?? process.env.LEMONSQUEEZY_VARIANT_HOGAR,
+    casa: process.env.LEMONSQUEEZY_VARIANT_CASA,
   }
   return map[tier]
 }

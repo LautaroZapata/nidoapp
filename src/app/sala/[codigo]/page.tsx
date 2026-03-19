@@ -9,6 +9,8 @@ import type { Miembro, Invitacion } from '@/lib/types'
 import type { PostgrestError } from '@supabase/supabase-js'
 import dynamic from 'next/dynamic'
 import { registrarPush, estadoPush } from '@/lib/push'
+import { normalizeTier, TIERS, FREE_FEATURES, FREE_LIMITS, getTierParaMiembros } from '@/lib/features'
+import type { TierType } from '@/lib/features'
 
 const OnboardingModal = dynamic(() => import('@/components/OnboardingModal'), { ssr: false })
 
@@ -55,29 +57,34 @@ export default function SalaPage() {
   const [currentUserId, setCurrentUserId] = useState<string | null>(null)
   const [billingLoading, setBillingLoading] = useState(false)
   const [billingError, setBillingError] = useState<string | null>(null)
+  const [showPlanes, setShowPlanes] = useState(false)
 
-  async function handleUpgradePro() {
+  async function handleCheckout(tier: TierType) {
     if (!session) return
-    setBillingError(null)
+    setShowPlanes(false)
     setBillingLoading(true)
+    setBillingError(null)
     try {
-      const supabase = createClient()
-      const { data: { session: authSession } } = await supabase.auth.getSession()
-      const token = authSession?.access_token
-      if (!token) { setBillingLoading(false); return }
+      const { data: { session: sbSession } } = await createClient().auth.getSession()
+      if (!sbSession) { setBillingError('Iniciá sesión para continuar'); return }
       const res = await fetch('/api/billing/checkout', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ salaId: session.salaId }),
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${sbSession.access_token}` },
+        body: JSON.stringify({ salaId: session.salaId, tier }),
       })
       const data = await res.json()
-      if (data.url) window.location.href = data.url
+      if (!res.ok) { setBillingError(data.error ?? 'Error al iniciar el pago'); return }
+      window.location.href = data.url
     } catch (err) {
-      console.error('[Upgrade]', err)
-      setBillingError('Hubo un error. Intentá de nuevo.')
+      console.error('[Checkout]', err)
+      setBillingError('Error inesperado. Intentá de nuevo.')
     } finally {
       setBillingLoading(false)
     }
+  }
+
+  function handleUpgradePro() {
+    setShowPlanes(true)
   }
 
   async function handleChangeTier() {
@@ -409,44 +416,82 @@ export default function SalaPage() {
 
         /* Plan section */
         .s-plan { margin-top: 1.25rem; border-radius: 18px; overflow: hidden; animation: s-fadeup 0.5s 0.2s cubic-bezier(0.22,1,0.36,1) both; }
-        .s-plan-free { background: linear-gradient(135deg, #FFF8F2 0%, #FAF0E6 100%); border: 1.5px solid #E8CDB8; }
-        .s-plan-pro  { background: linear-gradient(135deg, #1a3a2a 0%, #2E5C40 100%); border: 1.5px solid #2E5C40; }
+        .s-plan-free { background: #FFF8F2; border: 1.5px solid #EAD8C8; }
+        .s-plan-pro  { background: linear-gradient(135deg, #1E3D2C 0%, #2E5C40 100%); border: 1.5px solid rgba(46,125,82,0.4); }
         .s-plan-body { padding: 1.15rem 1.25rem; }
         .s-plan-top  { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 10px; }
-        .s-plan-label { font-size: 0.65rem; font-weight: 800; letter-spacing: 0.12em; text-transform: uppercase; margin-bottom: 3px; }
-        .s-plan-label-free { color: #C8823A; }
-        .s-plan-label-pro  { color: rgba(37,211,102,0.75); }
-        .s-plan-title { font-family: var(--font-serif),'Georgia',serif; font-size: 1.15rem; font-weight: 700; }
-        .s-plan-title-free { color: #2A1A0E; }
-        .s-plan-title-pro  { color: white; }
-        .s-plan-badge-free { font-size: 0.65rem; font-weight: 700; padding: 3px 9px; border-radius: 20px; background: rgba(192,90,59,0.1); color: #C05A3B; border: 1px solid rgba(192,90,59,0.2); white-space: nowrap; }
-        .s-plan-badge-pro  { font-size: 0.65rem; font-weight: 700; padding: 3px 9px; border-radius: 20px; background: rgba(37,211,102,0.15); color: #4ADE80; border: 1px solid rgba(37,211,102,0.3); white-space: nowrap; }
+        .s-plan-label { font-size: 0.62rem; font-weight: 800; letter-spacing: 0.12em; text-transform: uppercase; margin-bottom: 3px; }
+        .s-plan-label-free { color: #B09080; }
+        .s-plan-label-pro  { color: rgba(74,222,128,0.7); }
+        .s-plan-name { font-family: var(--font-serif),'Georgia',serif; font-size: 1.2rem; font-weight: 700; letter-spacing: -0.02em; }
+        .s-plan-name-free { color: #2A1A0E; }
+        .s-plan-name-pro  { color: white; }
+        .s-plan-badge { font-size: 0.62rem; font-weight: 700; padding: 3px 9px; border-radius: 20px; white-space: nowrap; }
+        .s-plan-badge-free { background: rgba(192,90,59,0.1); color: #C05A3B; border: 1px solid rgba(192,90,59,0.2); }
+        .s-plan-badge-pro  { background: rgba(74,222,128,0.15); color: #4ADE80; border: 1px solid rgba(74,222,128,0.3); }
         .s-plan-divider { height: 1px; margin: 10px 0; }
-        .s-plan-divider-free { background: rgba(192,90,59,0.12); }
+        .s-plan-divider-free { background: rgba(192,90,59,0.1); }
         .s-plan-divider-pro  { background: rgba(255,255,255,0.1); }
-        .s-plan-perks { display: flex; flex-direction: column; gap: 5px; margin-bottom: 14px; }
-        .s-plan-perk { font-size: 0.78rem; display: flex; align-items: center; gap: 7px; }
-        .s-plan-perk-free { color: #7A5540; }
-        .s-plan-perk-pro  { color: rgba(255,255,255,0.82); }
-        .s-plan-price-box { border-radius: 10px; padding: 8px 11px; margin-bottom: 12px; }
-        .s-plan-price-box-free { background: rgba(192,90,59,0.07); border: 1px solid rgba(192,90,59,0.12); }
-        .s-plan-price-box-pro  { background: rgba(255,255,255,0.07); border: 1px solid rgba(255,255,255,0.12); }
+        .s-plan-features { display: flex; flex-direction: column; gap: 5px; margin-bottom: 14px; }
+        .s-plan-feat { font-size: 0.78rem; display: flex; align-items: center; gap: 7px; }
+        .s-plan-feat-free { color: #8A6050; }
+        .s-plan-feat-locked { color: #C0A898; }
+        .s-plan-feat-pro  { color: rgba(255,255,255,0.8); }
+        .s-plan-price { border-radius: 10px; padding: 8px 11px; margin-bottom: 12px; }
+        .s-plan-price-free { background: rgba(192,90,59,0.06); border: 1px solid rgba(192,90,59,0.1); }
+        .s-plan-price-pro  { background: rgba(255,255,255,0.07); border: 1px solid rgba(255,255,255,0.12); }
         .s-plan-price-main { font-size: 0.82rem; font-weight: 700; }
         .s-plan-price-main-free { color: #2A1A0E; }
         .s-plan-price-main-pro  { color: white; }
-        .s-plan-price-sub { font-size: 0.72rem; margin-top: 1px; }
+        .s-plan-price-sub { font-size: 0.72rem; margin-top: 2px; }
         .s-plan-price-sub-free { color: #A07060; }
-        .s-plan-price-sub-pro  { color: rgba(255,255,255,0.55); }
+        .s-plan-price-sub-pro  { color: rgba(255,255,255,0.5); }
         .s-plan-warn { border-radius: 10px; padding: 8px 11px; margin-bottom: 12px; background: rgba(200,130,58,0.15); border: 1px solid rgba(200,130,58,0.3); font-size: 0.78rem; color: #F5D08A; }
-        .s-plan-btn { width: 100%; padding: 11px; border: none; border-radius: 12px; font-size: 0.88rem; font-weight: 700; font-family: var(--font-body),'Nunito',sans-serif; cursor: pointer; transition: all 0.18s; margin-top: 4px; }
+        .s-plan-btn { width: 100%; padding: 11px; border: none; border-radius: 12px; font-size: 0.875rem; font-weight: 700; font-family: var(--font-body),'Nunito',sans-serif; cursor: pointer; transition: all 0.18s; margin-top: 4px; display: flex; align-items: center; justify-content: center; gap: 6px; }
         .s-plan-btn + .s-plan-btn { margin-top: 7px; }
         .s-plan-btn:disabled { opacity: 0.55; cursor: not-allowed; }
         .s-plan-btn-upgrade { background: #C05A3B; color: white; }
         .s-plan-btn-upgrade:hover:not(:disabled) { background: #A04730; transform: translateY(-1px); box-shadow: 0 6px 18px rgba(192,90,59,0.35); }
         .s-plan-btn-manage  { background: rgba(255,255,255,0.1); color: rgba(255,255,255,0.85); border: 1px solid rgba(255,255,255,0.18) !important; }
-        .s-plan-btn-manage:hover:not(:disabled)  { background: rgba(255,255,255,0.18); }
+        .s-plan-btn-manage:hover:not(:disabled) { background: rgba(255,255,255,0.18); }
         .s-plan-btn-change  { background: rgba(200,130,58,0.25); color: #F5D08A; border: 1px solid rgba(200,130,58,0.35) !important; }
-        .s-plan-btn-change:hover:not(:disabled)  { background: rgba(200,130,58,0.38); }
+        .s-plan-btn-change:hover:not(:disabled) { background: rgba(200,130,58,0.38); }
+
+        /* Pricing modal */
+        @keyframes planes-in { from { opacity: 0; transform: scale(0.93) translateY(20px); } to { opacity: 1; transform: scale(1) translateY(0); } }
+        @keyframes s-fadein { from { opacity: 0; } to { opacity: 1; } }
+        .planes-overlay { position: fixed; inset: 0; z-index: 400; background: rgba(42,26,14,0.6); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); display: flex; align-items: center; justify-content: center; padding: 1rem; animation: s-fadein 0.18s ease both; }
+        .planes-modal { background: #FFF8F2; border-radius: 24px; border: 1.5px solid #EAD8C8; width: 100%; max-width: 680px; max-height: 92vh; overflow-y: auto; overscroll-behavior: contain; box-shadow: 0 32px 80px rgba(42,26,14,0.25); animation: planes-in 0.3s cubic-bezier(0.22,1,0.36,1) both; }
+        .planes-header { padding: 1.5rem 1.5rem 0; display: flex; align-items: flex-start; justify-content: space-between; }
+        .planes-title { font-family: var(--font-serif),'Georgia',serif; font-size: 1.45rem; font-weight: 700; color: #2A1A0E; letter-spacing: -0.025em; }
+        .planes-sub { font-size: 0.82rem; color: #A07060; margin-top: 3px; font-family: var(--font-body),'Nunito',sans-serif; }
+        .planes-close { width: 32px; height: 32px; border-radius: 8px; background: #F0E8DF; border: 1px solid #E0C8B8; display: flex; align-items: center; justify-content: center; cursor: pointer; color: #A07060; flex-shrink: 0; transition: background 0.15s; }
+        .planes-close:hover { background: #E0D0C0; }
+        .planes-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; padding: 1.25rem 1.5rem 1.5rem; }
+        @media (max-width: 600px) { .planes-grid { grid-template-columns: 1fr; } }
+        .plan-card { border-radius: 16px; padding: 1.25rem; border: 1.5px solid #EAD8C8; background: white; display: flex; flex-direction: column; position: relative; transition: border-color 0.2s, box-shadow 0.2s; }
+        .plan-card-recommended { border-color: #C05A3B; box-shadow: 0 0 0 3px rgba(192,90,59,0.12); }
+        .plan-card-casa { border-color: #5A8869; }
+        .plan-card-recom-badge { position: absolute; top: -11px; left: 50%; transform: translateX(-50%); background: #C05A3B; color: white; font-size: 0.6rem; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase; padding: 3px 10px; border-radius: 20px; white-space: nowrap; font-family: var(--font-body),'Nunito',sans-serif; }
+        .plan-card-icon { font-size: 1.5rem; margin-bottom: 0.6rem; }
+        .plan-card-name { font-family: var(--font-serif),'Georgia',serif; font-size: 1.1rem; font-weight: 700; color: #2A1A0E; letter-spacing: -0.02em; margin-bottom: 2px; }
+        .plan-card-label { font-size: 0.72rem; color: #A07060; font-family: var(--font-body),'Nunito',sans-serif; margin-bottom: 0.75rem; }
+        .plan-card-price { font-size: 1.5rem; font-weight: 800; color: #2A1A0E; letter-spacing: -0.03em; margin-bottom: 2px; font-family: var(--font-serif),'Georgia',serif; }
+        .plan-card-price-unit { font-size: 0.72rem; color: #A07060; font-family: var(--font-body),'Nunito',sans-serif; margin-bottom: 0.9rem; }
+        .plan-card-divider { height: 1px; background: #EAD8C8; margin-bottom: 0.75rem; }
+        .plan-card-feats { display: flex; flex-direction: column; gap: 6px; flex: 1; margin-bottom: 1rem; }
+        .plan-card-feat { font-size: 0.79rem; color: #5A3A20; display: flex; align-items: flex-start; gap: 7px; line-height: 1.4; font-family: var(--font-body),'Nunito',sans-serif; }
+        .plan-card-feat-locked { color: #C0A898; }
+        .plan-card-feat-check { color: #5A8869; flex-shrink: 0; margin-top: 1px; }
+        .plan-card-feat-x { color: #D0B0A0; flex-shrink: 0; margin-top: 1px; }
+        .plan-card-cta { width: 100%; padding: 10px; border-radius: 11px; border: none; font-size: 0.875rem; font-weight: 700; cursor: pointer; font-family: var(--font-body),'Nunito',sans-serif; transition: all 0.18s; }
+        .plan-card-cta-free { background: #F0E8DF; color: #A07060; cursor: default; }
+        .plan-card-cta-nido { background: #C05A3B; color: white; }
+        .plan-card-cta-nido:hover:not(:disabled) { background: #A04730; transform: translateY(-1px); box-shadow: 0 6px 18px rgba(192,90,59,0.3); }
+        .plan-card-cta-casa { background: #5A8869; color: white; }
+        .plan-card-cta-casa:hover:not(:disabled) { background: #3A6B4A; transform: translateY(-1px); box-shadow: 0 6px 18px rgba(90,136,105,0.3); }
+        .plan-card-cta:disabled { opacity: 0.55; cursor: not-allowed; transform: none !important; box-shadow: none !important; }
+        .planes-nota { padding: 0 1.5rem 1.5rem; font-size: 0.75rem; color: #A07060; text-align: center; font-family: var(--font-body),'Nunito',sans-serif; }
       `}</style>
 
       <div className="s-root">
@@ -592,18 +637,13 @@ export default function SalaPage() {
 
           {/* Plan section */}
           {planInfo && (() => {
-            const TIER_DATA = {
-              starter:     { nombre: 'Starter',     precio: 150, maxMiembros: 3, label: 'hasta 3 miembros' },
-              hogar:       { nombre: 'Hogar',       precio: 400, maxMiembros: 8, label: '4 a 8 miembros'   },
-              casa_grande: { nombre: 'Casa Grande', precio: 800, maxMiembros: Infinity, label: '9+ miembros' },
-            }
             const esPro    = planInfo.plan_type === 'pro'
             const esOwner  = !!(currentUserId && planInfo.owner_user_id === currentUserId)
-            const tierKey  = planInfo.plan_tier as 'starter' | 'hogar' | 'casa_grande' | null
-            const td       = tierKey ? TIER_DATA[tierKey] : null
-            const tierSugerido = miembros.length <= 3 ? TIER_DATA.starter : miembros.length <= 8 ? TIER_DATA.hogar : TIER_DATA.casa_grande
+            const tierKey  = normalizeTier(planInfo.plan_tier)
+            const td       = tierKey ? TIERS[tierKey] : null
+            const tierSugerido = getTierParaMiembros(miembros.length)
             const necesitaUpgradeTier = esPro && td && miembros.length > td.maxMiembros
-            const precioPorPersona = td ? Math.ceil(td.precio / miembros.length) : Math.ceil(tierSugerido.precio / miembros.length)
+            const precioPorPersona = td ? Math.ceil(td.precio / Math.max(miembros.length, 1)) : null
 
             return (
               <div className={`s-plan ${esPro ? 's-plan-pro' : 's-plan-free'}`}>
@@ -613,45 +653,50 @@ export default function SalaPage() {
                   <div className="s-plan-top">
                     <div>
                       <div className={`s-plan-label ${esPro ? 's-plan-label-pro' : 's-plan-label-free'}`}>Plan actual</div>
-                      <div className={`s-plan-title ${esPro ? 's-plan-title-pro' : 's-plan-title-free'}`}>
+                      <div className={`s-plan-name ${esPro ? 's-plan-name-pro' : 's-plan-name-free'}`}>
                         {esPro ? `✦ ${td?.nombre ?? 'Pro'}` : 'Gratuito'}
                       </div>
                     </div>
-                    <span className={esPro ? 's-plan-badge-pro' : 's-plan-badge-free'}>
+                    <span className={esPro ? 's-plan-badge s-plan-badge-pro' : 's-plan-badge s-plan-badge-free'}>
                       {esPro ? (td?.label ?? 'Pro') : 'Gratis'}
                     </span>
                   </div>
 
                   <div className={`s-plan-divider ${esPro ? 's-plan-divider-pro' : 's-plan-divider-free'}`}/>
 
-                  {/* Perks */}
-                  <div className="s-plan-perks">
-                    {esPro ? (
-                      <>
-                        <div className="s-plan-perk s-plan-perk-pro">✓ Historial de gastos ilimitado</div>
-                        <div className="s-plan-perk s-plan-perk-pro">✓ Bot de WhatsApp sin límites</div>
-                        <div className="s-plan-perk s-plan-perk-pro">✓ Miembros ilimitados dentro del tier</div>
-                      </>
+                  {/* Features */}
+                  <div className="s-plan-features">
+                    {esPro && td ? (
+                      td.features.map((f, i) => (
+                        <div key={i} className="s-plan-feat s-plan-feat-pro">
+                          <span style={{ color: '#4ADE80', flexShrink: 0 }}>✓</span> {f}
+                        </div>
+                      ))
                     ) : (
                       <>
-                        <div className="s-plan-perk s-plan-perk-free">· Historial últimos 3 meses</div>
-                        <div className="s-plan-perk s-plan-perk-free">· Hasta 3 miembros</div>
-                        <div className="s-plan-perk s-plan-perk-free">· Sin bot de WhatsApp</div>
+                        {FREE_FEATURES.map((f, i) => (
+                          <div key={i} className="s-plan-feat s-plan-feat-free">
+                            <span style={{ color: '#A07060', flexShrink: 0 }}>·</span> {f}
+                          </div>
+                        ))}
+                        <div className="s-plan-feat s-plan-feat-locked">
+                          <span style={{ color: '#D0B0A0', flexShrink: 0 }}>✗</span> Sin bot de WhatsApp
+                        </div>
                       </>
                     )}
                   </div>
 
-                  {/* Precio / split */}
-                  <div className={`s-plan-price-box ${esPro ? 's-plan-price-box-pro' : 's-plan-price-box-free'}`}>
-                    <div className={`s-plan-price-main ${esPro ? 's-plan-price-main-pro' : 's-plan-price-main-free'}`}>
-                      💸 ${esPro ? td?.precio : tierSugerido.precio} UYU/mes
-                      {' · '}~${precioPorPersona} por persona
+                  {/* Precio */}
+                  {esPro && td && (
+                    <div className="s-plan-price s-plan-price-pro">
+                      <div className="s-plan-price-main s-plan-price-main-pro">
+                        ${td.precio} UYU/mes{precioPorPersona ? ` · ~$${precioPorPersona} por persona` : ''}
+                      </div>
+                      <div className="s-plan-price-sub s-plan-price-sub-pro">
+                        {miembros.length} miembro{miembros.length !== 1 ? 's' : ''} · Plan {td.nombre}
+                      </div>
                     </div>
-                    <div className={`s-plan-price-sub ${esPro ? 's-plan-price-sub-pro' : 's-plan-price-sub-free'}`}>
-                      {miembros.length} miembro{miembros.length !== 1 ? 's' : ''} en el nido
-                      {!esPro && ` · Plan sugerido: ${tierSugerido.nombre}`}
-                    </div>
-                  </div>
+                  )}
 
                   {/* Aviso upgrade de tier */}
                   {necesitaUpgradeTier && esOwner && (
@@ -664,13 +709,13 @@ export default function SalaPage() {
                   {esOwner && (
                     <>
                       {!esPro && (
-                        <button className="s-plan-btn s-plan-btn-upgrade" disabled={billingLoading} onClick={handleUpgradePro}>
-                          {billingLoading ? 'Cargando...' : `Activar Pro · $${tierSugerido.precio} UYU/mes →`}
+                        <button className="s-plan-btn s-plan-btn-upgrade" disabled={billingLoading} onClick={() => setShowPlanes(true)}>
+                          {billingLoading ? 'Cargando...' : 'Ver planes Pro →'}
                         </button>
                       )}
                       {esPro && necesitaUpgradeTier && (
                         <button className="s-plan-btn s-plan-btn-change" disabled={billingLoading} onClick={handleChangeTier}>
-                          {billingLoading ? 'Actualizando...' : `Cambiar a ${TIER_DATA[miembros.length <= 8 ? 'hogar' : 'casa_grande'].nombre} · $${TIER_DATA[miembros.length <= 8 ? 'hogar' : 'casa_grande'].precio} UYU/mes →`}
+                          {billingLoading ? 'Actualizando...' : `Cambiar a ${TIERS[tierSugerido].nombre} · $${TIERS[tierSugerido].precio} UYU/mes →`}
                         </button>
                       )}
                       {esPro && (
@@ -757,6 +802,112 @@ export default function SalaPage() {
               <div style={{ color:'#C04040', fontSize:'0.85rem' }}>Error al generar el código</div>
             )}
             <button className="s-modal-close" onClick={() => setShowWpp(false)}>Cerrar</button>
+          </div>
+        </div>
+      )}
+
+      {/* ── PRICING MODAL ── */}
+      {showPlanes && (
+        <div className="planes-overlay" onClick={e => { if (e.target === e.currentTarget) setShowPlanes(false) }}>
+          <div className="planes-modal">
+            <div className="planes-header">
+              <div>
+                <div className="planes-title">Elegí tu plan</div>
+                <div className="planes-sub">
+                  {miembros.length} miembro{miembros.length !== 1 ? 's' : ''} en tu nido · podés cambiar cuando quieras
+                </div>
+              </div>
+              <button className="planes-close" onClick={() => setShowPlanes(false)}>
+                <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                  <path d="M1 1l10 10M11 1L1 11" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
+                </svg>
+              </button>
+            </div>
+
+            <div className="planes-grid">
+              {/* FREE */}
+              <div className="plan-card">
+                <div className="plan-card-icon">🏠</div>
+                <div className="plan-card-name">Gratuito</div>
+                <div className="plan-card-label">Para empezar</div>
+                <div className="plan-card-price">$0</div>
+                <div className="plan-card-price-unit">para siempre</div>
+                <div className="plan-card-divider"/>
+                <div className="plan-card-feats">
+                  {FREE_FEATURES.map((f, i) => (
+                    <div key={i} className="plan-card-feat">
+                      <span className="plan-card-feat-check">✓</span> {f}
+                    </div>
+                  ))}
+                  <div className="plan-card-feat plan-card-feat-locked">
+                    <span className="plan-card-feat-x">✗</span> Sin bot de WhatsApp
+                  </div>
+                  <div className="plan-card-feat plan-card-feat-locked">
+                    <span className="plan-card-feat-x">✗</span> Máximo 3 miembros
+                  </div>
+                </div>
+                <button className="plan-card-cta plan-card-cta-free" disabled>
+                  Plan actual
+                </button>
+              </div>
+
+              {/* NIDO */}
+              <div className="plan-card plan-card-recommended">
+                <div className="plan-card-recom-badge">Recomendado</div>
+                <div className="plan-card-icon">🏡</div>
+                <div className="plan-card-name">Nido</div>
+                <div className="plan-card-label">hasta 8 miembros</div>
+                <div className="plan-card-price">$290</div>
+                <div className="plan-card-price-unit">
+                  UYU/mes · ~${Math.ceil(290 / Math.max(miembros.length, 1))} por persona
+                </div>
+                <div className="plan-card-divider"/>
+                <div className="plan-card-feats">
+                  {TIERS.nido.features.map((f, i) => (
+                    <div key={i} className="plan-card-feat">
+                      <span className="plan-card-feat-check">✓</span> {f}
+                    </div>
+                  ))}
+                </div>
+                <button
+                  className="plan-card-cta plan-card-cta-nido"
+                  disabled={billingLoading}
+                  onClick={() => handleCheckout('nido')}
+                >
+                  {billingLoading ? 'Cargando...' : 'Elegir Nido →'}
+                </button>
+              </div>
+
+              {/* CASA */}
+              <div className="plan-card plan-card-casa">
+                <div className="plan-card-icon">🏘️</div>
+                <div className="plan-card-name">Casa</div>
+                <div className="plan-card-label">miembros ilimitados</div>
+                <div className="plan-card-price">$590</div>
+                <div className="plan-card-price-unit">
+                  UYU/mes · ~${Math.ceil(590 / Math.max(miembros.length, 1))} por persona
+                </div>
+                <div className="plan-card-divider"/>
+                <div className="plan-card-feats">
+                  {TIERS.casa.features.map((f, i) => (
+                    <div key={i} className="plan-card-feat">
+                      <span className="plan-card-feat-check" style={{ color: '#5A8869' }}>✓</span> {f}
+                    </div>
+                  ))}
+                </div>
+                <button
+                  className="plan-card-cta plan-card-cta-casa"
+                  disabled={billingLoading}
+                  onClick={() => handleCheckout('casa')}
+                >
+                  {billingLoading ? 'Cargando...' : 'Elegir Casa →'}
+                </button>
+              </div>
+            </div>
+
+            <div className="planes-nota">
+              Podés cancelar en cualquier momento · Pago seguro por Lemon Squeezy · Precios en pesos uruguayos
+            </div>
           </div>
         </div>
       )}

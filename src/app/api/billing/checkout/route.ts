@@ -3,6 +3,7 @@ import { createClient as createSupabaseClient } from '@supabase/supabase-js'
 import { createCheckout } from '@/lib/lemonsqueezy'
 import { createAdminClient } from '@/lib/supabase-admin'
 import { getTierParaMiembros, getVariantId, TIERS } from '@/lib/features'
+import type { TierType } from '@/lib/features'
 
 /**
  * POST /api/billing/checkout
@@ -30,7 +31,7 @@ export async function POST(req: NextRequest) {
   }
 
   // ── Validar body ──
-  let body: { salaId?: string }
+  let body: { salaId?: string; tier?: string }
   try {
     body = await req.json()
   } catch {
@@ -66,7 +67,8 @@ export async function POST(req: NextRequest) {
     .eq('sala_id', salaId)
 
   const miembroCount = count ?? 1
-  const tier = getTierParaMiembros(miembroCount)
+  const tierFromBody = body.tier && ['nido', 'casa'].includes(body.tier) ? body.tier as TierType : null
+  const tier = tierFromBody ?? getTierParaMiembros(miembroCount)
   const variantId = getVariantId(tier)
   const storeId = process.env.LEMONSQUEEZY_STORE_ID
 

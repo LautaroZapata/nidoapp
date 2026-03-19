@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase-admin'
-import { getSalaPlan, FREE_LIMITS } from '@/lib/features'
+import { getSalaPlan, FREE_LIMITS, TIERS, normalizeTier } from '@/lib/features'
 
 /**
  * GET /api/billing/plan?salaId=xxx
@@ -15,7 +15,7 @@ export async function GET(req: NextRequest) {
   const supabase = createAdminClient()
   const { data: sala } = await supabase
     .from('salas')
-    .select('id')
+    .select('id, plan_tier')
     .eq('id', salaId)
     .single()
 
@@ -25,14 +25,26 @@ export async function GET(req: NextRequest) {
 
   const plan = await getSalaPlan(salaId)
 
+  if (plan === 'free') {
+    return NextResponse.json({
+      plan,
+      limites: {
+        historialMeses: FREE_LIMITS.historialMeses,
+        maxMiembros: FREE_LIMITS.maxMiembros,
+      },
+    })
+  }
+
+  // Pro: determinar maxMiembros según tier
+  const tier = normalizeTier(sala.plan_tier)
+  const maxMiembros = tier === 'casa' ? null : TIERS.nido.maxMiembros
+
   return NextResponse.json({
     plan,
-    limites: plan === 'free' ? {
-      historialMeses: FREE_LIMITS.historialMeses,
-      maxMiembros: FREE_LIMITS.maxMiembros,
-    } : {
+    tier,
+    limites: {
       historialMeses: null,
-      maxMiembros: null,
+      maxMiembros,
     },
   })
 }

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient as createSupabaseClient } from '@supabase/supabase-js'
 import { updateSubscriptionVariant } from '@/lib/lemonsqueezy'
 import { createAdminClient } from '@/lib/supabase-admin'
-import { getTierParaMiembros, getVariantId } from '@/lib/features'
+import { getTierParaMiembros, getVariantId, normalizeTier } from '@/lib/features'
 
 /**
  * POST /api/billing/change-tier
@@ -59,7 +59,7 @@ export async function POST(req: NextRequest) {
   const miembroCount = count ?? 1
   const nuevoTier = getTierParaMiembros(miembroCount)
 
-  if (nuevoTier === sala.plan_tier) {
+  if (normalizeTier(sala.plan_tier) === nuevoTier) {
     return NextResponse.json({ error: 'Ya estás en el tier correcto para tu cantidad de miembros' }, { status: 400 })
   }
 
@@ -79,7 +79,8 @@ export async function POST(req: NextRequest) {
   // ── Actualizar tier en Supabase ──
   await supabaseAdmin
     .from('salas')
-    .update({ plan_tier: nuevoTier })
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    .update({ plan_tier: nuevoTier as any })
     .eq('id', salaId)
 
   console.log(`[Billing] Nido ${salaId}: ${sala.plan_tier} → ${nuevoTier}`)
