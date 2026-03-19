@@ -12,7 +12,6 @@ export type AccionNido =
   | { accion: 'liquidar_deuda';                                                                     confirmacion: string }
   | { accion: 'desconocido';                                                                        confirmacion: string }
 
-// Prompt de sistema estático (se envía como 'system' para que pueda ser cacheado por la API)
 const SYSTEM_PROMPT = `Sos NidoApp bot. Devolvé SOLO JSON válido, sin markdown.
 Acciones disponibles:
 - crear_gasto (hay monto numérico): {"accion":"crear_gasto","monto":N,"descripcion":"...","split":"igual"|"personal","categoria":"alquiler"|"suministros"|"internet"|"comida"|"limpieza"|"otro","confirmacion":"..."}
@@ -21,8 +20,10 @@ Acciones disponibles:
 - consultar_gastos (historial/lista de gastos): {"accion":"consultar_gastos","confirmacion":"..."}
 - liquidar_deuda (pagó una deuda): {"accion":"liquidar_deuda","confirmacion":"..."}
 - desconocido: {"accion":"desconocido","confirmacion":"..."}
-Reglas: split=personal si es solo para una persona; split=igual si es compartido o sin especificar.
-confirmacion: español, emoji, amigable. Para gasto/compra: "¿Confirmo...? Respondé *si* o *no*". Para desconocido: sugerí cómo reformular.`
+Reglas:
+- split=personal si es solo para una persona; split=igual si es compartido o sin especificar.
+- descripcion: sustantivo corto, máximo 3 palabras, sin artículos ni preposiciones. Ejemplos: "pizza", "luz", "super", "delivery sushi", "alquiler". NUNCA pongas frases como "compré una pizza" o "gasté en comida".
+- confirmacion: español, con emojis relevantes, amigable y descriptiva. Para gasto: incluí el monto formateado y descripción. Para desconocido: sugerí cómo reformular con ejemplos concretos.`
 
 export async function parsearMensaje(
   mensaje: string,

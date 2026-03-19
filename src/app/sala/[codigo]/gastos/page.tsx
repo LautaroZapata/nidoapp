@@ -1505,32 +1505,6 @@ export default function GastosPage() {
                 )
               })()}
 
-              {/* ── Mini resumen por miembro ── */}
-              {!loading && miembros.length > 1 && (
-                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: '1rem' }}>
-                  {miembros.filter(m => m.id !== miId).map(m => {
-                    const val = balanceNet[m.id] ?? 0
-                    const alDia = Math.abs(val) < EPS
-                    return (
-                      <div key={m.id} style={{
-                        display: 'flex', alignItems: 'center', gap: 7,
-                        background: 'white', border: '1.5px solid #EAD8C8',
-                        borderRadius: 12, padding: '7px 12px', fontSize: '0.8rem',
-                      }}>
-                        <div style={{ width: 24, height: 24, borderRadius: '50%', background: m.color, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: '0.65rem', fontWeight: 700, flexShrink: 0 }}>
-                          {m.nombre[0].toUpperCase()}
-                        </div>
-                        <div>
-                          <div style={{ fontWeight: 600, color: '#2A1A0E', fontSize: '0.78rem' }}>{m.nombre}</div>
-                          <div style={{ fontSize: '0.7rem', color: alDia ? '#2E7D52' : val > 0 ? '#1E6BA8' : '#C05A3B', fontWeight: 600 }}>
-                            {alDia ? 'al día' : val > 0 ? `+${fmtUYU(Math.round(val))}` : fmtUYU(Math.round(val))}
-                          </div>
-                        </div>
-                      </div>
-                    )
-                  })}
-                </div>
-              )}
 
               {loading && (
                 <div className="g-balance-list">
@@ -1557,7 +1531,7 @@ export default function GastosPage() {
                 </div>
               )}
 
-              {!loading && debts.length > 0 && (
+              {!loading && debts.filter(d => d.from === miId || d.to === miId).length > 0 && (
                 <div className="g-balance-list">
                   {debts.filter(d => d.from === miId || d.to === miId).map((d, idx) => {
                     const fromM = miembros.find(m => m.id === d.from)
@@ -1583,7 +1557,9 @@ export default function GastosPage() {
                           </div>
                           <div className="g-debt-body">
                             <div className="g-debt-text">
-                              <strong>{fromM.nombre}</strong> le debe a <strong>{toM.nombre}</strong>
+                              {d.from === miId
+                                ? <>Le debés a <strong>{toM.nombre}</strong></>
+                                : <><strong>{fromM.nombre}</strong> te debe</>}
                             </div>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 2 }}>
                               <div className="g-debt-amount">{fmtUYU(d.amount)}</div>
@@ -1684,36 +1660,12 @@ export default function GastosPage() {
                     )
                   })}
 
-                  {/* Per-person summary */}
-                  {miembros.length > 0 && (
-                    <div style={{ marginTop: 12, background: 'white', border: '1.5px solid #EAD8C8', borderRadius: 16, padding: '1rem 1.25rem', boxShadow: '0 2px 8px rgba(150,80,40,0.06)' }}>
-                      <div style={{ fontSize: '0.68rem', fontWeight: 700, color: '#B09080', textTransform: 'uppercase', letterSpacing: '0.09em', marginBottom: 10 }}>
-                        Resumen por persona
-                      </div>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                        {miembros.map(m => {
-                          const balance = balanceNet[m.id] ?? 0
-                          return (
-                            <div key={m.id} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                              <div className="g-debt-av" style={{ background: m.color, width: 28, height: 28, fontSize: '0.65rem' }}>
-                                {m.nombre[0].toUpperCase()}
-                              </div>
-                              <span style={{ fontSize: '0.84rem', color: '#6B4030', flex: 1, fontWeight: 500 }}>{m.nombre}</span>
-                              <span style={{ fontFamily: 'var(--font-code), monospace', fontSize: '0.88rem', fontWeight: 500, color: balance >= 0 ? '#2E7D52' : '#C04040' }}>
-                                {balance >= 0 ? '+' : ''}{fmtUYU(Math.round(balance))}
-                              </span>
-                            </div>
-                          )
-                        })}
-                      </div>
-                    </div>
-                  )}
 
                   {/* Historial de pagos */}
                   {pagos.length > 0 && (
                     <div className="g-pagos-hist">
                       <div className="g-pagos-label">Pagos registrados</div>
-                      {pagos.map(p => {
+                      {pagos.filter(p => p.de_id === miId || p.a_id === miId).map(p => {
                         const deM = miembros.find(m => m.id === p.de_id)
                         const aM  = miembros.find(m => m.id === p.a_id)
                         if (!deM || !aM) return null
@@ -1816,17 +1768,19 @@ export default function GastosPage() {
                 )
               })()}
 
-              {!loading && miembros.length > 1 && (
+              {!loading && debts.filter(d => d.from === miId || d.to === miId).length > 0 && (
                 <div className="g-bp-chips">
-                  {miembros.map(m => {
-                    const val = balanceNet[m.id] ?? 0
-                    const alDia = Math.abs(val) < EPS
+                  {debts.filter(d => d.from === miId || d.to === miId).map((d, i) => {
+                    const otherId = d.from === miId ? d.to : d.from
+                    const other = miembros.find(m => m.id === otherId)
+                    if (!other) return null
+                    const iOwe = d.from === miId
                     return (
-                      <div key={m.id} className="g-bp-chip">
-                        <div className="g-bp-chip-av" style={{ background: m.color }}>{m.nombre[0].toUpperCase()}</div>
-                        <span className="g-bp-chip-name">{m.nombre}{m.id === miId ? ' (tú)' : ''}</span>
-                        <span className="g-bp-chip-val" style={{ color: alDia ? '#2E7D52' : val > 0 ? '#1E6BA8' : '#C05A3B' }}>
-                          {alDia ? '✓' : val > 0 ? `+${fmtUYU(Math.round(val))}` : fmtUYU(Math.round(val))}
+                      <div key={i} className="g-bp-chip">
+                        <div className="g-bp-chip-av" style={{ background: other.color }}>{other.nombre[0].toUpperCase()}</div>
+                        <span className="g-bp-chip-name">{iOwe ? `A ${other.nombre}` : `De ${other.nombre}`}</span>
+                        <span className="g-bp-chip-val" style={{ color: iOwe ? '#C05A3B' : '#1E6BA8' }}>
+                          {iOwe ? `−${fmtUYU(Math.round(d.amount))}` : `+${fmtUYU(Math.round(d.amount))}`}
                         </span>
                       </div>
                     )
@@ -1834,11 +1788,11 @@ export default function GastosPage() {
                 </div>
               )}
 
-              {!loading && debts.length > 0 && (
+              {!loading && debts.filter(d => d.from === miId || d.to === miId).length > 0 && (
                 <div>
-                  <div style={{ fontSize: '0.66rem', fontWeight: 700, color: '#B09080', textTransform: 'uppercase', letterSpacing: '0.09em', marginBottom: 6 }}>Deudas pendientes</div>
+                  <div style={{ fontSize: '0.66rem', fontWeight: 700, color: '#B09080', textTransform: 'uppercase', letterSpacing: '0.09em', marginBottom: 6 }}>Mis deudas</div>
                   <div className="g-bp-debts">
-                    {debts.map((d, i) => {
+                    {debts.filter(d => d.from === miId || d.to === miId).map((d, i) => {
                       const fromM = miembros.find(m => m.id === d.from)
                       const toM   = miembros.find(m => m.id === d.to)
                       if (!fromM || !toM) return null
@@ -1850,7 +1804,9 @@ export default function GastosPage() {
                             <div className="g-debt-av" style={{ background: toM.color, width: 22, height: 22, fontSize: '0.58rem' }}>{toM.nombre[0].toUpperCase()}</div>
                           </div>
                           <div className="g-bp-debt-text">
-                            <strong>{fromM.nombre}</strong> → <strong>{toM.nombre}</strong>
+                            {d.from === miId
+                              ? <>Debés a <strong>{toM.nombre}</strong></>
+                              : <><strong>{fromM.nombre}</strong> te debe</>}
                           </div>
                           <div className="g-bp-debt-amount">{fmtUYU(Math.round(d.amount))}</div>
                         </div>

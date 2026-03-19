@@ -353,7 +353,24 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ status: 'ok' })
   }
 
-  // ── 3. ¿Hay una confirmación pendiente? ──
+  // ── 3. Verificar que la sala tiene plan Pro ──
+  const { data: sala } = await supabase
+    .from('salas')
+    .select('plan_type, subscription_status, subscription_end')
+    .eq('id', miembro.sala_id)
+    .single()
+
+  const ahora = new Date()
+  const esPro = sala?.plan_type === 'pro' &&
+    (sala?.subscription_status === 'active' || sala?.subscription_status === 'on_trial') &&
+    (!sala?.subscription_end || new Date(sala.subscription_end) > ahora)
+
+  if (!esPro) {
+    await enviarMensaje(deFono, `⚠️ El bot de WhatsApp es una función exclusiva del plan *Pro*.\n\nEl nido al que pertenecés está en plan gratuito. El dueño del nido debe activar Pro desde la app para usar esta función. 🏠`)
+    return NextResponse.json({ status: 'ok' })
+  }
+
+  // ── 4. ¿Hay una confirmación pendiente? ──
   const pendiente = await obtenerPendiente(miembro.id)
   const respuesta = texto.toLowerCase().trim()
   const esConfirmacion = ['si', 'sí', 'yes', 's', 'dale', 'ok', 'confirmo', 'correcto'].includes(respuesta)
@@ -362,7 +379,7 @@ export async function POST(req: NextRequest) {
   if (pendiente) {
     if (esCancelacion) {
       await eliminarPendiente(miembro.id)
-      await enviarMensaje(deFono, `Cancelado ✋ No se registró nada.`)
+      await enviarMensaje(deFono, `✋ Cancelado, no se registró nada. ¿Necesitás algo más?`)
       return NextResponse.json({ status: 'ok' })
     }
 
@@ -382,15 +399,17 @@ export async function POST(req: NextRequest) {
           fecha:       fechaLocalDesdeTelefono(deFono),
           splits:      accion.split === 'personal' ? { [miembro.id]: accion.monto } : null,
         })
-        if (error) { await enviarMensaje(deFono, `Hubo un error al guardar el gasto 😓`); return NextResponse.json({ status: 'ok' }) }
-        await enviarMensaje(deFono, `✅ Gasto guardado correctamente.`)
+        if (error) { await enviarMensaje(deFono, `😓 Hubo un error al guardar el gasto. Intentá de nuevo.`); return NextResponse.json({ status: 'ok' }) }
+        const netPost = await calcularNetMiembro(miembro.sala_id, miembro.id)
+        const netTxt = Math.abs(netPost) < 0.5 ? '🎉 ¡Estás al día!' : netPost > 0 ? `💰 Te deben $${Math.round(netPost).toLocaleString('es-UY')} en total` : `📊 Debés $${Math.round(-netPost).toLocaleString('es-UY')} en total`
+        await enviarMensaje(deFono, `✅ *${accion.descripcion}* — $${Math.round(accion.monto).toLocaleString('es-UY')} guardado.\n\n${netTxt}`)
       }
 
       if (accion.accion === 'agregar_compra') {
         const items = accion.items.map((nombre: string) => ({ sala_id: miembro.sala_id, nombre, completado: false }))
         const { error } = await supabase.from('items_compra').insert(items)
-        if (error) { await enviarMensaje(deFono, `Hubo un error al guardar la compra 😓`); return NextResponse.json({ status: 'ok' }) }
-        await enviarMensaje(deFono, `✅ Items agregados a la lista de compras.`)
+        if (error) { await enviarMensaje(deFono, `😓 Hubo un error al guardar la compra. Intentá de nuevo.`); return NextResponse.json({ status: 'ok' }) }
+        await enviarMensaje(deFono, `🛒 ¡Listo! Agregué a la lista:\n${accion.items.map((it: string) => `  • ${it}`).join('\n')}`)
       }
 
       if (accion.accion === 'liquidar_deuda') {
@@ -401,14 +420,14 @@ export async function POST(req: NextRequest) {
           importe:  Math.round(Math.abs(accion.monto)),
           fecha:    fechaLocalDesdeTelefono(deFono),
         })
-        await enviarMensaje(deFono, `✅ Liquidación registrada. ¡Estás al día! 🎉`)
+        await enviarMensaje(deFono, `💸 ¡Pago registrado! Tu deuda quedó saldada. 🎉\n\nSi el monto no era exacto, podés ajustarlo desde la app.`)
       }
 
       return NextResponse.json({ status: 'ok' })
     }
 
     // Respondió otra cosa mientras hay pendiente
-    await enviarMensaje(deFono, `Tenés una acción pendiente de confirmar. Respondé *si* para confirmar o *no* para cancelar.`)
+    await enviarMensaje(deFono, `⏳ Tenés una acción pendiente de confirmar.\n\nRespondé *si* ✅ para confirmar o *no* ❌ para cancelar.`)
     return NextResponse.json({ status: 'ok' })
   }
 
@@ -473,6 +492,9 @@ export async function POST(req: NextRequest) {
   if (gastoMatch) {
     const monto = parseFloat(gastoMatch[1].replace(',', '.'))
     const desc  = gastoMatch[2].trim()
+      .replace(/^(?:una?|el|la|los|las|unos|unas)\s+/i, '')  // quitar artículos al inicio
+      .replace(/\s+(?:para|por|de|del|en)\s+.*$/i, '')       // quitar "para/por/de..." al final
+      .trim()
     accion = {
       accion:       'crear_gasto',
       monto,
