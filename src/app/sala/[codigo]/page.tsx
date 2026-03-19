@@ -515,7 +515,7 @@ export default function SalaPage() {
             <div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src="/nido-icon.png" alt="nido" width="28" height="28" style={{ objectFit:'contain' }}/>
+                <img src="/nido-icon-192.png" alt="nido" width="28" height="28" style={{ display:'block', borderRadius:'7px' }}/>
                 <div className="s-sala-name">{session.salaNombre}</div>
               </div>
               <button className="s-code-btn" onClick={copiarCodigo}>

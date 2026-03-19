@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- Full bleed background — OS clips to circle/squircle/rounded rect -->
+  <rect width="512" height="512" fill="#2A1A0E"/>
+
+  <!--
+    Safe zone: circle r=205px centered at (256,256)
+    All house content verified within 185px radius to have margin.
+    Corners of walls at ~185px from center — well within safe zone.
+  -->
+
+  <!-- Roof: peak at (256,116), base at y=272 spanning x:112–400 -->
+  <polygon points="256,116 400,272 112,272" fill="#C05A3B"/>
+
+  <!-- Walls: x=135 to 377, y=260 to 396 -->
+  <rect x="135" y="260" width="242" height="136" fill="#C05A3B"/>
+
+  <!-- Door: centered arch, cream -->
+  <path d="M226,396 L226,330 Q226,300 256,300 Q286,300 286,330 L286,396 Z" fill="#FAF5EE"/>
+
+  <!-- Left window -->
+  <rect x="148" y="278" width="54" height="42" rx="8" fill="#FAF5EE"/>
+
+  <!-- Right window -->
+  <rect x="310" y="278" width="54" height="42" rx="8" fill="#FAF5EE"/>
+</svg>

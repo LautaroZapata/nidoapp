@@ -202,7 +202,7 @@ async function handleCrearNido(e: React.FormEvent) {
           <div className="d-header">
             <div className="d-logo">
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src="/nido-icon.png" alt="nido" width="26" height="26" style={{ objectFit:'contain' }}/>
+              <img src="/nido-icon-192.png" alt="nido" width="26" height="26" style={{ display:'block', borderRadius:'6px' }}/>
               <span className="d-logo-title">Nido</span>
             </div>
             <button className="d-signout" onClick={handleSignOut}>Cerrar sesión</button>

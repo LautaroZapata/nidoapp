@@ -64,8 +64,8 @@ export async function POST(req: NextRequest) {
   const notifPayload = JSON.stringify({
     title: titulo,
     body: cuerpo,
-    icon: '/nido-icon.png',
-    badge: '/nido-icon.png',
+    icon: '/nido-icon-192.png',
+    badge: '/favicon-32.png',
     url: url ?? '/',
     timestamp: Date.now(),
   })

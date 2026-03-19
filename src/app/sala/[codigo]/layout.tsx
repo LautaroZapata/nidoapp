@@ -439,7 +439,7 @@ function SalaLayoutInner({ children }: { children: React.ReactNode }) {
       <aside className="sidebar">
         <div className="sidebar-header">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/nido-icon.png" alt="nido" width="26" height="26" style={{ objectFit: 'contain' }}/>
+          <img src="/nido-icon-192.png" alt="nido" width="26" height="26" style={{ display:'block', borderRadius:'6px' }}/>
           <span className="sidebar-brand">Nido</span>
         </div>
 

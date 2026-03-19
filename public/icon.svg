@@ -1,7 +1,19 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <rect width="512" height="512" rx="96" fill="#1E120A"/>
-  <path d="M256 108 L420 248 L384 248 L384 404 L128 404 L128 248 L92 248 Z" fill="none" stroke="#C05A3B" stroke-width="22" stroke-linecap="round" stroke-linejoin="round"/>
-  <rect x="218" y="308" width="76" height="96" rx="38" fill="#C05A3B" opacity="0.85"/>
-  <rect x="150" y="268" width="52" height="42" rx="8" fill="none" stroke="#C8823A" stroke-width="14" opacity="0.6"/>
-  <rect x="310" y="268" width="52" height="42" rx="8" fill="none" stroke="#C8823A" stroke-width="14" opacity="0.6"/>
+  <!-- Background: dark warm brown, rounded corners match iOS/Android standard -->
+  <rect width="512" height="512" rx="80" fill="#2A1A0E"/>
+
+  <!-- House roof: solid terracotta fill, bold and sharp -->
+  <polygon points="256,72 448,252 64,252" fill="#C05A3B"/>
+
+  <!-- House walls: same terracotta, flush against roof base -->
+  <rect x="88" y="240" width="336" height="200" fill="#C05A3B"/>
+
+  <!-- Door: cream arch, centered, high contrast -->
+  <path d="M214,440 L214,344 Q214,304 256,304 Q298,304 298,344 L298,440 Z" fill="#FAF5EE"/>
+
+  <!-- Left window: cream, bold, clean rectangle -->
+  <rect x="108" y="270" width="76" height="58" rx="10" fill="#FAF5EE"/>
+
+  <!-- Right window: cream, bold, clean rectangle -->
+  <rect x="328" y="270" width="76" height="58" rx="10" fill="#FAF5EE"/>
 </svg>
