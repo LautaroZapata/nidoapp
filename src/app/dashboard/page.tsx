@@ -286,7 +286,8 @@ export default function Dashboard() {
               <div className="d-empty-icon">🏡</div>
               <div className="d-empty-title">Sin nido por ahora</div>
               <div className="d-empty-sub">
-                Creá uno nuevo o pedile a alguien que te invite con un link.
+                Creá uno nuevo, pedile a alguien que te invite con un link,<br/>
+                o si ya estabas en uno antes, <button onClick={() => { setShowClaim(true); setClaimError('') }} style={{ background: 'none', border: 'none', color: '#C05A3B', fontWeight: 700, cursor: 'pointer', padding: 0, fontSize: 'inherit', fontFamily: 'inherit', textDecoration: 'underline' }}>recuperá tu perfil anterior</button>.
               </div>
             </div>
           )}
@@ -338,7 +339,7 @@ export default function Dashboard() {
           <div className="d-modal">
             <div className="d-modal-title">Recuperar perfil 🔑</div>
             <div className="d-modal-sub">
-              ¿Tenías una cuenta creada antes del nuevo sistema? Ingresá la contraseña del nido y tu nombre para vincularla a esta cuenta.
+              Si alguien te agregó al nido o usabas la app antes, ingresá la contraseña del nido y tu nombre para vincular tu cuenta.
             </div>
             <form onSubmit={handleClaim}>
               <div className="d-field">
