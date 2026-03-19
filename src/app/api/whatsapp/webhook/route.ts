@@ -149,7 +149,7 @@ async function consultarBalance(
   const [{ data: gastos }, { data: pagos }, { data: miembros }] = await Promise.all([
     supabase.from('gastos').select('*').eq('sala_id', salaId) as any,
     supabase.from('pagos').select('*').eq('sala_id', salaId) as any,
-    supabase.from('miembros').select('id, nombre').eq('sala_id', salaId).not('user_id', 'is', null),
+    supabase.from('miembros').select('id, nombre, creado_en').eq('sala_id', salaId).not('user_id', 'is', null),
   ])
 
   if (!miembros || miembros.length === 0) return 'No hay miembros en la sala.'
@@ -158,12 +158,14 @@ async function consultarBalance(
   const net: Record<string, number> = {}
   miembros.forEach((m: { id: string }) => { net[m.id] = 0 })
 
-  ;(gastos ?? []).forEach((g: { tipo: string; pagado_por: string | null; importe: number; splits: Record<string, number> | null }) => {
+  ;(gastos ?? []).forEach((g: { tipo: string; pagado_por: string | null; importe: number; splits: Record<string, number> | null; creado_en: string }) => {
     if (g.tipo === 'fijo' || !g.pagado_por) return
     if (!g.splits) {
-      const share = g.importe / miembros.length
+      // Solo incluir miembros que existían cuando se creó el gasto
+      const participantes = miembros.filter((m: { id: string; creado_en: string }) => m.creado_en <= g.creado_en)
+      const share = g.importe / (participantes.length || 1)
       net[g.pagado_por] = (net[g.pagado_por] ?? 0) + g.importe - share
-      miembros.forEach((m: { id: string }) => {
+      participantes.forEach((m: { id: string }) => {
         if (m.id !== g.pagado_por) net[m.id] = (net[m.id] ?? 0) - share
       })
     } else {
@@ -687,9 +689,8 @@ export async function POST(req: NextRequest) {
       await enviarMensaje(deFono, `✅ *Sin deudas pendientes*\n\nEstás al día con todos los miembros del nido.`)
       return NextResponse.json({ status: 'ok' })
     }
-    // Encontrar el acreedor principal (quien más le debe)
-    const { data: todosNet } = await supabase.from('miembros').select('id, nombre').eq('sala_id', miembro.sala_id)
-    // Encontrar el acreedor real: el miembro al que más le debe el usuario
+    // Encontrar el acreedor principal (miembro con mayor balance positivo)
+    const { data: todosNet } = await supabase.from('miembros').select('id, nombre').eq('sala_id', miembro.sala_id).not('user_id', 'is', null)
     let acreedorId = ''
     let maxPositivo = 0
     for (const m of (todosNet ?? [])) {
@@ -699,6 +700,10 @@ export async function POST(req: NextRequest) {
         maxPositivo = netM
         acreedorId = m.id
       }
+    }
+    if (!acreedorId) {
+      await enviarMensaje(deFono, `⚠️ No se pudo determinar a quién debés. Revisá el balance desde la app NidoApp.`)
+      return NextResponse.json({ status: 'ok' })
     }
     await guardarPendiente(miembro.id, {
       accion: 'liquidar_deuda',
