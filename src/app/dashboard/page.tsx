@@ -36,15 +36,7 @@ export default function Dashboard() {
   const [cError, setCError] = useState('')
   const [cShowCodigo, setCShowCodigo] = useState(false)
 
-  // Claim old profile modal
-  const [showClaim, setShowClaim] = useState(false)
-  const [claimCodigo, setClaimCodigo] = useState('')
-  const [claimNombre, setClaimNombre] = useState('')
-  const [claimLoading, setClaimLoading] = useState(false)
-  const [claimError, setClaimError] = useState('')
-  const [claimShowCodigo, setClaimShowCodigo] = useState(false)
-
-  useEffect(() => {
+useEffect(() => {
     const supabase = createClient()
     supabase.auth.getUser().then(async ({ data: { user } }) => {
       if (!user) { router.replace('/'); return }
@@ -78,37 +70,7 @@ export default function Dashboard() {
     router.push(`/sala/${m.salas.codigo}`)
   }
 
-  async function handleClaim(e: React.FormEvent) {
-    e.preventDefault(); setClaimError('')
-    if (!claimCodigo.trim()) { setClaimError('Ingresá la contraseña del nido'); return }
-    if (!claimNombre.trim()) { setClaimError('Ingresá tu nombre'); return }
-    setClaimLoading(true)
-
-    const supabase = createClient()
-    const { data: sala } = await supabase
-      .from('salas').select().eq('codigo', claimCodigo.trim()).single() as DbResult<Sala>
-    if (!sala) { setClaimError('No existe ningún nido con esa contraseña'); setClaimLoading(false); return }
-
-    const { data: miembro } = await supabase
-      .from('miembros').select()
-      .eq('sala_id', sala.id)
-      .eq('nombre', claimNombre.trim().toLowerCase())
-      .is('user_id', null)
-      .single() as DbResult<Miembro>
-    if (!miembro) { setClaimError('No se encontró ese nombre en el nido, o ya está vinculado a otra cuenta'); setClaimLoading(false); return }
-
-    const { error } = await supabase
-      .from('miembros').update({ user_id: user!.id }).eq('id', miembro.id)
-    if (error) { setClaimError('Error al vincular el perfil'); setClaimLoading(false); return }
-
-    setSession({
-      salaId: sala.id, salaCodigo: sala.codigo, salaNombre: sala.nombre,
-      miembroId: miembro.id, miembroNombre: miembro.nombre, miembroColor: miembro.color,
-    })
-    router.push(`/sala/${sala.codigo}`)
-  }
-
-  async function handleCrearNido(e: React.FormEvent) {
+async function handleCrearNido(e: React.FormEvent) {
     e.preventDefault(); setCError('')
     if (!cNombreNido.trim()) { setCError('Ingresá el nombre del nido'); return }
     if (cCodigo.trim().length < 3) { setCError('La contraseña del nido debe tener mínimo 3 caracteres'); return }
@@ -286,8 +248,7 @@ export default function Dashboard() {
               <div className="d-empty-icon">🏡</div>
               <div className="d-empty-title">Sin nido por ahora</div>
               <div className="d-empty-sub">
-                Creá uno nuevo, pedile a alguien que te invite con un link,<br/>
-                o si ya estabas en uno antes, <button onClick={() => { setShowClaim(true); setClaimError('') }} style={{ background: 'none', border: 'none', color: '#C05A3B', fontWeight: 700, cursor: 'pointer', padding: 0, fontSize: 'inherit', fontFamily: 'inherit', textDecoration: 'underline' }}>recuperá tu perfil anterior</button>.
+                Creá uno nuevo o pedile a alguien que te invite con un link.
               </div>
             </div>
           )}
@@ -302,13 +263,6 @@ export default function Dashboard() {
                   <path d="M7.5 4.5v6M4.5 7.5h6" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/>
                 </svg>
                 Crear nido nuevo
-              </button>
-              <button className="d-btn-secondary" onClick={() => { setShowClaim(true); setClaimError('') }}>
-                <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-                  <circle cx="7" cy="5" r="2.5" stroke="currentColor" strokeWidth="1.3"/>
-                  <path d="M2 12c0-2.761 2.239-5 5-5s5 2.239 5 5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
-                </svg>
-                Recuperar perfil anterior
               </button>
             </>
           ) : (
@@ -333,58 +287,7 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* Claim old profile modal */}
-      {showClaim && (
-        <div className="d-overlay" onClick={e => { if (e.target === e.currentTarget) setShowClaim(false) }}>
-          <div className="d-modal">
-            <div className="d-modal-title">Recuperar perfil 🔑</div>
-            <div className="d-modal-sub">
-              Si alguien te agregó al nido o usabas la app antes, ingresá la contraseña del nido y tu nombre para vincular tu cuenta.
-            </div>
-            <form onSubmit={handleClaim}>
-              <div className="d-field">
-                <label className="d-label">Contraseña del nido</label>
-                <div className="d-pwd-wrap">
-                  <input
-                    type={claimShowCodigo ? 'text' : 'password'}
-                    value={claimCodigo} onChange={e => setClaimCodigo(e.target.value)}
-                    placeholder="La contraseña del nido donde estabas" className="d-input" autoFocus autoComplete="off"
-                  />
-                  <button type="button" className="d-eye" onClick={() => setClaimShowCodigo(v => !v)}>
-                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-                      <path d="M1 8s2.5-5 7-5 7 5 7 5-2.5 5-7 5-7-5-7-5z" stroke="#B09080" strokeWidth="1.4"/>
-                      <circle cx="8" cy="8" r="2" stroke="#B09080" strokeWidth="1.4"/>
-                    </svg>
-                  </button>
-                </div>
-              </div>
-              <div className="d-field">
-                <label className="d-label">Tu nombre en el nido</label>
-                <input
-                  type="text" value={claimNombre} onChange={e => setClaimNombre(e.target.value)}
-                  placeholder="El nombre con el que te registraste" className="d-input" autoComplete="off"
-                />
-              </div>
-              {claimError && (
-                <div className="d-error">
-                  <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-                    <circle cx="7" cy="7" r="6" stroke="currentColor" strokeWidth="1.4"/>
-                    <path d="M7 4.5v3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-                    <circle cx="7" cy="9.5" r="0.6" fill="currentColor"/>
-                  </svg>
-                  {claimError}
-                </div>
-              )}
-              <button type="submit" className="d-btn-primary" disabled={claimLoading}>
-                {claimLoading ? <><span className="d-spinner"/>Buscando...</> : 'Vincular mi perfil'}
-              </button>
-            </form>
-            <button className="d-cancel" onClick={() => setShowClaim(false)}>Cancelar</button>
-          </div>
-        </div>
-      )}
-
-      {/* Create nido modal */}
+{/* Create nido modal */}
       {showCreate && (
         <div className="d-overlay" onClick={e => { if (e.target === e.currentTarget) setShowCreate(false) }}>
           <div className="d-modal">
