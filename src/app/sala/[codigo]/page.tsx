@@ -149,7 +149,7 @@ export default function SalaPage() {
       if (!authSession) { clearSession(); router.replace('/'); return }
     })
 
-    supabase.from('miembros').select().eq('sala_id', s.salaId).then(({ data }) => {
+    supabase.from('miembros').select().eq('sala_id', s.salaId).not('user_id', 'is', null).then(({ data }) => {
       if (data) setMiembros(data as Miembro[])
     })
 
