@@ -601,11 +601,16 @@ export async function POST(req: NextRequest) {
 
   if (gastoMatch) {
     const monto = parseFloat(gastoMatch[1].replace(',', '.'))
-    const desc  = gastoMatch[2].trim()
+    let desc  = gastoMatch[2].trim()
       .replace(/^(?:una?|el|la|los|las|unos|unas)\s+/i, '')  // quitar artículos al inicio
       .replace(/\s+(?:para|por|de|del|en)\s+.*$/i, '')       // quitar "para/por/de..." al final
       .trim()
     const splitInfo = detectarSplitParcial(textoLower)
+    // Limpiar "con [nombre(s)]" del final de la descripción cuando hay split parcial
+    // Ej: "un pure con kmii" → "un pure"
+    if (splitInfo.split === 'parcial') {
+      desc = desc.replace(/\s+con\s+(?:\w+(?:\s*[,y]\s*\w+)*)$/i, '').trim()
+    }
     const divTxt = splitInfo.split === 'parcial' ? splitInfo.split_con!.join(' y ') : 'entre todos'
     accion = {
       accion:       'crear_gasto',
@@ -616,11 +621,16 @@ export async function POST(req: NextRequest) {
       confirmacion: `¿Confirmás este gasto?\n\n📌 *${desc}*\n💵 $${Math.round(monto).toLocaleString('es-UY')}\n👤 Pagado por: ${miembro.nombre}\n👥 División: ${divTxt}\n\nRespondé *si* o *no*`,
     }
   } else if (gastoMatchInv) {
-    const desc  = gastoMatchInv[1].trim()
+    let desc  = gastoMatchInv[1].trim()
       .replace(/^(?:una?|el|la|los|las|unos|unas)\s+/i, '')
       .trim()
     const monto = parseFloat(gastoMatchInv[2].replace(',', '.'))
     const splitInfo = detectarSplitParcial(textoLower)
+    // Limpiar "con [nombre(s)]" del inicio de la descripción cuando hay split parcial
+    // Ej: "con kmii un pure" → "un pure"
+    if (splitInfo.split === 'parcial') {
+      desc = desc.replace(/^con\s+(?:\w+(?:\s*[,y]\s*\w+)*)\s+/i, '').trim()
+    }
     const divTxt = splitInfo.split === 'parcial' ? splitInfo.split_con!.join(' y ') : 'entre todos'
     accion = {
       accion:       'crear_gasto',

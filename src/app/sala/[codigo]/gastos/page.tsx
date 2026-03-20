@@ -634,9 +634,17 @@ export default function GastosPage() {
     })
     const totalMes = mes.reduce((s, g) => s + g.importe, 0)
     const miParte = mes.reduce((s, g) => {
+      const spl = g.splits as Record<string, number> | null
       let parte: number
-      if (g.splits?.[miId] !== undefined) {
-        parte = g.splits[miId]
+      if (spl && Object.keys(spl).length > 0) {
+        if (spl[miId] !== undefined) {
+          parte = spl[miId]
+        } else if (g.pagado_por === miId) {
+          const sumOthers = Object.values(spl).reduce((a, v) => a + v, 0)
+          parte = Math.max(0, g.importe - sumOthers)
+        } else {
+          parte = 0
+        }
       } else {
         const ps = miembros.filter(m => m.creado_en <= g.creado_en)
         parte = ps.some(m => m.id === miId) ? g.importe / (ps.length || 1) : 0
@@ -1571,13 +1579,20 @@ export default function GastosPage() {
                 const renderGasto = (g: Gasto, idx: number) => {
                   const cat = CATEGORIA_META[g.categoria]
                   const miId = session.miembroId
-                  const miParte = Math.round(g.splits?.[miId] !== undefined
-                    ? g.splits[miId]
-                    : (() => {
-                        const ps = miembros.filter(m => m.creado_en <= g.creado_en)
-                        return ps.some(m => m.id === miId) ? g.importe / (ps.length || 1) : 0
-                      })()
-                  )
+                  const miParte = Math.round((() => {
+                    const spl = g.splits as Record<string, number> | null
+                    if (spl && Object.keys(spl).length > 0) {
+                      if (spl[miId] !== undefined) return spl[miId]
+                      if (g.pagado_por === miId) {
+                        // Pagador no está en splits → su parte = importe - lo que deben los demás
+                        const sumOthers = Object.values(spl).reduce((s, v) => s + v, 0)
+                        return Math.max(0, g.importe - sumOthers)
+                      }
+                      return 0
+                    }
+                    const ps = miembros.filter(m => m.creado_en <= g.creado_en)
+                    return ps.some(m => m.id === miId) ? g.importe / (ps.length || 1) : 0
+                  })())
                   return (
                     <div key={g.id} className={`g-item${g.tipo === 'fijo' ? ' g-item-fijo' : ''}`} style={{ animationDelay: `${idx * 0.05}s` }}>
                       <div className="g-cat-badge" style={{ background: cat.bg, borderColor: cat.border }}>
