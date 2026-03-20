@@ -27,6 +27,24 @@ type PisoConVotos = Piso & { votos: VotoPiso[]; promedio: number | null }
 
 const FORM_INIT = { titulo: '', url: '', alquiler: '', gastosCom: '', m2: '', zona: '', notas: '', direccion: '' }
 
+const SUPPORTED_SITES = [
+  { pattern: /infocasas/i, label: 'InfoCasas' },
+  { pattern: /mercadolibre/i, label: 'MercadoLibre' },
+  { pattern: /veocasas/i, label: 'VeoCasas' },
+  { pattern: /instagram\.com/i, label: 'Instagram' },
+]
+
+function detectSupportedSite(url: string): string | null {
+  if (!url.trim()) return null
+  try { new URL(url) } catch { return null }
+  for (const s of SUPPORTED_SITES) {
+    if (s.pattern.test(url)) return s.label
+  }
+  // Any valid URL is worth trying
+  if (/^https?:\/\/.+\..+/.test(url)) return 'sitio'
+  return null
+}
+
 function fmtUYU(n: number) {
   return `$ ${n.toLocaleString('es-UY')}`
 }
@@ -98,6 +116,9 @@ export default function PisosPage() {
   const [orden, setOrden] = useState<'reciente' | 'nota' | 'precio'>('reciente')
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [masDetalles, setMasDetalles] = useState(false)
+  const [scraping, setScraping] = useState(false)
+  const [scrapeMsg, setScrapeMsg] = useState('')
+  const [scrapeDetected, setScrapeDetected] = useState<string | null>(null)
 
   const pisosVisibles = useMemo(() => {
     const q = busqueda.trim().toLowerCase()
@@ -203,6 +224,72 @@ export default function PisosPage() {
     if (fileInputRef.current) fileInputRef.current.value = ''
   }
 
+  async function handleScrapeUrl() {
+    const url = form.url.trim()
+    if (!url) return
+    setScraping(true)
+    setScrapeMsg('')
+    setFormError('')
+    try {
+      const res = await fetch('/api/scrape-listing', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url }),
+      })
+      const json = await res.json()
+      if (!res.ok) {
+        setScrapeMsg(json.error || 'No se pudo extraer información')
+        setScraping(false)
+        return
+      }
+      const d = json.data
+      // Auto-fill form with scraped data (don't overwrite non-empty fields)
+      setForm(f => ({
+        ...f,
+        titulo: f.titulo || d.titulo || '',
+        alquiler: f.alquiler || (d.precio != null ? String(d.precio) : ''),
+        gastosCom: f.gastosCom || (d.gastosCom != null ? String(d.gastosCom) : ''),
+        m2: f.m2 || (d.m2 != null ? String(d.m2) : ''),
+        zona: f.zona || d.zona || '',
+        direccion: f.direccion || d.direccion || '',
+        notas: f.notas || buildNotas(d),
+      }))
+      // Add photos
+      if (d.fotos?.length > 0) {
+        setFotosForm(prev => {
+          const existing = prev.filter(f => f.trim())
+          const newPhotos = d.fotos.filter((f: string) => !existing.includes(f))
+          const merged = [...existing, ...newPhotos]
+          return merged.length > 0 ? merged : ['']
+        })
+      }
+      // Open details section to show all filled fields
+      setMasDetalles(true)
+
+      const parts = []
+      if (d.titulo) parts.push('título')
+      if (d.precio != null) parts.push('precio')
+      if (d.fotos?.length) parts.push(`${d.fotos.length} foto${d.fotos.length > 1 ? 's' : ''}`)
+      if (d.m2 != null) parts.push('m²')
+      if (d.zona) parts.push('zona')
+      if (d.moneda) parts.push(`(${d.moneda})`)
+      setScrapeMsg(parts.length > 0 ? `Importado: ${parts.join(', ')}` : 'No se encontró información útil')
+    } catch {
+      setScrapeMsg('Error al conectar con el servidor')
+    }
+    setScraping(false)
+  }
+
+  function buildNotas(d: { notas?: string; dormitorios?: number; banos?: number; moneda?: string }): string {
+    const parts: string[] = []
+    if (d.dormitorios) parts.push(`${d.dormitorios} dormitorio${d.dormitorios > 1 ? 's' : ''}`)
+    if (d.banos) parts.push(`${d.banos} baño${d.banos > 1 ? 's' : ''}`)
+    if (d.moneda) parts.push(`Moneda: ${d.moneda}`)
+    const header = parts.length > 0 ? parts.join(' · ') : ''
+    if (d.notas && header) return `${header}\n${d.notas}`
+    return d.notas || header
+  }
+
   async function handleAñadir(e: React.FormEvent) {
     e.preventDefault()
     setFormError('')
@@ -250,6 +337,9 @@ export default function PisosPage() {
     setVideosForm([''])
     setFormError('')
     setMasDetalles(false)
+    setScraping(false)
+    setScrapeMsg('')
+    setScrapeDetected(null)
     setModalOpen(true)
   }
 
@@ -516,6 +606,69 @@ export default function PisosPage() {
         .p-submit:disabled { opacity: 0.55; cursor: not-allowed; }
         .p-spinner { width: 15px; height: 15px; border-radius: 50%; border: 2px solid rgba(255,255,255,0.35); border-top-color: white; animation: p-spin 0.7s linear infinite; flex-shrink: 0; }
 
+        .p-scrape-wrap {
+          margin-top: 8px;
+          animation: p-fadeup 0.25s cubic-bezier(0.22, 1, 0.36, 1) both;
+        }
+        .p-scrape-btn {
+          display: inline-flex; align-items: center; gap: 7px;
+          padding: 9px 14px; background: rgba(192,90,59,0.07);
+          border: 1.5px solid rgba(192,90,59,0.2); color: #C05A3B;
+          border-radius: 10px; font-size: 0.8rem; font-weight: 600;
+          font-family: var(--font-body), 'Nunito', sans-serif;
+          cursor: pointer; transition: background 0.18s, border-color 0.18s, transform 0.15s, box-shadow 0.18s;
+          width: 100%;
+          justify-content: center;
+        }
+        .p-scrape-btn:hover { background: rgba(192,90,59,0.13); border-color: rgba(192,90,59,0.35); transform: translateY(-1px); box-shadow: 0 4px 14px rgba(192,90,59,0.12); }
+        .p-scrape-btn:active { transform: translateY(0); box-shadow: none; }
+        .p-scrape-btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; box-shadow: none; }
+        .p-scrape-btn svg { flex-shrink: 0; }
+        .p-scrape-loading {
+          display: flex; align-items: center; justify-content: center; gap: 9px;
+          padding: 10px 14px;
+          background: rgba(192,90,59,0.05);
+          border: 1.5px solid rgba(192,90,59,0.12);
+          border-radius: 10px;
+          font-size: 0.8rem; color: #A07060;
+          font-family: var(--font-body), 'Nunito', sans-serif;
+          animation: p-fadeup 0.2s ease both;
+        }
+        .p-scrape-loading .p-scrape-spinner {
+          width: 14px; height: 14px; border-radius: 50%;
+          border: 2px solid #E8D0C0; border-top-color: #C05A3B;
+          animation: p-spin 0.7s linear infinite;
+          flex-shrink: 0;
+        }
+        .p-scrape-feedback {
+          display: flex; align-items: flex-start; gap: 8px;
+          padding: 10px 13px; border-radius: 10px;
+          font-size: 0.78rem; line-height: 1.45;
+          font-family: var(--font-body), 'Nunito', sans-serif;
+          animation: p-fadeup 0.3s cubic-bezier(0.22, 1, 0.36, 1) both;
+        }
+        .p-scrape-feedback svg { flex-shrink: 0; margin-top: 1px; }
+        .p-scrape-feedback.success {
+          background: rgba(46,125,82,0.08); border: 1px solid rgba(46,125,82,0.18);
+          color: #2E7D52;
+        }
+        .p-scrape-feedback.error {
+          background: rgba(176,96,48,0.08); border: 1px solid rgba(176,96,48,0.18);
+          color: #B06030;
+        }
+        .p-scrape-feedback .p-scrape-retry {
+          margin-left: auto; flex-shrink: 0;
+          background: none; border: none; color: #C05A3B;
+          font-size: 0.75rem; font-weight: 600; cursor: pointer;
+          font-family: var(--font-body), 'Nunito', sans-serif;
+          text-decoration: underline; text-underline-offset: 2px;
+          padding: 0;
+        }
+        .p-scrape-feedback .p-scrape-retry:hover { color: #A04730; }
+        @media (min-width: 480px) {
+          .p-scrape-btn { width: auto; }
+        }
+
         .p-upload-btn {
           display: inline-flex; align-items: center; gap: 5px;
           padding: 7px 12px; background: rgba(90,136,105,0.1);
@@ -527,6 +680,18 @@ export default function PisosPage() {
         }
         .p-upload-btn:hover:not(:disabled) { background: rgba(90,136,105,0.18); border-color: rgba(90,136,105,0.4); }
         .p-upload-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+        .p-foto-preview-grid {
+          display: grid; grid-template-columns: repeat(auto-fill, minmax(56px, 1fr));
+          gap: 6px; margin-top: 10px; max-width: 100%;
+        }
+        .p-foto-preview-item {
+          aspect-ratio: 1; border-radius: 8px; overflow: hidden;
+          background: #F0E8DF; border: 1px solid #EAD8C8;
+        }
+        .p-foto-preview-item img {
+          width: 100%; height: 100%; object-fit: cover; display: block;
+        }
 
         .p-section-sep {
           display: flex; align-items: center; gap: 8px; margin: 1.25rem 0 1rem;
@@ -546,8 +711,12 @@ export default function PisosPage() {
           .p-stat { padding: 0.8rem 1rem; }
           .p-stat-val { font-size: 1.2rem; }
           .p-grid { grid-template-columns: 1fr; gap: 0.75rem; }
-          .p-modal { padding: 1.5rem 1.25rem; }
+          .p-modal { padding: 1.5rem 1.25rem 0; }
           .p-modal-title { font-size: 1.25rem; }
+          .p-scrape-btn { font-size: 0.78rem; padding: 10px 12px; }
+          .p-scrape-loading { font-size: 0.78rem; padding: 10px 12px; }
+          .p-scrape-feedback { font-size: 0.76rem; padding: 9px 11px; }
+          .p-foto-preview-grid { grid-template-columns: repeat(auto-fill, minmax(48px, 1fr)); gap: 5px; }
         }
         @media (max-width: 420px) {
           .p-wrap { padding: 0 0.75rem 5rem; }
@@ -850,14 +1019,75 @@ export default function PisosPage() {
             </div>
 
             <form onSubmit={handleAñadir}>
+              {/* URL first — so import fills the rest */}
               <div className="p-field">
-                <label className="p-label">Nombre / Título *</label>
-                <input className="p-input" type="text" placeholder="Ej: Apto Pocitos 3 dorm" value={form.titulo} onChange={e => setForm(f => ({ ...f, titulo: e.target.value }))} required autoFocus />
+                <label className="p-label">
+                  URL del anuncio
+                  <span className="p-label-hint"> — pegá un link para importar datos</span>
+                </label>
+                <input
+                  className="p-input"
+                  type="url"
+                  placeholder="https://infocasas.com.uy/..."
+                  value={form.url}
+                  autoFocus
+                  onChange={e => {
+                    const val = e.target.value
+                    setForm(f => ({ ...f, url: val }))
+                    setScrapeDetected(detectSupportedSite(val))
+                    setScrapeMsg('')
+                  }}
+                />
+                {/* ── Scrape controls ── */}
+                {(scrapeDetected || scraping || scrapeMsg) && (
+                  <div className="p-scrape-wrap">
+                    {scrapeDetected && !scraping && !scrapeMsg.startsWith('Importado') && (
+                      <button
+                        type="button"
+                        onClick={handleScrapeUrl}
+                        disabled={scraping}
+                        className="p-scrape-btn"
+                      >
+                        <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+                          <path d="M14 8A6 6 0 104.5 12.96" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                          <path d="M10 8l4 0 0-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                        </svg>
+                        Importar datos de {scrapeDetected}
+                      </button>
+                    )}
+                    {scraping && (
+                      <div className="p-scrape-loading">
+                        <span className="p-scrape-spinner" />
+                        Extrayendo datos del enlace...
+                      </div>
+                    )}
+                    {scrapeMsg && !scraping && (
+                      <div className={`p-scrape-feedback ${scrapeMsg.startsWith('Importado') ? 'success' : 'error'}`}>
+                        {scrapeMsg.startsWith('Importado') ? (
+                          <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                            <circle cx="7" cy="7" r="6" stroke="currentColor" strokeWidth="1.3"/>
+                            <path d="M4 7.2l2.2 2.2L10 5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
+                          </svg>
+                        ) : (
+                          <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                            <circle cx="7" cy="7" r="6" stroke="currentColor" strokeWidth="1.3"/>
+                            <path d="M7 4.5v3" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/>
+                            <circle cx="7" cy="10" r="0.6" fill="currentColor"/>
+                          </svg>
+                        )}
+                        <span>{scrapeMsg}</span>
+                        {!scrapeMsg.startsWith('Importado') && scrapeDetected && (
+                          <button type="button" className="p-scrape-retry" onClick={handleScrapeUrl}>Reintentar</button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
 
               <div className="p-field">
-                <label className="p-label">URL del anuncio</label>
-                <input className="p-input" type="url" placeholder="https://infocasas.com.uy/..." value={form.url} onChange={e => setForm(f => ({ ...f, url: e.target.value }))} />
+                <label className="p-label">Nombre / Título *</label>
+                <input className="p-input" type="text" placeholder="Ej: Apto Pocitos 3 dorm" value={form.titulo} onChange={e => setForm(f => ({ ...f, titulo: e.target.value }))} required />
               </div>
 
               {/* Más detalles toggle */}
@@ -906,7 +1136,8 @@ export default function PisosPage() {
                   style={{ display: 'none' }}
                   onChange={handleSubirFoto}
                 />
-                {fotosForm.map((url, idx) => (
+                {/* Show URL inputs: max 3 visible, rest collapsed */}
+                {fotosForm.slice(0, fotosForm.filter(f => f.trim()).length > 3 ? 1 : fotosForm.length).map((url, idx) => (
                   <div key={idx} style={{ display: 'flex', gap: 6, marginBottom: 6 }}>
                     <input
                       className="p-input"
@@ -929,7 +1160,17 @@ export default function PisosPage() {
                     )}
                   </div>
                 ))}
-                {fotosForm[fotosForm.length - 1].trim() && (
+                {fotosForm.filter(f => f.trim()).length > 3 && (
+                  <div style={{ fontSize: '0.75rem', color: '#A07060', padding: '2px 0 4px', fontWeight: 500 }}>
+                    {fotosForm.filter(f => f.trim()).length} fotos importadas
+                    <button
+                      type="button"
+                      onClick={() => setFotosForm([''])}
+                      style={{ marginLeft: 8, fontSize: '0.72rem', color: '#C05A3B', background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'var(--font-body), Nunito, sans-serif', fontWeight: 600, textDecoration: 'underline', textUnderlineOffset: '2px' }}
+                    >Limpiar todas</button>
+                  </div>
+                )}
+                {(fotosForm.filter(f => f.trim()).length <= 3 && fotosForm[fotosForm.length - 1].trim()) && (
                   <button
                     type="button"
                     onClick={() => setFotosForm(f => [...f, ''])}
@@ -937,12 +1178,17 @@ export default function PisosPage() {
                   >+ Añadir otra foto</button>
                 )}
                 {fotosForm.some(f => f.trim()) && (
-                  <div style={{ display: 'flex', gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
-                    {fotosForm.filter(f => f.trim()).map((f, i) => (
-                      <div key={i} style={{ width: 64, height: 64, borderRadius: 8, overflow: 'hidden', background: '#F0E8DF', border: '1px solid #EAD8C8', flexShrink: 0 }}>
-                        <img src={f} alt={`preview ${i+1}`} style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={e => { (e.target as HTMLImageElement).style.display = 'none' }} />
+                  <div className="p-foto-preview-grid">
+                    {fotosForm.filter(f => f.trim()).slice(0, 8).map((f, i) => (
+                      <div key={i} className="p-foto-preview-item">
+                        <img src={f} alt={`preview ${i+1}`} onError={e => { (e.target as HTMLImageElement).style.display = 'none' }} />
                       </div>
                     ))}
+                    {fotosForm.filter(f => f.trim()).length > 8 && (
+                      <div className="p-foto-preview-item" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#EAD8C8', color: '#8A6050', fontSize: '0.75rem', fontWeight: 700 }}>
+                        +{fotosForm.filter(f => f.trim()).length - 8}
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
