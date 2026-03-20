@@ -454,7 +454,6 @@ export async function POST(req: NextRequest) {
 
     // Si es un gasto con división pendiente, interpretar la respuesta como elección de split
     if (accionPendiente.accion === 'crear_gasto' && accionPendiente.split_pendiente) {
-      await eliminarPendiente(miembro.id)
       const r = respuesta
 
       const esMio = ['mío', 'mio', 'mía', 'mia', 'solo yo', 'solo mío', 'solo mio', 'personal', 'para mí', 'para mi'].some(k => r.includes(k))
@@ -480,10 +479,22 @@ export async function POST(req: NextRequest) {
             splits = {}
             splitCon.forEach((m: { id: string; nombre: string }) => { splits![m.id] = Math.round(porcion * 100) / 100 })
             divisionLabel = `con ${splitCon.map((m: { nombre: string }) => m.nombre).join(' y ')}`
+          } else {
+            // No se encontró el nombre — re-preguntar con los nombres válidos
+            const nombresValidos = miembrosData
+              .filter((m: { id: string }) => m.id !== miembro.id)
+              .map((m: { nombre: string }) => m.nombre)
+            await enviarMensaje(deFono,
+              `🤔 No encontré *${r}* en el nido.\n\n` +
+              `Los miembros son: ${nombresValidos.map(n => `*${n}*`).join(', ')}\n\n` +
+              `Respondé:\n• Un nombre de la lista\n• *si* → entre todos\n• *mío* → solo tu gasto\n• *no* → cancelar`
+            )
+            return NextResponse.json({ status: 'ok' })
           }
         }
       }
 
+      await eliminarPendiente(miembro.id)
       const { error } = await supabase.from('gastos').insert({
         sala_id:     miembro.sala_id,
         descripcion: accionPendiente.descripcion,
@@ -512,14 +523,22 @@ export async function POST(req: NextRequest) {
 
   // ── Pre-parsers regex (evitan llamada a IA para los casos más frecuentes) ──
 
+  // Limpiar cláusulas de split del texto para que el regex de gasto matchee
+  // Ej: "compre un pure que divido solo con cami por 80" → "compre un pure por 80"
+  const textoParaGasto = textoLower
+    .replace(/(?:,\s*)?(?:que\s+)?(?:lo\s+)?divid\w*\s+(?:solo\s+)?(?:con|entre)\s+(?:[a-záéíóúüñ]+(?:\s*[,y]\s*[a-záéíóúüñ]+)*)/i, '')
+    .replace(/(?:,\s*)?solo\s+con\s+(?:[a-záéíóúüñ]+(?:\s*[,y]\s*[a-záéíóúüñ]+)*)(?:\s+divid\w*)?/i, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+
   // 1a. Gasto: "pagué/gasté/puse/costó/compré 500 en/de/por pizza"
-  const gastoMatch = textoLower.match(
-    /(?:pagu[eé]|gast[eé]|puse|cost[oó]|sali[oó]|compr[eé]|compramos|gastamos)\s+\$?(\d+(?:[.,]\d+)?)\s+(?:en|de|por|a)\s+(.+)/
+  const gastoMatch = textoParaGasto.match(
+    /(?:pagu[eé]|gast[eé]|puse|cost[oó]|sali[oó]|compr[eé]|compramos|gastamos)\s+\$?(\d+(?:[.,]\d+)?)(?:\s*(?:pesos?|pe|mangos?|lucas?))?\s+(?:en|de|por|a)\s+(.+)/
   )
 
   // 1b. Gasto orden invertido: "pagué pizza por/de 500"
-  const gastoMatchInv = !gastoMatch ? textoLower.match(
-    /(?:pagu[eé]|gast[eé]|puse|cost[oó]|sali[oó]|compr[eé]|compramos|gastamos)\s+(.+?)\s+(?:por|de|a)\s+\$?(\d+(?:[.,]\d+)?)$/
+  const gastoMatchInv = !gastoMatch ? textoParaGasto.match(
+    /(?:pagu[eé]|gast[eé]|puse|cost[oó]|sali[oó]|compr[eé]|compramos|gastamos)\s+(.+?)\s+(?:por|de|a)\s+\$?(\d+(?:[.,]\d+)?)(?:\s*(?:pesos?|pe|mangos?|lucas?))?$/
   ) : null
 
   // 2. Compra futura: "falta/faltan/necesitamos X" o "agregar/añadir X a la lista"
@@ -568,7 +587,7 @@ export async function POST(req: NextRequest) {
 
   // Detecta "con [nombre(s)]" en el mensaje para aplicar split parcial en pre-parsers
   function detectarSplitParcial(texto: string): { split: 'igual' | 'parcial'; split_con?: string[] } {
-    const conMatch = texto.match(/\bcon\s+([\w\s]+?)(?=\s+(?:por|de|a)\s+\$?\d|\s*$)/i)
+    const conMatch = texto.match(/\b(?:solo\s+)?con\s+([\w\s]+?)(?=\s+(?:por|de|a)\s+\$?\d|\s+divid|\s*$)/i)
     if (!conMatch) return { split: 'igual' }
     const mencionados = conMatch[1].toLowerCase().trim().split(/\s+y\s+|\s*,\s*/).map(s => s.trim()).filter(Boolean)
     const splitCon = nombresMiembros.filter(n => {
@@ -598,6 +617,8 @@ export async function POST(req: NextRequest) {
     }
   } else if (gastoMatchInv) {
     const desc  = gastoMatchInv[1].trim()
+      .replace(/^(?:una?|el|la|los|las|unos|unas)\s+/i, '')
+      .trim()
     const monto = parseFloat(gastoMatchInv[2].replace(',', '.'))
     const splitInfo = detectarSplitParcial(textoLower)
     const divTxt = splitInfo.split === 'parcial' ? splitInfo.split_con!.join(' y ') : 'entre todos'

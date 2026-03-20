@@ -384,6 +384,101 @@ function detectSite(url: string): string {
   return 'generic'
 }
 
+// ── MercadoLibre: API pública (evita problemas de JS/SPA) ──
+
+function extractMLItemId(url: string): string | null {
+  const match = url.match(/(ML[A-Z])-?(\d+)/i)
+  if (!match) return null
+  return `${match[1].toUpperCase()}${match[2]}`
+}
+
+async function fetchMLApi(itemId: string): Promise<Partial<ScrapedData>> {
+  const data: Partial<ScrapedData> = {}
+
+  try {
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), 10000)
+
+    const [itemRes, descRes] = await Promise.all([
+      fetch(`https://api.mercadolibre.com/items/${itemId}`, {
+        headers: { 'Accept': 'application/json' },
+        signal: controller.signal,
+      }),
+      fetch(`https://api.mercadolibre.com/items/${itemId}/description`, {
+        headers: { 'Accept': 'application/json' },
+        signal: controller.signal,
+      }).catch(() => null),
+    ])
+    clearTimeout(timeout)
+
+    if (!itemRes.ok) return {}
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const item: any = await itemRes.json()
+
+    data.titulo = item.title || null
+    if (item.price) data.precio = item.price
+    if (item.currency_id) data.moneda = item.currency_id
+
+    // Fotos — usar tamaño original (-O)
+    if (item.pictures && Array.isArray(item.pictures)) {
+      data.fotos = item.pictures
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        .map((p: any) => {
+          const u: string = p.secure_url || p.url || ''
+          return u.replace(/-[A-Z]\.(\w+)$/, '-O.$1')
+        })
+        .filter(Boolean)
+        .slice(0, 20)
+    }
+
+    // Atributos (m², dormitorios, baños, gastos comunes)
+    if (item.attributes && Array.isArray(item.attributes)) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      for (const attr of item.attributes as any[]) {
+        const id = (attr.id || '').toUpperCase()
+        const val: string = attr.value_name || ''
+        if (!val) continue
+        if (['TOTAL_AREA', 'COVERED_AREA'].includes(id) && !data.m2)
+          data.m2 = parseFloat(val) || null
+        if (['ROOMS', 'BEDROOMS'].includes(id) && !data.dormitorios)
+          data.dormitorios = parseInt(val) || null
+        if (['FULL_BATHROOMS', 'BATHROOMS'].includes(id) && !data.banos)
+          data.banos = parseInt(val) || null
+        if (id === 'MAINTENANCE_FEE' && !data.gastosCom)
+          data.gastosCom = parseFloat(val.replace(/\D/g, '')) || null
+      }
+    }
+
+    // Ubicación
+    if (item.location) {
+      if (item.location.neighborhood?.name) data.zona = item.location.neighborhood.name
+      else if (item.location.city?.name) data.zona = item.location.city.name
+      if (item.location.address_line) data.direccion = item.location.address_line
+    }
+
+    // Descripción
+    if (descRes?.ok) {
+      try {
+        const desc = await descRes.json()
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        if ((desc as any).plain_text) data.notas = String((desc as any).plain_text).slice(0, 500)
+      } catch { /* ignore */ }
+    }
+
+    return data
+  } catch {
+    return {}
+  }
+}
+
+// ── Instagram: URL de embed como fallback ────
+
+function getInstagramEmbedUrl(url: string): string | null {
+  const match = url.match(/instagram\.com\/(?:p|reel|tv)\/([A-Za-z0-9_-]+)/)
+  if (!match) return null
+  return `https://www.instagram.com/p/${match[1]}/embed/captioned/`
+}
+
 // ── AI-powered description analysis ──────────
 
 async function extractWithAI(text: string, existingData: ScrapedData): Promise<Partial<ScrapedData>> {
@@ -503,15 +598,30 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'URL inválida' }, { status: 400 })
     }
 
-    // Fetch the page
+    const site = detectSite(url)
+
+    // ── MercadoLibre: intentar API pública primero (no requiere JS) ──
+    let mlApiData: Partial<ScrapedData> = {}
+    if (site === 'mercadolibre') {
+      const itemId = extractMLItemId(url)
+      if (itemId) mlApiData = await fetchMLApi(itemId)
+    }
+
+    // ── Fetch HTML ──
+    // Para Instagram, usar UA del crawler de Facebook — Meta lo whitelistea para OG tags
+    const ua = site === 'instagram'
+      ? 'facebookexternalhit/1.1 (+http://www.facebook.com/externalhit_uatext.php)'
+      : USER_AGENT
+
     const controller = new AbortController()
     const timeout = setTimeout(() => controller.abort(), 15000)
+    const hasMLData = !!(mlApiData.titulo || (mlApiData.fotos && mlApiData.fotos.length > 0))
 
-    let html: string
+    let html = ''
     try {
       const res = await fetch(parsedUrl.toString(), {
         headers: {
-          'User-Agent': USER_AGENT,
+          'User-Agent': ua,
           'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
           'Accept-Language': 'es-UY,es;q=0.9,en;q=0.5',
         },
@@ -520,54 +630,89 @@ export async function POST(req: NextRequest) {
       })
       clearTimeout(timeout)
 
-      if (!res.ok) {
+      if (res.ok) {
+        html = await res.text()
+      } else if (!hasMLData) {
         return NextResponse.json(
           { error: `No se pudo acceder al sitio (HTTP ${res.status})` },
           { status: 422 }
         )
       }
-
-      html = await res.text()
     } catch (err) {
       clearTimeout(timeout)
-      const message = err instanceof Error && err.name === 'AbortError'
-        ? 'El sitio tardó demasiado en responder'
-        : 'No se pudo conectar al sitio'
-      return NextResponse.json({ error: message }, { status: 422 })
-    }
-
-    // Extract data from multiple sources
-    const site = detectSite(url)
-    const ogData = extractFromOG(html)
-    const jsonLdData = extractFromJsonLd(html)
-
-    let siteData: Partial<ScrapedData> = {}
-    switch (site) {
-      case 'infocasas':
-        siteData = extractInfoCasas(html)
-        break
-      case 'mercadolibre':
-        siteData = extractMercadoLibre(html)
-        break
-      case 'veocasas':
-        siteData = extractVeoCasas(html)
-        break
-      case 'instagram':
-        siteData = extractInstagram(html)
-        break
-      default: {
-        // Generic: extract all images from the page
-        const host = parsedUrl.hostname
-        siteData = { fotos: extractAllImages(html, host) }
-        break
+      // Si tenemos datos de la API de ML, podemos continuar sin HTML
+      if (!hasMLData) {
+        const message = err instanceof Error && err.name === 'AbortError'
+          ? 'El sitio tardó demasiado en responder'
+          : 'No se pudo conectar al sitio'
+        return NextResponse.json({ error: message }, { status: 422 })
       }
     }
 
-    // Merge: site-specific > JSON-LD > OG (priority order)
-    const result = mergeData(siteData, jsonLdData, ogData)
+    // ── Extract from HTML (si tenemos) ──
+    const ogData: Partial<ScrapedData> = html ? extractFromOG(html) : {}
+    const jsonLdData: Partial<ScrapedData> = html ? extractFromJsonLd(html) : {}
+
+    let siteData: Partial<ScrapedData> = {}
+    if (html) {
+      switch (site) {
+        case 'infocasas':
+          siteData = extractInfoCasas(html)
+          break
+        case 'mercadolibre':
+          siteData = extractMercadoLibre(html)
+          break
+        case 'veocasas':
+          siteData = extractVeoCasas(html)
+          break
+        case 'instagram':
+          siteData = extractInstagram(html)
+          break
+        default: {
+          const host = parsedUrl.hostname
+          siteData = { fotos: extractAllImages(html, host) }
+          break
+        }
+      }
+    }
+
+    // ── Instagram: fallback con embed si no se obtuvo data ──
+    if (site === 'instagram' && !(siteData.fotos?.length) && !(ogData.fotos?.length)) {
+      const embedUrl = getInstagramEmbedUrl(url)
+      if (embedUrl) {
+        try {
+          const embedCtrl = new AbortController()
+          const embedTimeout = setTimeout(() => embedCtrl.abort(), 10000)
+          const embedRes = await fetch(embedUrl, {
+            headers: {
+              'User-Agent': USER_AGENT,
+              'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+              'Accept-Language': 'es-UY,es;q=0.9,en;q=0.5',
+            },
+            signal: embedCtrl.signal,
+          })
+          clearTimeout(embedTimeout)
+          if (embedRes.ok) {
+            const embedHtml = await embedRes.text()
+            const embedSite = extractInstagram(embedHtml)
+            const embedOg = extractFromOG(embedHtml)
+            // Usar lo que venga del embed
+            if (embedSite.fotos?.length || embedOg.fotos?.length) {
+              siteData = { ...embedSite }
+              if (!siteData.fotos?.length && embedOg.fotos?.length) siteData.fotos = embedOg.fotos
+              if (!siteData.notas && embedOg.notas) siteData.notas = embedOg.notas
+              if (!siteData.titulo && embedOg.titulo) siteData.titulo = embedOg.titulo
+            }
+          }
+        } catch { /* embed fallback es best-effort */ }
+      }
+    }
+
+    // Merge: ML API > site-specific > JSON-LD > OG (priority order)
+    const result = mergeData(mlApiData, siteData, jsonLdData, ogData)
 
     // AI analysis: extract data from page text for missing fields
-    const pageText = stripHtml(html)
+    const pageText = html ? stripHtml(html) : ''
     const descText = [result.notas, result.titulo, pageText].filter(Boolean).join('\n')
     const aiData = await extractWithAI(descText, result)
 
