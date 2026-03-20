@@ -424,7 +424,12 @@ export async function POST(req: NextRequest) {
         if (error) { await enviarMensaje(deFono, `❌ *Error al registrar el gasto*\n\nNo se pudo guardar en este momento. Por favor, intentá nuevamente en unos segundos.`); return NextResponse.json({ status: 'ok' }) }
         const netPost = await calcularNetMiembro(miembro.sala_id, miembro.id)
         const netTxt = Math.abs(netPost) < 0.5 ? '✅ Estás al día con el nido.' : netPost > 0 ? `💰 Tu balance actual: te deben $${Math.round(netPost).toLocaleString('es-UY')}` : `📊 Tu balance actual: debés $${Math.round(-netPost).toLocaleString('es-UY')}`
-        await enviarMensaje(deFono, `✅ *Gasto registrado*\n\n📌 ${accion.descripcion}\n💵 $${Math.round(accion.monto).toLocaleString('es-UY')}\n👤 Pagado por: ${miembro.nombre}\n\n${netTxt}`)
+        const catEmojisSuccess: Record<string, string> = { alquiler: '🏠', suministros: '💡', internet: '🌐', comida: '🍕', limpieza: '🧹', otro: '📦' }
+        const catEmojiSuccess = catEmojisSuccess[accion.categoria ?? 'otro'] ?? '📦'
+        let divLabelSuccess = 'entre todos'
+        if (accion.split === 'personal') divLabelSuccess = 'solo vos'
+        else if (accion.split === 'parcial' && accion.split_con?.length) divLabelSuccess = `vos + ${(accion.split_con as string[]).join(' y ')}`
+        await enviarMensaje(deFono, `✅ *Gasto registrado*\n\n📌 ${accion.descripcion}\n💵 $${Math.round(accion.monto).toLocaleString('es-UY')}\n${catEmojiSuccess} Categoría: ${accion.categoria ?? 'otro'}\n👤 Pagado por: ${miembro.nombre}\n👥 División: ${divLabelSuccess}\n\n${netTxt}`)
       }
 
       if (accion.accion === 'agregar_compra') {
@@ -521,6 +526,38 @@ export async function POST(req: NextRequest) {
   const nombresMiembros = (compañeros ?? []).map((m: { nombre: string }) => m.nombre)
   const textoLower = texto.toLowerCase()
 
+  // ── Comando de ayuda ──
+  const esAyuda = ['ayuda', '/ayuda', 'help', '/help', 'comandos', '/comandos', 'menú', 'menu'].includes(textoLower.trim()) ||
+    ['qué podés hacer', 'que podes hacer', 'qué hacés', 'que haces', 'qué funciones', 'que funciones', 'para qué servís', 'para que servis'].some(k => textoLower.includes(k))
+
+  if (esAyuda) {
+    await enviarMensaje(deFono,
+      `🤖 *NidoApp Bot — Funcionalidades*\n\n` +
+      `💸 *Registrar un gasto*\n` +
+      `→ _"pagué 500 en pizza"_ → se divide entre todos\n` +
+      `→ _"compré detergente por 300 con cami"_ → solo entre vos y cami\n` +
+      `→ _"gasté 200 en jabón, solo mío"_ → gasto personal (sin repartir)\n\n` +
+      `📊 *Consultar balance*\n` +
+      `→ _"¿cuánto debo?"_\n` +
+      `→ _"¿cuánto me deben?"_\n` +
+      `→ _"balance del nido"_\n\n` +
+      `🧾 *Ver gastos recientes*\n` +
+      `→ _"ver gastos"_\n` +
+      `→ _"gastos del mes"_\n\n` +
+      `🛒 *Lista de compras*\n` +
+      `→ _"falta leche"_\n` +
+      `→ _"necesitamos papel y jabón"_\n\n` +
+      `💰 *Registrar pago de deuda*\n` +
+      `→ _"ya pagué mi deuda"_\n` +
+      `→ _"liquidé lo que debía"_\n\n` +
+      `ℹ️ *Notas importantes*\n` +
+      `• Solo vos podés registrar gastos como pagador\n` +
+      `• Ante cualquier duda respondé *no* para cancelar\n` +
+      `→ _"ayuda"_ → muestra este menú`
+    )
+    return NextResponse.json({ status: 'ok' })
+  }
+
   // ── Pre-parsers regex (evitan llamada a IA para los casos más frecuentes) ──
 
   // Limpiar cláusulas de split del texto para que el regex de gasto matchee
@@ -597,6 +634,39 @@ export async function POST(req: NextRequest) {
     return splitCon.length > 0 ? { split: 'parcial', split_con: splitCon } : { split: 'igual' }
   }
 
+  const catEmojis: Record<string, string> = { alquiler: '🏠', suministros: '💡', internet: '🌐', comida: '🍕', limpieza: '🧹', otro: '📦' }
+
+  function buildGastoConfirmacion(desc: string, monto: number, splitInfo: { split: 'igual' | 'personal' | 'parcial'; split_con?: string[] }, pagadorNombre: string): string {
+    const cat = detectarCategoria(desc)
+    const emoji = catEmojis[cat] ?? '📦'
+    const totalMiembros = compañeros?.length ?? 1
+    let divLine: string
+    let montoLine: string
+    if (splitInfo.split === 'personal') {
+      divLine = 'solo vos (gasto personal)'
+      montoLine = `→ $${Math.round(monto).toLocaleString('es-UY')} a tu cargo`
+    } else if (splitInfo.split === 'parcial' && splitInfo.split_con?.length) {
+      const n = splitInfo.split_con.length + 1
+      const porcion = Math.round(monto / n)
+      divLine = `vos + ${splitInfo.split_con.join(' y ')} (${n} personas)`
+      montoLine = `→ $${porcion.toLocaleString('es-UY')} cada uno`
+    } else {
+      const porcion = Math.round(monto / totalMiembros)
+      divLine = `entre todos (${totalMiembros} personas)`
+      montoLine = `→ $${porcion.toLocaleString('es-UY')} cada uno`
+    }
+    return (
+      `¿Confirmás este gasto?\n\n` +
+      `📌 *${desc}*\n` +
+      `💵 $${Math.round(monto).toLocaleString('es-UY')}\n` +
+      `${emoji} Categoría: ${cat}\n` +
+      `👤 Pagás vos: ${pagadorNombre}\n` +
+      `👥 División: ${divLine}\n` +
+      `   ${montoLine}\n\n` +
+      `Respondé *si* para confirmar o *no* para cancelar`
+    )
+  }
+
   let accion: Awaited<ReturnType<typeof parsearMensaje>>
 
   if (gastoMatch) {
@@ -611,14 +681,13 @@ export async function POST(req: NextRequest) {
     if (splitInfo.split === 'parcial') {
       desc = desc.replace(/\s+con\s+(?:\w+(?:\s*[,y]\s*\w+)*)$/i, '').trim()
     }
-    const divTxt = splitInfo.split === 'parcial' ? splitInfo.split_con!.join(' y ') : 'entre todos'
     accion = {
       accion:       'crear_gasto',
       monto,
       descripcion:  desc,
       ...splitInfo,
       categoria:    detectarCategoria(desc),
-      confirmacion: `¿Confirmás este gasto?\n\n📌 *${desc}*\n💵 $${Math.round(monto).toLocaleString('es-UY')}\n👤 Pagado por: ${miembro.nombre}\n👥 División: ${divTxt}\n\nRespondé *si* o *no*`,
+      confirmacion: buildGastoConfirmacion(desc, monto, splitInfo, miembro!.nombre),
     }
   } else if (gastoMatchInv) {
     let desc  = gastoMatchInv[1].trim()
@@ -631,14 +700,13 @@ export async function POST(req: NextRequest) {
     if (splitInfo.split === 'parcial') {
       desc = desc.replace(/^con\s+(?:\w+(?:\s*[,y]\s*\w+)*)\s+/i, '').trim()
     }
-    const divTxt = splitInfo.split === 'parcial' ? splitInfo.split_con!.join(' y ') : 'entre todos'
     accion = {
       accion:       'crear_gasto',
       monto,
       descripcion:  desc,
       ...splitInfo,
       categoria:    detectarCategoria(desc),
-      confirmacion: `¿Confirmás este gasto?\n\n📌 *${desc}*\n💵 $${Math.round(monto).toLocaleString('es-UY')}\n👤 Pagado por: ${miembro.nombre}\n👥 División: ${divTxt}\n\nRespondé *si* o *no*`,
+      confirmacion: buildGastoConfirmacion(desc, monto, splitInfo, miembro!.nombre),
     }
   } else if (compraMatch) {
     const items = compraMatch[1].split(/,\s*|\s+y\s+/).map((i: string) => i.trim()).filter(Boolean)

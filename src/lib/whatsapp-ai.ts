@@ -35,7 +35,7 @@ Reglas de split:
 
 Reglas generales:
 - descripcion: sustantivo corto, máximo 3 palabras, sin artículos.
-- confirmacion para crear_gasto: "¿Confirmás este gasto?\n\n📌 *{descripcion}*\n💵 $N\n👤 Pagado por: {remitente}\n👥 División: {con quién}\n\nRespondé *si* o *no*"
+- confirmacion para crear_gasto: "¿Confirmás este gasto?\n\n📌 *{descripcion}*\n💵 $N\n{emoji_categoria} Categoría: {categoria}\n👤 Pagás vos: {remitente}\n👥 División: {con quién y cuántos}\n   → $XX cada uno\n\nRespondé *si* para confirmar o *no* para cancelar"
 - confirmacion para agregar_compra: "¿Agregamos a la lista de compras?\n\n{• item1\n• item2}\n\nRespondé *si* o *no*"
 - confirmacion para desconocido: explicá qué podés hacer con ejemplos concretos.`
 
