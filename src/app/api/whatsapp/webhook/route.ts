@@ -405,7 +405,7 @@ export async function POST(req: NextRequest) {
             if (grupo.length > 1) {
               const porcion = accion.monto / grupo.length
               splits = {}
-              grupo.forEach(m => { if (m.id !== miembro.id) splits![m.id] = Math.round(porcion * 100) / 100 })
+              grupo.forEach(m => { splits![m.id] = Math.round(porcion * 100) / 100 })
             }
           }
         }
