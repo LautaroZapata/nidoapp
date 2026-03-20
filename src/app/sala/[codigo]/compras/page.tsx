@@ -727,7 +727,7 @@ export default function ComprasPage() {
 
       {/* ── MODAL: AÑADIR ÍTEM ── */}
       {modalOpen && (
-        <div className="c-overlay" onClick={e => e.target === e.currentTarget && setModalOpen(false)}>
+        <div className="c-overlay">
           <div className="c-modal">
             <div className="c-modal-header">
               <div className="c-modal-title">Añadir ítem</div>

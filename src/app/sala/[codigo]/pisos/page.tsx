@@ -1043,7 +1043,7 @@ export default function PisosPage() {
 
       {/* ── MODAL ── */}
       {modalOpen && (
-        <div className="p-overlay" onClick={(e) => e.target === e.currentTarget && setModalOpen(false)}>
+        <div className="p-overlay">
           <div className="p-modal">
             <div className="p-modal-header">
               <div className="p-modal-title">Añadir apto</div>

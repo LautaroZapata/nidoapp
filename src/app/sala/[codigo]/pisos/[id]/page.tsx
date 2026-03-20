@@ -1597,7 +1597,7 @@ export default function PisoDetallePage() {
 
       {/* ── MODAL EDITAR ── */}
       {editOpen && (
-        <div className="d-modal-overlay" onClick={e => e.target === e.currentTarget && setEditOpen(false)}>
+        <div className="d-modal-overlay">
           <div className="d-modal">
             <div className="d-modal-header">
               <div className="d-modal-title">Editar apto</div>

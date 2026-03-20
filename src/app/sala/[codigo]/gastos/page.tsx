@@ -2278,7 +2278,7 @@ export default function GastosPage() {
           setModalLiquidar(prev => prev ? { ...prev, importe: String(nuevo) } : null)
         }
         return (
-          <div className="g-overlay" onClick={e => { if (e.target === e.currentTarget && !isSaving) setModalLiquidar(null) }}>
+          <div className="g-overlay">
             <div className="g-modal" style={{ maxWidth: 420, paddingBottom: 'max(1.5rem, env(safe-area-inset-bottom))' }}>
 
               {/* Header */}
@@ -2393,7 +2393,7 @@ export default function GastosPage() {
       />
 
       {modalOpen && (
-        <div className="g-overlay" onClick={e => e.target === e.currentTarget && setModalOpen(false)}>
+        <div className="g-overlay">
           <div className="g-modal">
             <div className="g-modal-header">
               <div className="g-modal-title">{editandoId ? 'Editar gasto' : 'Añadir gasto'}</div>
