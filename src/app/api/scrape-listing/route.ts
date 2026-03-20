@@ -344,6 +344,56 @@ function extractVeoCasas(html: string): Partial<ScrapedData> {
   return data
 }
 
+// ── Site-specific: Facebook ──────────────────
+// Facebook Marketplace y posts de grupos/páginas inmobiliarias.
+// Meta whitelist-ea el UA "facebookexternalhit" y devuelve OG tags incluso en Marketplace.
+
+function extractFacebook(html: string): Partial<ScrapedData> {
+  const data: Partial<ScrapedData> = {}
+
+  // OG tags — Facebook los incluye en Marketplace y posts públicos
+  const title = getMetaContent(html, 'og:title')
+  if (title) data.titulo = title
+
+  const desc = getMetaContent(html, 'og:description') || getMetaContent(html, 'description')
+  if (desc) {
+    data.notas = desc
+    // Intentar extraer precio de la descripción (común en Marketplace y grupos)
+    const priceMatch = desc.match(/(U\$S|USD|US\$|\$)\s*([\d.,]+)/i)
+    if (priceMatch) {
+      const p = parsePrice(`${priceMatch[1]} ${priceMatch[2]}`)
+      if (p) { data.precio = p.amount; data.moneda = p.currency }
+    }
+    // m2
+    const m2 = desc.match(/([\d]+)\s*m[²2]/i)
+    if (m2) data.m2 = parseInt(m2[1])
+    // dormitorios
+    const dorm = desc.match(/(\d+)\s*(?:dorm|dormitorio|hab|ambiente)/i)
+    if (dorm) data.dormitorios = parseInt(dorm[1])
+    // baños
+    const bano = desc.match(/(\d+)\s*(?:baño|ba[ñn]o)/i)
+    if (bano) data.banos = parseInt(bano[1])
+    // zona — a menudo aparece "en Pocitos" o "Barrio: Cordón"
+    const zona = desc.match(/(?:en|barrio:?)\s+([A-ZÁÉÍÓÚÑ][a-záéíóúñA-ZÁÉÍÓÚÑ\s]{2,25})/i)
+    if (zona) data.zona = zona[1].trim()
+  }
+
+  // Fotos OG
+  const images = getAllMetaContent(html, 'og:image')
+  if (images.length > 0) data.fotos = images.filter(u => !u.includes('static.xx.fbcdn') || u.includes('/t51.'))
+
+  // Marketplace: el precio a veces aparece en el titulo ("Apartamento 2d - $25000")
+  if (data.titulo && !data.precio) {
+    const pMatch = data.titulo.match(/(U\$S|USD|US\$|\$)\s*([\d.,]+)/i)
+    if (pMatch) {
+      const p = parsePrice(`${pMatch[1]} ${pMatch[2]}`)
+      if (p) { data.precio = p.amount; data.moneda = p.currency }
+    }
+  }
+
+  return data
+}
+
 // ── Site-specific: Instagram ─────────────────
 
 function extractInstagram(html: string): Partial<ScrapedData> {
@@ -381,6 +431,7 @@ function detectSite(url: string): string {
   if (host.includes('mercadolibre')) return 'mercadolibre'
   if (host.includes('veocasas')) return 'veocasas'
   if (host.includes('instagram')) return 'instagram'
+  if (host.includes('facebook') || host.includes('fb.me') || host.includes('fb.com')) return 'facebook'
   return 'generic'
 }
 
@@ -598,7 +649,14 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'URL inválida' }, { status: 400 })
     }
 
-    const site = detectSite(url)
+    // ── Normalizar URLs de mobile ──
+    // m.facebook.com → www.facebook.com (OG tags más completos)
+    if (parsedUrl.hostname === 'm.facebook.com') {
+      parsedUrl.hostname = 'www.facebook.com'
+    }
+    const normalizedUrl = parsedUrl.toString()
+
+    const site = detectSite(normalizedUrl)
 
     // ── MercadoLibre: intentar API pública primero (no requiere JS) ──
     let mlApiData: Partial<ScrapedData> = {}
@@ -608,8 +666,8 @@ export async function POST(req: NextRequest) {
     }
 
     // ── Fetch HTML ──
-    // Para Instagram, usar UA del crawler de Facebook — Meta lo whitelistea para OG tags
-    const ua = site === 'instagram'
+    // Para Instagram y Facebook, usar UA del crawler de Facebook — Meta lo whitelistea para OG tags
+    const ua = (site === 'instagram' || site === 'facebook')
       ? 'facebookexternalhit/1.1 (+http://www.facebook.com/externalhit_uatext.php)'
       : USER_AGENT
 
@@ -619,7 +677,7 @@ export async function POST(req: NextRequest) {
 
     let html = ''
     try {
-      const res = await fetch(parsedUrl.toString(), {
+      const res = await fetch(normalizedUrl, {
         headers: {
           'User-Agent': ua,
           'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
@@ -667,6 +725,9 @@ export async function POST(req: NextRequest) {
           break
         case 'instagram':
           siteData = extractInstagram(html)
+          break
+        case 'facebook':
+          siteData = extractFacebook(html)
           break
         default: {
           const host = parsedUrl.hostname

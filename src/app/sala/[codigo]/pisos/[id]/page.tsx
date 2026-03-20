@@ -292,6 +292,7 @@ export default function PisoDetallePage() {
     { pattern: /mercadolibre/i, label: 'MercadoLibre' },
     { pattern: /veocasas/i, label: 'VeoCasas' },
     { pattern: /instagram\.com/i, label: 'Instagram' },
+    { pattern: /facebook\.com|fb\.me|fb\.com/i, label: 'Facebook' },
   ]
 
   function detectSupportedSite(url: string): string | null {
