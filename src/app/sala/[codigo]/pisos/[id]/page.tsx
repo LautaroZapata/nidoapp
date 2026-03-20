@@ -147,6 +147,9 @@ export default function PisoDetallePage() {
   const [editForm, setEditForm] = useState({ titulo: '', url: '', precio: '', m2: '', zona: '', notas: '', direccion: '' })
   const [editGuardando, setEditGuardando] = useState(false)
   const [editError, setEditError] = useState('')
+  const [editScraping, setEditScraping] = useState(false)
+  const [editScrapeMsg, setEditScrapeMsg] = useState('')
+  const [editScrapeDetected, setEditScrapeDetected] = useState<string | null>(null)
 
   useEffect(() => {
     if (!lightboxOpen || !piso) return
@@ -284,6 +287,23 @@ export default function PisoDetallePage() {
     if (videoActivo !== null && videoActivo >= nuevosVideos.length) setVideoActivo(nuevosVideos.length > 0 ? nuevosVideos.length - 1 : null)
   }
 
+  const SUPPORTED_SITES = [
+    { pattern: /infocasas/i, label: 'InfoCasas' },
+    { pattern: /mercadolibre/i, label: 'MercadoLibre' },
+    { pattern: /veocasas/i, label: 'VeoCasas' },
+    { pattern: /instagram\.com/i, label: 'Instagram' },
+  ]
+
+  function detectSupportedSite(url: string): string | null {
+    if (!url.trim()) return null
+    try { new URL(url) } catch { return null }
+    for (const s of SUPPORTED_SITES) {
+      if (s.pattern.test(url)) return s.label
+    }
+    if (/^https?:\/\/.+\..+/.test(url)) return 'sitio'
+    return null
+  }
+
   function abrirEditar() {
     if (!piso) return
     setEditForm({
@@ -296,7 +316,90 @@ export default function PisoDetallePage() {
       direccion: piso.direccion ?? '',
     })
     setEditError('')
+    setEditScraping(false)
+    setEditScrapeMsg('')
+    setEditScrapeDetected(detectSupportedSite(piso.url ?? ''))
     setEditOpen(true)
+  }
+
+  async function handleEditScrape() {
+    const url = editForm.url.trim()
+    if (!url || !piso) return
+    setEditScraping(true)
+    setEditScrapeMsg('')
+    setEditError('')
+    try {
+      const res = await fetch('/api/scrape-listing', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url }),
+      })
+      const json = await res.json()
+      if (!res.ok) {
+        setEditScrapeMsg(json.error || 'No se pudo extraer información')
+        setEditScraping(false)
+        return
+      }
+      const d = json.data
+      // Fill empty fields only
+      setEditForm(f => ({
+        ...f,
+        titulo: f.titulo || d.titulo || '',
+        precio: f.precio || (d.precio != null ? String(d.precio) : ''),
+        m2: f.m2 || (d.m2 != null ? String(d.m2) : ''),
+        zona: f.zona || d.zona || '',
+        direccion: f.direccion || d.direccion || '',
+        notas: f.notas || buildEditNotas(d),
+      }))
+
+      // Compress and add photos to the piso
+      if (d.fotos?.length > 0 && session) {
+        setEditScrapeMsg('Importando fotos...')
+        try {
+          const compressRes = await fetch('/api/compress-photos', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ urls: d.fotos, salaId: session.salaId }),
+          })
+          if (compressRes.ok) {
+            const compressData = await compressRes.json()
+            const storedUrls: string[] = compressData.urls
+            const existingFotos = piso.fotos ?? []
+            const newFotos = storedUrls.filter(u => !existingFotos.includes(u))
+            if (newFotos.length > 0) {
+              const allFotos = [...existingFotos, ...newFotos]
+              const supabase = createClient()
+              await supabase.from('pisos').update({ fotos: allFotos }).eq('id', pisoId)
+              setPiso({ ...piso, fotos: allFotos })
+            }
+          }
+        } catch { /* photo compression is best-effort */ }
+      }
+
+      const parts = []
+      if (d.titulo) parts.push('título')
+      if (d.precio != null) parts.push('precio')
+      if (d.fotos?.length) parts.push(`${d.fotos.length} foto${d.fotos.length > 1 ? 's' : ''}`)
+      if (d.m2 != null) parts.push('m²')
+      if (d.zona) parts.push('zona')
+      if (d.gastosCom != null) parts.push('GC')
+      if (d.dormitorios) parts.push(`${d.dormitorios} dorm`)
+      if (d.moneda) parts.push(`(${d.moneda})`)
+      setEditScrapeMsg(parts.length > 0 ? `Importado: ${parts.join(', ')}` : 'No se encontró información útil')
+    } catch {
+      setEditScrapeMsg('Error al conectar con el servidor')
+    }
+    setEditScraping(false)
+  }
+
+  function buildEditNotas(d: { notas?: string; dormitorios?: number; banos?: number; moneda?: string }): string {
+    const parts: string[] = []
+    if (d.dormitorios) parts.push(`${d.dormitorios} dormitorio${d.dormitorios > 1 ? 's' : ''}`)
+    if (d.banos) parts.push(`${d.banos} baño${d.banos > 1 ? 's' : ''}`)
+    if (d.moneda) parts.push(`Moneda: ${d.moneda}`)
+    const header = parts.length > 0 ? parts.join(' · ') : ''
+    if (d.notas && header) return `${header}\n${d.notas}`
+    return d.notas || header
   }
 
   async function handleEditar(e: React.FormEvent) {
@@ -483,6 +586,64 @@ export default function PisoDetallePage() {
           border: 1px solid #F0C0B0; border-radius: 9px;
           color: #B03A1A; font-size: 0.81rem; margin-bottom: 1rem;
         }
+
+        .d-scrape-wrap {
+          margin-top: 8px;
+          animation: d-fadeup 0.25s cubic-bezier(0.22, 1, 0.36, 1) both;
+        }
+        .d-scrape-btn {
+          display: inline-flex; align-items: center; gap: 7px;
+          padding: 9px 14px; background: rgba(192,90,59,0.07);
+          border: 1.5px solid rgba(192,90,59,0.2); color: #C05A3B;
+          border-radius: 10px; font-size: 0.8rem; font-weight: 600;
+          font-family: var(--font-body), 'Nunito', sans-serif;
+          cursor: pointer; transition: background 0.18s, border-color 0.18s, transform 0.15s, box-shadow 0.18s;
+          width: 100%; justify-content: center;
+        }
+        .d-scrape-btn:hover { background: rgba(192,90,59,0.13); border-color: rgba(192,90,59,0.35); transform: translateY(-1px); box-shadow: 0 4px 14px rgba(192,90,59,0.12); }
+        .d-scrape-btn:active { transform: translateY(0); box-shadow: none; }
+        .d-scrape-btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; box-shadow: none; }
+        .d-scrape-btn svg { flex-shrink: 0; }
+        .d-scrape-loading {
+          display: flex; align-items: center; justify-content: center; gap: 9px;
+          padding: 10px 14px;
+          background: rgba(192,90,59,0.05);
+          border: 1.5px solid rgba(192,90,59,0.12);
+          border-radius: 10px;
+          font-size: 0.8rem; color: #A07060;
+          font-family: var(--font-body), 'Nunito', sans-serif;
+        }
+        .d-scrape-spinner {
+          width: 14px; height: 14px; border-radius: 50%;
+          border: 2px solid #E8D0C0; border-top-color: #C05A3B;
+          animation: d-spin 0.7s linear infinite;
+          flex-shrink: 0;
+        }
+        .d-scrape-feedback {
+          display: flex; align-items: flex-start; gap: 8px;
+          padding: 10px 13px; border-radius: 10px;
+          font-size: 0.78rem; line-height: 1.45;
+          font-family: var(--font-body), 'Nunito', sans-serif;
+          animation: d-fadeup 0.3s cubic-bezier(0.22, 1, 0.36, 1) both;
+        }
+        .d-scrape-feedback svg { flex-shrink: 0; margin-top: 1px; }
+        .d-scrape-feedback.success {
+          background: rgba(46,125,82,0.08); border: 1px solid rgba(46,125,82,0.18);
+          color: #2E7D52;
+        }
+        .d-scrape-feedback.error {
+          background: rgba(176,96,48,0.08); border: 1px solid rgba(176,96,48,0.18);
+          color: #B06030;
+        }
+        .d-scrape-feedback .d-scrape-retry {
+          margin-left: auto; flex-shrink: 0;
+          background: none; border: none; color: #C05A3B;
+          font-size: 0.75rem; font-weight: 600; cursor: pointer;
+          font-family: var(--font-body), 'Nunito', sans-serif;
+          text-decoration: underline; text-underline-offset: 2px; padding: 0;
+        }
+        .d-scrape-feedback .d-scrape-retry:hover { color: #A04730; }
+        @media (min-width: 480px) { .d-scrape-btn { width: auto; } }
 
         /* Cards */
         .d-card {
@@ -1449,13 +1610,67 @@ export default function PisoDetallePage() {
 
             <form onSubmit={handleEditar}>
               <div className="d-field">
-                <label className="d-label">Nombre / Título *</label>
-                <input className="d-input" type="text" required autoFocus value={editForm.titulo} onChange={e => setEditForm(f => ({ ...f, titulo: e.target.value }))} placeholder="Ej: Apto Pocitos 3 dorm" />
+                <label className="d-label">
+                  URL del anuncio
+                  <span className="d-label-hint"> — pegá un link para importar datos</span>
+                </label>
+                <input
+                  className="d-input"
+                  type="url"
+                  value={editForm.url}
+                  autoFocus
+                  onChange={e => {
+                    const val = e.target.value
+                    setEditForm(f => ({ ...f, url: val }))
+                    setEditScrapeDetected(detectSupportedSite(val))
+                    setEditScrapeMsg('')
+                  }}
+                  placeholder="https://infocasas.com.uy/..."
+                />
+                {(editScrapeDetected || editScraping || editScrapeMsg) && (
+                  <div className="d-scrape-wrap">
+                    {editScrapeDetected && !editScraping && !editScrapeMsg.startsWith('Importado') && (
+                      <button type="button" onClick={handleEditScrape} disabled={editScraping} className="d-scrape-btn">
+                        <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+                          <path d="M14 8A6 6 0 104.5 12.96" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                          <path d="M10 8l4 0 0-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                        </svg>
+                        Importar datos de {editScrapeDetected}
+                      </button>
+                    )}
+                    {editScraping && (
+                      <div className="d-scrape-loading">
+                        <span className="d-scrape-spinner" />
+                        Extrayendo datos del enlace...
+                      </div>
+                    )}
+                    {editScrapeMsg && !editScraping && (
+                      <div className={`d-scrape-feedback ${editScrapeMsg.startsWith('Importado') ? 'success' : 'error'}`}>
+                        {editScrapeMsg.startsWith('Importado') ? (
+                          <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                            <circle cx="7" cy="7" r="6" stroke="currentColor" strokeWidth="1.3"/>
+                            <path d="M4 7.2l2.2 2.2L10 5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
+                          </svg>
+                        ) : (
+                          <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                            <circle cx="7" cy="7" r="6" stroke="currentColor" strokeWidth="1.3"/>
+                            <path d="M7 4.5v3" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/>
+                            <circle cx="7" cy="10" r="0.6" fill="currentColor"/>
+                          </svg>
+                        )}
+                        <span>{editScrapeMsg}</span>
+                        {!editScrapeMsg.startsWith('Importado') && editScrapeDetected && (
+                          <button type="button" className="d-scrape-retry" onClick={handleEditScrape}>Reintentar</button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
 
               <div className="d-field">
-                <label className="d-label">URL del anuncio</label>
-                <input className="d-input" type="url" value={editForm.url} onChange={e => setEditForm(f => ({ ...f, url: e.target.value }))} placeholder="https://infocasas.com.uy/..." />
+                <label className="d-label">Nombre / Título *</label>
+                <input className="d-input" type="text" required value={editForm.titulo} onChange={e => setEditForm(f => ({ ...f, titulo: e.target.value }))} placeholder="Ej: Apto Pocitos 3 dorm" />
               </div>
 
               <div className="d-row2">

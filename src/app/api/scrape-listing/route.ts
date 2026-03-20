@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import Groq from 'groq-sdk'
 
 /* ────────────────────────────────────────────
    /api/scrape-listing
@@ -7,6 +8,7 @@ import { NextRequest, NextResponse } from 'next/server'
    1. OpenGraph meta tags (universal)
    2. JSON-LD structured data
    3. Site-specific HTML parsing
+   4. AI-powered description analysis (Groq)
    ──────────────────────────────────────────── */
 
 interface ScrapedData {
@@ -34,7 +36,6 @@ const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36
 // ── Helpers ──────────────────────────────────
 
 function getMetaContent(html: string, property: string): string | null {
-  // Match both property="..." and name="..." attributes
   const patterns = [
     new RegExp(`<meta[^>]+(?:property|name)=["']${escapeRegex(property)}["'][^>]+content=["']([^"']*)["']`, 'i'),
     new RegExp(`<meta[^>]+content=["']([^"']*)["'][^>]+(?:property|name)=["']${escapeRegex(property)}["']`, 'i'),
@@ -92,7 +93,6 @@ function extractJsonLd(html: string): Record<string, unknown>[] {
 
 function parsePrice(s: string): { amount: number; currency: string } | null {
   if (!s) return null
-  // Remove thousand separators (dots) and use comma as decimal
   const cleaned = s.replace(/\./g, '').replace(',', '.')
   const match = cleaned.match(/(U\$S|USD|US\$|UYU|\$U|\$)\s*([\d.]+)/)
   if (match) {
@@ -102,7 +102,6 @@ function parsePrice(s: string): { amount: number; currency: string } | null {
     const currency = (raw.includes('U$S') || raw.includes('USD') || raw.includes('US$')) ? 'USD' : 'UYU'
     return { amount, currency }
   }
-  // Try plain number
   const numMatch = cleaned.match(/([\d.]+)/)
   if (numMatch) {
     const amount = parseFloat(numMatch[1])
@@ -118,22 +117,73 @@ function extractNumber(s: string | null): number | null {
   return m ? parseFloat(m[1]) || null : null
 }
 
+/** Strip HTML tags, collapse whitespace */
+function stripHtml(html: string): string {
+  return html
+    .replace(/<script[\s\S]*?<\/script>/gi, '')
+    .replace(/<style[\s\S]*?<\/style>/gi, '')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+/** Extract all image URLs from HTML, filtering out junk */
+function extractAllImages(html: string, siteHost: string): string[] {
+  const imgs: string[] = []
+  // 1. src and data-src attributes on img tags
+  const imgTagRe = /<img[^>]+(?:src|data-src|data-lazy-src|data-original)=["']([^"']+)["'][^>]*>/gi
+  let m
+  while ((m = imgTagRe.exec(html)) !== null) {
+    const url = m[1].trim()
+    if (isValidListingImage(url, siteHost)) imgs.push(url)
+  }
+  // 2. Background images in style attributes
+  const bgRe = /url\(["']?(https?:\/\/[^"')]+\.(?:jpg|jpeg|png|webp)[^"')]*)["']?\)/gi
+  while ((m = bgRe.exec(html)) !== null) {
+    const url = m[1].trim()
+    if (isValidListingImage(url, siteHost)) imgs.push(url)
+  }
+  // 3. JSON arrays with image URLs (common in SPA data props)
+  const jsonImgRe = /"(https?:\/\/[^"]+\.(?:jpg|jpeg|png|webp)[^"]*)"/gi
+  while ((m = jsonImgRe.exec(html)) !== null) {
+    const url = m[1].trim()
+    if (isValidListingImage(url, siteHost)) imgs.push(url)
+  }
+  // Dedupe, preserve order, limit to 20
+  return [...new Set(imgs)].slice(0, 20)
+}
+
+function isValidListingImage(url: string, _siteHost: string): boolean {
+  if (!url.startsWith('http')) return false
+  const lower = url.toLowerCase()
+  // Skip tiny icons, logos, avatars, tracking pixels, social icons
+  const junkPatterns = [
+    'logo', 'icon', 'avatar', 'favicon', 'sprite',
+    'tracking', 'pixel', 'badge', 'button', 'arrow',
+    'placeholder', 'loading', 'spinner', 'blank',
+    'facebook', 'twitter', 'whatsapp', 'instagram.com/static',
+    'google', 'analytics', 'adsense',
+    '1x1', '2x2', 'spacer', 'transparent',
+    '.svg', '.gif',
+  ]
+  if (junkPatterns.some(p => lower.includes(p))) return false
+  // Skip tiny images by URL hints (e.g., w=50, size=small)
+  const tinyMatch = lower.match(/[?&](?:w|width|size)=(\d+)/i)
+  if (tinyMatch && parseInt(tinyMatch[1]) < 100) return false
+  // Prefer images that look like listing photos (larger dimensions in URL)
+  return true
+}
+
 // ── Generic OG extractor ─────────────────────
 
 function extractFromOG(html: string): Partial<ScrapedData> {
   const data: Partial<ScrapedData> = {}
-
   const title = getMetaContent(html, 'og:title') || getMetaContent(html, 'twitter:title')
   if (title) data.titulo = title
-
   const desc = getMetaContent(html, 'og:description') || getMetaContent(html, 'description')
   if (desc) data.notas = desc
-
-  // Images
   const images = getAllMetaContent(html, 'og:image')
   if (images.length > 0) data.fotos = images
-
-  // Price from OG or meta
   const priceStr = getMetaContent(html, 'og:price:amount') || getMetaContent(html, 'product:price:amount')
   if (priceStr) {
     const p = parseFloat(priceStr.replace(/\./g, '').replace(',', '.'))
@@ -141,7 +191,6 @@ function extractFromOG(html: string): Partial<ScrapedData> {
   }
   const currencyStr = getMetaContent(html, 'og:price:currency') || getMetaContent(html, 'product:price:currency')
   if (currencyStr) data.moneda = currencyStr
-
   return data
 }
 
@@ -153,7 +202,6 @@ function extractFromJsonLd(html: string): Partial<ScrapedData> {
 
   for (const item of items) {
     const type = String(item['@type'] || '').toLowerCase()
-
     if (type.includes('product') || type.includes('realestate') || type.includes('apartment') || type.includes('residence')) {
       if (item.name) data.titulo = String(item.name)
       if (item.description) data.notas = String(item.description)
@@ -161,7 +209,6 @@ function extractFromJsonLd(html: string): Partial<ScrapedData> {
         const imgs = Array.isArray(item.image) ? item.image : [item.image]
         data.fotos = imgs.map(String).filter(Boolean)
       }
-
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const offers = item.offers as any
       if (offers) {
@@ -169,7 +216,6 @@ function extractFromJsonLd(html: string): Partial<ScrapedData> {
         if (offer?.price) data.precio = parseFloat(String(offer.price))
         if (offer?.priceCurrency) data.moneda = String(offer.priceCurrency)
       }
-
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const address = item.address as any
       if (address) {
@@ -180,19 +226,16 @@ function extractFromJsonLd(html: string): Partial<ScrapedData> {
           if (address.addressLocality) data.zona = String(address.addressLocality)
         }
       }
-
       if (item.floorSize) {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const fs = item.floorSize as any
         const val = typeof fs === 'object' ? fs.value : fs
         data.m2 = extractNumber(String(val))
       }
-
       if (item.numberOfRooms) data.dormitorios = parseInt(String(item.numberOfRooms))
       if (item.numberOfBathroomsTotal) data.banos = parseInt(String(item.numberOfBathroomsTotal))
     }
   }
-
   return data
 }
 
@@ -201,7 +244,6 @@ function extractFromJsonLd(html: string): Partial<ScrapedData> {
 function extractInfoCasas(html: string): Partial<ScrapedData> {
   const data: Partial<ScrapedData> = {}
 
-  // Title from h1 or specific class
   const h1 = html.match(/<h1[^>]*>([\s\S]*?)<\/h1>/i)
   if (h1) data.titulo = decodeHtmlEntities(h1[1].replace(/<[^>]+>/g, '').trim())
 
@@ -212,12 +254,10 @@ function extractInfoCasas(html: string): Partial<ScrapedData> {
     if (p) { data.precio = p.amount; data.moneda = p.currency }
   }
 
-  // Gastos comunes: "$ 6.500 GC" or "Gastos comunes: $ 6.500"
+  // Gastos comunes
   const gcMatch = html.match(/(?:gastos?\s*comunes?|G\.?C\.?)\s*(?::?\s*)\$?\s*([\d.,]+)/i)
     || html.match(/([\d.,]+)\s*(?:G\.?C\.?)/i)
-  if (gcMatch) {
-    data.gastosCom = extractNumber(gcMatch[1])
-  }
+  if (gcMatch) data.gastosCom = extractNumber(gcMatch[1])
 
   // m2
   const m2Match = html.match(/([\d.,]+)\s*m[²2]/i)
@@ -231,23 +271,12 @@ function extractInfoCasas(html: string): Partial<ScrapedData> {
   const banoMatch = html.match(/(\d+)\s*(?:baño|ba[ñn]o)/i)
   if (banoMatch) data.banos = parseInt(banoMatch[1])
 
-  // Location from breadcrumbs or specific elements
+  // Location
   const zonaMatch = html.match(/(?:barrio|zona|ubicaci[oó]n)\s*:?\s*([^<,\n]+)/i)
   if (zonaMatch) data.zona = zonaMatch[1].trim()
 
-  // Images from gallery/carousel
-  const imgRe = /(?:src|data-src)=["'](https:\/\/[^"']+\.(?:jpg|jpeg|png|webp)[^"']*)["']/gi
-  const imgs: string[] = []
-  let im
-  while ((im = imgRe.exec(html)) !== null && imgs.length < 15) {
-    const url = im[1]
-    // Skip tiny icons, logos, avatars
-    if (url.includes('logo') || url.includes('icon') || url.includes('avatar') || url.includes('favicon')) continue
-    if (url.includes('infocasas') || url.includes('cdn') || url.includes('static')) {
-      imgs.push(url)
-    }
-  }
-  if (imgs.length > 0) data.fotos = [...new Set(imgs)]
+  // Images — extract ALL from page
+  data.fotos = extractAllImages(html, 'infocasas')
 
   return data
 }
@@ -257,25 +286,20 @@ function extractInfoCasas(html: string): Partial<ScrapedData> {
 function extractMercadoLibre(html: string): Partial<ScrapedData> {
   const data: Partial<ScrapedData> = {}
 
-  // ML often has title in og:title even with bot protection
   const title = getMetaContent(html, 'og:title')
   if (title) {
     data.titulo = title
-    // ML titles often include price: "Apartamento 2 Dormitorios - U$S 750"
     const pMatch = title.match(/(U\$S|USD|US\$)\s*([\d.,]+)/i)
     if (pMatch) {
       const p = parsePrice(`${pMatch[1]} ${pMatch[2]}`)
       if (p) { data.precio = p.amount; data.moneda = p.currency }
     }
-    // Extract m2 from title
     const m2 = title.match(/([\d]+)\s*m[²2]/i)
     if (m2) data.m2 = parseInt(m2[1])
-    // Extract dormitorios from title
     const dorm = title.match(/(\d+)\s*(?:dorm|dormitorio|amb)/i)
     if (dorm) data.dormitorios = parseInt(dorm[1])
   }
 
-  // Price
   const priceMatch = html.match(/price[^>]*>(U?\$?S?\s*[\d.,]+)/i)
     || html.match(/(U\$S|USD)\s*([\d.,]+)/i)
   if (priceMatch && !data.precio) {
@@ -283,9 +307,11 @@ function extractMercadoLibre(html: string): Partial<ScrapedData> {
     if (p) { data.precio = p.amount; data.moneda = p.currency }
   }
 
-  // Location from title or content
   const locMatch = (data.titulo || '').match(/en\s+([^-–,]+?)(?:\s*[-–]|\s*$)/i)
   if (locMatch) data.zona = locMatch[1].trim()
+
+  // Images from ML
+  data.fotos = extractAllImages(html, 'mercadolibre')
 
   return data
 }
@@ -295,32 +321,25 @@ function extractMercadoLibre(html: string): Partial<ScrapedData> {
 function extractVeoCasas(html: string): Partial<ScrapedData> {
   const data: Partial<ScrapedData> = {}
 
-  // Try OG first (Next.js may render these server-side)
   const title = getMetaContent(html, 'og:title')
   if (title) data.titulo = title
 
-  // Price patterns
   const priceMatch = html.match(/(US?\$|U\$S|USD)\s*([\d.,]+)/i)
   if (priceMatch) {
     const p = parsePrice(`${priceMatch[1]} ${priceMatch[2]}`)
     if (p) { data.precio = p.amount; data.moneda = p.currency }
   }
 
-  // m2
   const m2 = html.match(/([\d]+)\s*m[²2]/i)
   if (m2) data.m2 = parseInt(m2[1])
 
-  // Dormitorios
   const dorm = html.match(/(\d+)\s*(?:dorm|dormitorio|habitaci[oó]n)/i)
   if (dorm) data.dormitorios = parseInt(dorm[1])
 
-  // Baños
   const bano = html.match(/(\d+)\s*(?:baño|ba[ñn]o)/i)
   if (bano) data.banos = parseInt(bano[1])
 
-  // Images
-  const images = getAllMetaContent(html, 'og:image')
-  if (images.length > 0) data.fotos = images
+  data.fotos = extractAllImages(html, 'veocasas')
 
   return data
 }
@@ -336,25 +355,20 @@ function extractInstagram(html: string): Partial<ScrapedData> {
   const desc = getMetaContent(html, 'og:description') || getMetaContent(html, 'description')
   if (desc) {
     data.notas = desc
-
-    // Try to extract price from description
     const priceMatch = desc.match(/(U\$S|USD|US\$|\$)\s*([\d.,]+)/i)
     if (priceMatch) {
       const p = parsePrice(`${priceMatch[1]} ${priceMatch[2]}`)
       if (p) { data.precio = p.amount; data.moneda = p.currency }
     }
-
-    // m2
     const m2 = desc.match(/([\d]+)\s*m[²2]/i)
     if (m2) data.m2 = parseInt(m2[1])
-
-    // Dormitorios
     const dorm = desc.match(/(\d+)\s*(?:dorm|dormitorio|hab)/i)
     if (dorm) data.dormitorios = parseInt(dorm[1])
   }
 
-  const image = getMetaContent(html, 'og:image')
-  if (image) data.fotos = [image]
+  // Instagram can have multiple images in OG
+  const images = getAllMetaContent(html, 'og:image')
+  if (images.length > 0) data.fotos = images
 
   return data
 }
@@ -364,10 +378,76 @@ function extractInstagram(html: string): Partial<ScrapedData> {
 function detectSite(url: string): string {
   const host = new URL(url).hostname.toLowerCase()
   if (host.includes('infocasas')) return 'infocasas'
-  if (host.includes('mercadolibre') || host.includes('mercadolibre')) return 'mercadolibre'
+  if (host.includes('mercadolibre')) return 'mercadolibre'
   if (host.includes('veocasas')) return 'veocasas'
   if (host.includes('instagram')) return 'instagram'
   return 'generic'
+}
+
+// ── AI-powered description analysis ──────────
+
+async function extractWithAI(text: string, existingData: ScrapedData): Promise<Partial<ScrapedData>> {
+  if (!process.env.GROQ_API_KEY) return {}
+  // Only call AI if we're missing key fields and have text to analyze
+  const missingFields = !existingData.m2 || !existingData.zona || !existingData.gastosCom
+    || !existingData.dormitorios || !existingData.banos || !existingData.direccion
+  if (!missingFields || !text || text.length < 20) return {}
+
+  // Trim text to avoid sending too much
+  const input = text.slice(0, 3000)
+
+  try {
+    const groq = new Groq({ apiKey: process.env.GROQ_API_KEY })
+    const completion = await groq.chat.completions.create({
+      model: 'llama-3.3-70b-versatile',
+      temperature: 0,
+      max_tokens: 400,
+      messages: [
+        {
+          role: 'system',
+          content: `Sos un extractor de datos de avisos inmobiliarios uruguayos. Dado el texto de un aviso, extraé los datos estructurados. Devolvé SOLO un JSON válido sin markdown.
+
+Campos a extraer (null si no se encuentra):
+- precio: number (alquiler mensual, sin puntos ni comas)
+- gastosCom: number (gastos comunes mensuales)
+- moneda: "USD" o "UYU"
+- m2: number (metros cuadrados, puede aparecer como "m2", "m²", "metros")
+- zona: string (barrio/zona, ej: "Pocitos", "Centro", "Cordón")
+- direccion: string (dirección completa si aparece)
+- dormitorios: number
+- banos: number
+
+Ejemplo: {"precio":25000,"gastosCom":6500,"moneda":"UYU","m2":75,"zona":"Pocitos","direccion":"Av. Brasil 2850","dormitorios":2,"banos":1}`
+        },
+        {
+          role: 'user',
+          content: input
+        }
+      ],
+    })
+
+    const raw = completion.choices[0]?.message?.content?.trim()
+    if (!raw) return {}
+
+    // Parse JSON — handle potential markdown wrapping
+    const jsonStr = raw.replace(/^```json?\s*/i, '').replace(/\s*```$/i, '')
+    const parsed = JSON.parse(jsonStr)
+    const data: Partial<ScrapedData> = {}
+
+    if (parsed.precio != null && !existingData.precio) data.precio = Number(parsed.precio) || null
+    if (parsed.gastosCom != null && !existingData.gastosCom) data.gastosCom = Number(parsed.gastosCom) || null
+    if (parsed.moneda && !existingData.moneda) data.moneda = parsed.moneda
+    if (parsed.m2 != null && !existingData.m2) data.m2 = Number(parsed.m2) || null
+    if (parsed.zona && !existingData.zona) data.zona = String(parsed.zona)
+    if (parsed.direccion && !existingData.direccion) data.direccion = String(parsed.direccion)
+    if (parsed.dormitorios != null && !existingData.dormitorios) data.dormitorios = Number(parsed.dormitorios) || null
+    if (parsed.banos != null && !existingData.banos) data.banos = Number(parsed.banos) || null
+
+    return data
+  } catch {
+    // AI extraction is best-effort, don't fail the whole request
+    return {}
+  }
 }
 
 // ── Main merge logic ─────────────────────────
@@ -390,14 +470,12 @@ function mergeData(...sources: Partial<ScrapedData>[]): ScrapedData {
     if (src.fotos && src.fotos.length > result.fotos.length) result.fotos = src.fotos
   }
 
-  // Build a better title if we have dormitorios/zona info but generic title
   if (!result.titulo && result.dormitorios) {
     const parts = [`${result.dormitorios} dorm`]
     if (result.zona) parts.push(result.zona)
     result.titulo = `Apto ${parts.join(' - ')}`
   }
 
-  // Clean up description if too long
   if (result.notas && result.notas.length > 500) {
     result.notas = result.notas.slice(0, 497) + '...'
   }
@@ -415,7 +493,6 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'URL es requerida' }, { status: 400 })
     }
 
-    // Validate URL
     let parsedUrl: URL
     try {
       parsedUrl = new URL(url)
@@ -428,7 +505,7 @@ export async function POST(req: NextRequest) {
 
     // Fetch the page
     const controller = new AbortController()
-    const timeout = setTimeout(() => controller.abort(), 10000)
+    const timeout = setTimeout(() => controller.abort(), 15000)
 
     let html: string
     try {
@@ -478,10 +555,31 @@ export async function POST(req: NextRequest) {
       case 'instagram':
         siteData = extractInstagram(html)
         break
+      default: {
+        // Generic: extract all images from the page
+        const host = parsedUrl.hostname
+        siteData = { fotos: extractAllImages(html, host) }
+        break
+      }
     }
 
     // Merge: site-specific > JSON-LD > OG (priority order)
     const result = mergeData(siteData, jsonLdData, ogData)
+
+    // AI analysis: extract data from page text for missing fields
+    const pageText = stripHtml(html)
+    const descText = [result.notas, result.titulo, pageText].filter(Boolean).join('\n')
+    const aiData = await extractWithAI(descText, result)
+
+    // Merge AI data into result (only fills gaps)
+    if (aiData.precio != null && result.precio == null) result.precio = aiData.precio
+    if (aiData.gastosCom != null && result.gastosCom == null) result.gastosCom = aiData.gastosCom
+    if (aiData.m2 != null && result.m2 == null) result.m2 = aiData.m2
+    if (aiData.zona && !result.zona) result.zona = aiData.zona
+    if (aiData.direccion && !result.direccion) result.direccion = aiData.direccion
+    if (aiData.moneda && !result.moneda) result.moneda = aiData.moneda
+    if (aiData.dormitorios != null && result.dormitorios == null) result.dormitorios = aiData.dormitorios
+    if (aiData.banos != null && result.banos == null) result.banos = aiData.banos
 
     // Check if we got anything useful
     const hasData = result.titulo || result.precio != null || result.fotos.length > 0 || result.m2 != null

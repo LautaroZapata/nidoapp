@@ -254,24 +254,60 @@ export default function PisosPage() {
         direccion: f.direccion || d.direccion || '',
         notas: f.notas || buildNotas(d),
       }))
-      // Add photos
-      if (d.fotos?.length > 0) {
-        setFotosForm(prev => {
-          const existing = prev.filter(f => f.trim())
-          const newPhotos = d.fotos.filter((f: string) => !existing.includes(f))
-          const merged = [...existing, ...newPhotos]
-          return merged.length > 0 ? merged : ['']
-        })
+
+      // Compress and store photos in Supabase Storage
+      let photoCount = 0
+      if (d.fotos?.length > 0 && session) {
+        setScrapeMsg('Importando y comprimiendo fotos...')
+        try {
+          const compressRes = await fetch('/api/compress-photos', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ urls: d.fotos, salaId: session.salaId }),
+          })
+          if (compressRes.ok) {
+            const compressData = await compressRes.json()
+            const storedUrls: string[] = compressData.urls
+            photoCount = storedUrls.length
+            setFotosForm(prev => {
+              const existing = prev.filter(f => f.trim())
+              const newPhotos = storedUrls.filter(f => !existing.includes(f))
+              const merged = [...existing, ...newPhotos]
+              return merged.length > 0 ? merged : ['']
+            })
+          } else {
+            // Fallback: use original URLs
+            photoCount = d.fotos.length
+            setFotosForm(prev => {
+              const existing = prev.filter(f => f.trim())
+              const newPhotos = d.fotos.filter((f: string) => !existing.includes(f))
+              const merged = [...existing, ...newPhotos]
+              return merged.length > 0 ? merged : ['']
+            })
+          }
+        } catch {
+          // Fallback: use original URLs
+          photoCount = d.fotos.length
+          setFotosForm(prev => {
+            const existing = prev.filter(f => f.trim())
+            const newPhotos = d.fotos.filter((f: string) => !existing.includes(f))
+            const merged = [...existing, ...newPhotos]
+            return merged.length > 0 ? merged : ['']
+          })
+        }
       }
+
       // Open details section to show all filled fields
       setMasDetalles(true)
 
       const parts = []
       if (d.titulo) parts.push('título')
       if (d.precio != null) parts.push('precio')
-      if (d.fotos?.length) parts.push(`${d.fotos.length} foto${d.fotos.length > 1 ? 's' : ''}`)
+      if (photoCount > 0) parts.push(`${photoCount} foto${photoCount > 1 ? 's' : ''}`)
       if (d.m2 != null) parts.push('m²')
       if (d.zona) parts.push('zona')
+      if (d.gastosCom != null) parts.push('GC')
+      if (d.dormitorios) parts.push(`${d.dormitorios} dorm`)
       if (d.moneda) parts.push(`(${d.moneda})`)
       setScrapeMsg(parts.length > 0 ? `Importado: ${parts.join(', ')}` : 'No se encontró información útil')
     } catch {
