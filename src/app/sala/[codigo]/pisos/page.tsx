@@ -116,6 +116,7 @@ export default function PisosPage() {
   const [busqueda, setBusqueda] = useState('')
   const [orden, setOrden] = useState<'reciente' | 'nota' | 'precio'>('reciente')
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const scrollRestored = useRef(false)
   const [masDetalles, setMasDetalles] = useState(false)
   const [scraping, setScraping] = useState(false)
   const [scrapeMsg, setScrapeMsg] = useState('')
@@ -202,6 +203,18 @@ export default function PisosPage() {
     }
     return () => { document.body.style.overflow = '' }
   }, [modalOpen])
+
+  // Restaurar scroll position al volver de un apto
+  useEffect(() => {
+    if (!loading && !scrollRestored.current) {
+      scrollRestored.current = true
+      const saved = sessionStorage.getItem(`pisos-scroll-${codigo}`)
+      if (saved) {
+        sessionStorage.removeItem(`pisos-scroll-${codigo}`)
+        requestAnimationFrame(() => window.scrollTo({ top: parseInt(saved, 10), behavior: 'instant' as ScrollBehavior }))
+      }
+    }
+  }, [loading, codigo])
 
   async function handleSubirFoto(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
@@ -419,9 +432,10 @@ export default function PisosPage() {
         @media (min-width: 1024px) {
           .p-wrap { max-width: none; padding: 0 2.5rem 5rem; display: grid; grid-template-columns: 240px 1fr; column-gap: 2rem; align-items: start; }
           .p-header { grid-column: 1 / -1; }
-          .p-stats { grid-column: 1; flex-direction: column; gap: 0.75rem; margin-bottom: 0; position: sticky; top: 1.5rem; }
+          .p-sidebar { grid-column: 1; grid-row: 2 / span 10; position: sticky; top: 1.5rem; align-self: start; display: flex; flex-direction: column; gap: 0.75rem; }
+          .p-stats { grid-column: unset; flex-direction: column; gap: 0.75rem; margin-bottom: 0; position: static; }
           .p-stat { flex: none; min-width: 0; }
-          .p-filter-bar { grid-column: 1; flex-direction: column; gap: 6px; margin-top: 0.75rem; margin-bottom: 0; }
+          .p-filter-bar { grid-column: unset; flex-direction: column; gap: 6px; margin-top: 0; margin-bottom: 0; }
           .p-search { width: 100%; }
           .p-sort-group { flex-direction: column; width: 100%; }
           .p-sort-btn { width: 100%; text-align: left; border-radius: 10px; }
@@ -834,76 +848,79 @@ export default function PisosPage() {
             </div>
           </div>
 
-          {/* ── STATS ── */}
-          {!loading && (
-            <div className="p-stats">
-              <div className="p-stat">
-                <div className="p-stat-val">{pisos.length}</div>
-                <div className="p-stat-label">Aptos</div>
-              </div>
-              <div className="p-stat">
-                <div className="p-stat-val">
-                  {pisos.filter(p => p.promedio !== null).length > 0
-                    ? (pisos.filter(p => p.promedio !== null).reduce((s, p) => s + p.promedio!, 0) / pisos.filter(p => p.promedio !== null).length).toFixed(1)
-                    : '—'}
+          {/* ── SIDEBAR (Stats + Filtros) — en md+ queda sticky juntos ── */}
+          <div className="p-sidebar">
+            {/* ── STATS ── */}
+            {!loading && (
+              <div className="p-stats">
+                <div className="p-stat">
+                  <div className="p-stat-val">{pisos.length}</div>
+                  <div className="p-stat-label">Aptos</div>
                 </div>
-                <div className="p-stat-label">Nota media</div>
-              </div>
-              <div className="p-stat">
-                <div className="p-stat-val" style={{ fontSize: '1.1rem' }}>
-                  {pisos.filter(p => p.precio !== null).length > 0
-                    ? fmtUYU(Math.min(...pisos.filter(p => p.precio !== null).map(p => p.precio!)))
-                    : '—'}
+                <div className="p-stat">
+                  <div className="p-stat-val">
+                    {pisos.filter(p => p.promedio !== null).length > 0
+                      ? (pisos.filter(p => p.promedio !== null).reduce((s, p) => s + p.promedio!, 0) / pisos.filter(p => p.promedio !== null).length).toFixed(1)
+                      : '—'}
+                  </div>
+                  <div className="p-stat-label">Nota media</div>
                 </div>
-                <div className="p-stat-label">Precio mínimo</div>
+                <div className="p-stat">
+                  <div className="p-stat-val" style={{ fontSize: '1.1rem' }}>
+                    {pisos.filter(p => p.precio !== null).length > 0
+                      ? fmtUYU(Math.min(...pisos.filter(p => p.precio !== null).map(p => p.precio!)))
+                      : '—'}
+                  </div>
+                  <div className="p-stat-label">Precio mínimo</div>
+                </div>
+                <div className="p-stat">
+                  <div style={{ display: 'flex', gap: 6, marginBottom: 4 }}>
+                    {miembros.map(m => (
+                      <div key={m.id} className="p-avatar" style={{ background: m.color, width: 26, height: 26, fontSize: '0.65rem' }}>
+                        {m.nombre[0].toUpperCase()}
+                      </div>
+                    ))}
+                  </div>
+                  <div className="p-stat-label">{miembros.length} miembros</div>
+                </div>
               </div>
-              <div className="p-stat">
-                <div style={{ display: 'flex', gap: 6, marginBottom: 4 }}>
-                  {miembros.map(m => (
-                    <div key={m.id} className="p-avatar" style={{ background: m.color, width: 26, height: 26, fontSize: '0.65rem' }}>
-                      {m.nombre[0].toUpperCase()}
-                    </div>
+            )}
+
+            {/* ── FILTROS ── */}
+            {!loading && pisos.length > 0 && (
+              <div className="p-filter-bar">
+                <div className="p-search">
+                  <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                    <circle cx="6" cy="6" r="4.5" stroke="currentColor" strokeWidth="1.4"/>
+                    <path d="M9.5 9.5L12 12" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/>
+                  </svg>
+                  <input
+                    type="text"
+                    placeholder="Buscar por título, zona..."
+                    value={busqueda}
+                    onChange={e => { setBusqueda(e.target.value); setPisosPag(12) }}
+                  />
+                  {busqueda && (
+                    <button
+                      onClick={() => { setBusqueda(''); setPisosPag(12) }}
+                      style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#B09080', padding: 0, lineHeight: 1, fontSize: '1rem' }}
+                    >×</button>
+                  )}
+                </div>
+                <div className="p-sort-group">
+                  {(['reciente', 'nota', 'precio'] as const).map(o => (
+                    <button
+                      key={o}
+                      className={`p-sort-btn${orden === o ? ' active' : ''}`}
+                      onClick={() => { setOrden(o); setPisosPag(12) }}
+                    >
+                      {o === 'reciente' ? 'Reciente' : o === 'nota' ? '★ Nota' : '$ Precio'}
+                    </button>
                   ))}
                 </div>
-                <div className="p-stat-label">{miembros.length} miembros</div>
               </div>
-            </div>
-          )}
-
-          {/* ── FILTROS ── */}
-          {!loading && pisos.length > 0 && (
-            <div className="p-filter-bar">
-              <div className="p-search">
-                <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-                  <circle cx="6" cy="6" r="4.5" stroke="currentColor" strokeWidth="1.4"/>
-                  <path d="M9.5 9.5L12 12" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/>
-                </svg>
-                <input
-                  type="text"
-                  placeholder="Buscar por título, zona..."
-                  value={busqueda}
-                  onChange={e => { setBusqueda(e.target.value); setPisosPag(12) }}
-                />
-                {busqueda && (
-                  <button
-                    onClick={() => { setBusqueda(''); setPisosPag(12) }}
-                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#B09080', padding: 0, lineHeight: 1, fontSize: '1rem' }}
-                  >×</button>
-                )}
-              </div>
-              <div className="p-sort-group">
-                {(['reciente', 'nota', 'precio'] as const).map(o => (
-                  <button
-                    key={o}
-                    className={`p-sort-btn${orden === o ? ' active' : ''}`}
-                    onClick={() => { setOrden(o); setPisosPag(12) }}
-                  >
-                    {o === 'reciente' ? 'Reciente' : o === 'nota' ? '★ Nota' : '$ Precio'}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
+            )}
+          </div>
 
           <div className="p-main-col">
           {/* ── LOADING ── */}
@@ -948,7 +965,10 @@ export default function PisosPage() {
                   key={piso.id}
                   className="p-card"
                   style={{ animationDelay: `${idx * 0.07}s` }}
-                  onClick={() => router.push(`/sala/${codigo}/pisos/${piso.id}`)}
+                  onClick={() => {
+                    sessionStorage.setItem(`pisos-scroll-${codigo}`, String(window.scrollY))
+                    router.push(`/sala/${codigo}/pisos/${piso.id}`)
+                  }}
                 >
                   {piso.fotos?.[0] && (
                     <div className="p-card-cover">
