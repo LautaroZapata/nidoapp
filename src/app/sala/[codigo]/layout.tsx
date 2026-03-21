@@ -46,6 +46,15 @@ function IconPisos() {
   )
 }
 
+function IconTareas() {
+  return (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+      <path d="M9 11l3 3 5-5" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/>
+      <rect x="3" y="5" width="18" height="14" rx="3" stroke="currentColor" strokeWidth="1.7"/>
+    </svg>
+  )
+}
+
 function SalaLayoutInner({ children }: { children: React.ReactNode }) {
   const params   = useParams()
   const pathname = usePathname()
@@ -60,6 +69,7 @@ function SalaLayoutInner({ children }: { children: React.ReactNode }) {
     { label: 'Nido',    href: `/sala/${codigo}`,         icon: IconNido    },
     { label: 'Gastos',  href: `/sala/${codigo}/gastos`,  icon: IconGastos  },
     { label: 'Compras', href: `/sala/${codigo}/compras`, icon: IconCompras },
+    { label: 'Tareas',  href: `/sala/${codigo}/tareas`,  icon: IconTareas  },
     { label: 'Aptos',   href: `/sala/${codigo}/pisos`,   icon: IconPisos   },
   ]
 
