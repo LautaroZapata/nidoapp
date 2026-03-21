@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createHmac, timingSafeEqual } from 'crypto'
 import { createAdminClient } from '@/lib/supabase-admin'
 import { parsearMensaje, type CategoriaGasto } from '@/lib/whatsapp-ai'
+import { calcularNetMiembro } from '@/lib/balance-server'
 import {
   detectarCategoria,
   detectarSplitParcial,
@@ -25,8 +26,8 @@ import {
 async function verificarFirmaMeta(req: NextRequest, rawBody: string): Promise<boolean> {
   const appSecret = process.env.WHATSAPP_APP_SECRET
   if (!appSecret) {
-    console.warn('[WhatsApp] WHATSAPP_APP_SECRET no configurado — omitiendo verificación de firma')
-    return true // permitir en dev sin la variable
+    console.error('[WhatsApp] WHATSAPP_APP_SECRET no configurado — rechazando request')
+    return false // fail-secure: sin secret configurado, rechazar todo
   }
   const signature = req.headers.get('x-hub-signature-256') ?? ''
   if (!signature.startsWith('sha256=')) return false
@@ -272,41 +273,6 @@ async function eliminarPendiente(miembroId: string) {
   await supabase.from('whatsapp_pending_confirmations').delete().eq('miembro_id', miembroId)
 }
 
-async function calcularNetMiembro(salaId: string, miembroId: string): Promise<number> {
-  const [{ data: gastos }, { data: pagos }, { data: miembros }] = await Promise.all([
-    supabase.from('gastos').select('tipo, pagado_por, importe, splits, creado_en').eq('sala_id', salaId),
-    supabase.from('pagos').select('de_id, a_id, importe').eq('sala_id', salaId),
-    supabase.from('miembros').select('id, creado_en').eq('sala_id', salaId).not('user_id', 'is', null),
-  ])
-  const net: Record<string, number> = {}
-  ;(miembros ?? []).forEach((m: { id: string }) => { net[m.id] = 0 })
-  ;(gastos ?? []).forEach((g: { tipo: string; pagado_por: string | null; importe: number; splits: Record<string, number> | null; creado_en: string }) => {
-    if (g.tipo === 'fijo' || !g.pagado_por) return
-    if (!g.splits) {
-      // Solo incluir miembros que existían cuando se creó el gasto
-      const participantes = (miembros ?? []).filter((m: { id: string; creado_en: string }) => m.creado_en <= g.creado_en)
-      const share = g.importe / (participantes.length || 1)
-      net[g.pagado_por] = (net[g.pagado_por] ?? 0) + g.importe - share
-      participantes.forEach((m: { id: string }) => {
-        if (m.id !== g.pagado_por) net[m.id] = (net[m.id] ?? 0) - share
-      })
-    } else {
-      ;(miembros ?? []).forEach((m: { id: string }) => {
-        if (m.id === g.pagado_por) return
-        const owes = (g.splits as Record<string, number>)[m.id] ?? 0
-        if (owes <= 0) return
-        net[m.id] = (net[m.id] ?? 0) - owes
-        net[g.pagado_por!] = (net[g.pagado_por!] ?? 0) + owes
-      })
-    }
-  })
-  ;(pagos ?? []).forEach((p: { de_id: string; a_id: string; importe: number }) => {
-    net[p.de_id] = (net[p.de_id] ?? 0) + p.importe
-    net[p.a_id]  = (net[p.a_id]  ?? 0) - p.importe
-  })
-  return net[miembroId] ?? 0
-}
-
 // ---------------------------------------------------------------------------
 // POST — Recepción de mensajes
 // ---------------------------------------------------------------------------
@@ -428,7 +394,7 @@ export async function POST(req: NextRequest) {
           splits,
         })
         if (error) { await enviarMensaje(deFono, `❌ *Error al registrar el gasto*\n\nNo se pudo guardar en este momento. Por favor, intentá nuevamente en unos segundos.`); return NextResponse.json({ status: 'ok' }) }
-        const netPost = await calcularNetMiembro(miembro.sala_id, miembro.id)
+        const netPost = await calcularNetMiembro(supabase, miembro.sala_id, miembro!.id)
         const netTxt = Math.abs(netPost) < 0.5 ? '✅ Estás al día con el nido.' : netPost > 0 ? `💰 Tu balance actual: te deben $${Math.round(netPost).toLocaleString('es-UY')}` : `📊 Tu balance actual: debés $${Math.round(-netPost).toLocaleString('es-UY')}`
         const catEmojiSuccess = CAT_EMOJIS[accion.categoria ?? 'otro'] ?? '📦'
         let divLabelSuccess = 'entre todos'
@@ -516,7 +482,7 @@ export async function POST(req: NextRequest) {
         splits,
       })
       if (error) { await enviarMensaje(deFono, `❌ *Error al registrar el gasto*\n\nNo se pudo guardar. Intentá de nuevo.`); return NextResponse.json({ status: 'ok' }) }
-      const netPost = await calcularNetMiembro(miembro.sala_id, miembro.id)
+      const netPost = await calcularNetMiembro(supabase, miembro.sala_id, miembro!.id)
       const netTxt = Math.abs(netPost) < 0.5 ? '✅ Estás al día con el nido.' : netPost > 0 ? `💰 Tu balance actual: te deben $${Math.round(netPost).toLocaleString('es-UY')}` : `📊 Tu balance actual: debés $${Math.round(-netPost).toLocaleString('es-UY')}`
       await enviarMensaje(deFono, `✅ *Gasto registrado*\n\n📌 ${accionPendiente.descripcion}\n💵 $${Math.round(accionPendiente.monto).toLocaleString('es-UY')}\n👤 Pagado por: ${miembro.nombre}\n👥 División: ${divisionLabel}\n\n${netTxt}`)
       return NextResponse.json({ status: 'ok' })
@@ -641,7 +607,7 @@ export async function POST(req: NextRequest) {
   if (accion.accion === 'consultar_balance') {
     // Si preguntó específicamente si debe algo, responder directo
     if (preguntaSiDebe) {
-      const miNet = await calcularNetMiembro(miembro.sala_id, miembro.id)
+      const miNet = await calcularNetMiembro(supabase, miembro.sala_id, miembro.id)
       if (miNet >= -0.5) {
         const msg = miNet > 0.5
           ? `✅ No tenés deudas pendientes.\n\nAl contrario, te deben $${Math.round(miNet).toLocaleString('es-UY')} en total.`
@@ -692,7 +658,7 @@ export async function POST(req: NextRequest) {
 
   // ── 7. Liquidar deuda (verificar que realmente debe algo) ──
   if (accion.accion === 'liquidar_deuda') {
-    const miNet = await calcularNetMiembro(miembro.sala_id, miembro.id)
+    const miNet = await calcularNetMiembro(supabase, miembro.sala_id, miembro.id)
     if (miNet >= -0.5) {
       await enviarMensaje(deFono, `✅ *Sin deudas pendientes*\n\nEstás al día con todos los miembros del nido.`)
       return NextResponse.json({ status: 'ok' })
@@ -703,7 +669,7 @@ export async function POST(req: NextRequest) {
     let maxPositivo = 0
     for (const m of (todosNet ?? [])) {
       if (m.id === miembro.id) continue
-      const netM = await calcularNetMiembro(miembro.sala_id, m.id)
+      const netM = await calcularNetMiembro(supabase, miembro.sala_id, m.id)
       if (netM > maxPositivo) {
         maxPositivo = netM
         acreedorId = m.id
