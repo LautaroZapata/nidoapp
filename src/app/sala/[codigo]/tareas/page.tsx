@@ -63,6 +63,9 @@ export default function TareasPage() {
   const [formNombre, setFormNombre]       = useState('')
   const [formAsignada, setFormAsignada]   = useState('')
   const [formError, setFormError]         = useState('')
+  const [filtro, setFiltro] = useState<'todas' | 'pendientes' | 'completadas'>('todas')
+  const [pagPend, setPagPend] = useState(0)
+  const [pagComp, setPagComp] = useState(0)
 
   const cargarDatos = useCallback(async () => {
     if (!session) return
@@ -167,12 +170,24 @@ export default function TareasPage() {
     setBorrando(null)
   }
 
+  useEffect(() => {
+    setPagPend(0)
+    setPagComp(0)
+  }, [semana, filtro])
+
   function getMiembro(id: string | null) {
     return miembros.find(m => m.id === id) ?? null
   }
 
+  const PAGE_SIZE = 5
   const pendientes  = tareas.filter(t => !t.completada)
   const completadas = tareas.filter(t => t.completada)
+  const pendPaginas = Math.ceil(pendientes.length / PAGE_SIZE)
+  const compPaginas = Math.ceil(completadas.length / PAGE_SIZE)
+  const pendientesPag = pendientes.slice(pagPend * PAGE_SIZE, (pagPend + 1) * PAGE_SIZE)
+  const completadasPag = completadas.slice(pagComp * PAGE_SIZE, (pagComp + 1) * PAGE_SIZE)
+  const showPendientes = filtro !== 'completadas'
+  const showCompletadas = filtro !== 'pendientes'
 
   return (
     <div className={`${fraunces.variable} ${nunito.variable}`} style={{ minHeight: '100dvh', background: '#FFF8F2' }}>
@@ -307,6 +322,33 @@ export default function TareasPage() {
           font-size: 0.9rem; font-weight: 600; cursor: pointer;
           margin-top: 8px;
         }
+        .filter-tabs {
+          display: flex; gap: 6px; padding: 0 1.25rem 0.75rem;
+        }
+        .filter-tab {
+          padding: 5px 14px; border-radius: 20px;
+          border: 1.5px solid #EAD8C8; background: white;
+          font-family: 'Nunito', sans-serif; font-size: 0.78rem;
+          font-weight: 700; color: #8A6050; cursor: pointer;
+          transition: all 0.15s;
+        }
+        .filter-tab.active { background: #C05A3B; border-color: #C05A3B; color: white; }
+        .pagination {
+          display: flex; align-items: center; justify-content: center; gap: 8px;
+          padding: 8px 1.25rem 4px;
+        }
+        .pag-btn {
+          width: 30px; height: 30px; border-radius: 8px;
+          border: 1.5px solid #EAD8C8; background: white;
+          display: flex; align-items: center; justify-content: center;
+          cursor: pointer; color: #8A6050; transition: background 0.15s;
+        }
+        .pag-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+        .pag-btn:not(:disabled):hover { background: #F5EDE6; }
+        .pag-info {
+          font-family: 'Nunito', sans-serif; font-size: 0.78rem;
+          font-weight: 700; color: #B09080; min-width: 60px; text-align: center;
+        }
       `}</style>
 
       <div className="tareas-page">
@@ -330,6 +372,19 @@ export default function TareasPage() {
           </button>
         </div>
 
+        {/* Filter tabs */}
+        <div className="filter-tabs">
+          {(['todas', 'pendientes', 'completadas'] as const).map(f => (
+            <button
+              key={f}
+              className={`filter-tab${filtro === f ? ' active' : ''}`}
+              onClick={() => setFiltro(f)}
+            >
+              {f === 'todas' ? 'Todas' : f === 'pendientes' ? 'Pendientes' : 'Completadas'}
+            </button>
+          ))}
+        </div>
+
         {loading ? (
           <div style={{ textAlign: 'center', padding: '3rem', color: '#B09080', fontFamily: 'Nunito, sans-serif', fontSize: '0.9rem' }}>
             Cargando…
@@ -347,94 +402,131 @@ export default function TareasPage() {
         ) : (
           <>
             {/* Pendientes */}
-            {pendientes.length > 0 && (
-              <div style={{ background: 'white', borderRadius: 16, margin: '0 1rem 12px', border: '1.5px solid #EAD8C8', overflow: 'hidden' }}>
-                <div className="section-title">Pendientes · {pendientes.length}</div>
-                {pendientes.map(tarea => {
-                  const miembro = getMiembro(tarea.asignada_a)
-                  const esMia = tarea.asignada_a === session?.miembroId
-                  return (
-                    <div key={tarea.id} className="tarea-card">
-                      <button
-                        className={`tarea-check${esMia ? '' : ' locked'}`}
-                        onClick={() => esMia && toggleCompletada(tarea)}
-                        disabled={toggling === tarea.id || !esMia}
-                        aria-label={esMia ? 'Marcar completada' : 'Solo el asignado puede completar esta tarea'}
-                        title={esMia ? undefined : `Solo ${miembro?.nombre ?? 'el asignado'} puede completar esta tarea`}
-                      >
-                        {toggling === tarea.id && (
-                          <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-                            <path d="M2 6l3 3 5-5" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
-                          </svg>
+            {showPendientes && pendientes.length > 0 && (
+              <>
+                <div style={{ background: 'white', borderRadius: 16, margin: '0 1rem 0', border: '1.5px solid #EAD8C8', overflow: 'hidden' }}>
+                  <div className="section-title">Pendientes · {pendientes.length}</div>
+                  {pendientesPag.map(tarea => {
+                    const miembro = getMiembro(tarea.asignada_a)
+                    const esMia = tarea.asignada_a === session?.miembroId
+                    return (
+                      <div key={tarea.id} className="tarea-card">
+                        <button
+                          className={`tarea-check${esMia ? '' : ' locked'}`}
+                          onClick={() => esMia && toggleCompletada(tarea)}
+                          disabled={toggling === tarea.id || !esMia}
+                          aria-label={esMia ? 'Marcar completada' : 'Solo el asignado puede completar esta tarea'}
+                          title={esMia ? undefined : `Solo ${miembro?.nombre ?? 'el asignado'} puede completar esta tarea`}
+                        >
+                          {toggling === tarea.id && (
+                            <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                              <path d="M2 6l3 3 5-5" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+                            </svg>
+                          )}
+                          {!esMia && (
+                            <svg width="10" height="10" viewBox="0 0 12 14" fill="none">
+                              <rect x="1" y="6" width="10" height="7" rx="1.5" stroke="#C8B0A8" strokeWidth="1.4"/>
+                              <path d="M3 6V4a3 3 0 016 0v2" stroke="#C8B0A8" strokeWidth="1.4" strokeLinecap="round"/>
+                            </svg>
+                          )}
+                        </button>
+                        <span className="tarea-nombre">{tarea.nombre}</span>
+                        {miembro && (
+                          <div className="tarea-avatar" style={{ background: miembro.color }} title={miembro.nombre}>
+                            {miembro.nombre[0].toUpperCase()}
+                          </div>
                         )}
-                        {!esMia && (
-                          <svg width="10" height="10" viewBox="0 0 12 14" fill="none">
-                            <rect x="1" y="6" width="10" height="7" rx="1.5" stroke="#C8B0A8" strokeWidth="1.4"/>
-                            <path d="M3 6V4a3 3 0 016 0v2" stroke="#C8B0A8" strokeWidth="1.4" strokeLinecap="round"/>
+                        <button
+                          className="tarea-del"
+                          onClick={() => eliminarTarea(tarea.id)}
+                          disabled={borrando === tarea.id}
+                          aria-label="Eliminar"
+                        >
+                          <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                            <path d="M2 3.5h10M5.5 3.5V2.5a.5.5 0 01.5-.5h2a.5.5 0 01.5.5v1M5.5 6v4M8.5 6v4M3 3.5l.7 8a.5.5 0 00.5.5h5.6a.5.5 0 00.5-.5l.7-8" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
                           </svg>
-                        )}
-                      </button>
-                      <span className="tarea-nombre">{tarea.nombre}</span>
-                      {miembro && (
-                        <div className="tarea-avatar" style={{ background: miembro.color }} title={miembro.nombre}>
-                          {miembro.nombre[0].toUpperCase()}
-                        </div>
-                      )}
-                      <button
-                        className="tarea-del"
-                        onClick={() => eliminarTarea(tarea.id)}
-                        disabled={borrando === tarea.id}
-                        aria-label="Eliminar"
-                      >
-                        <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-                          <path d="M2 3.5h10M5.5 3.5V2.5a.5.5 0 01.5-.5h2a.5.5 0 01.5.5v1M5.5 6v4M8.5 6v4M3 3.5l.7 8a.5.5 0 00.5.5h5.6a.5.5 0 00.5-.5l.7-8" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
-                        </svg>
-                      </button>
-                    </div>
-                  )
-                })}
-              </div>
+                        </button>
+                      </div>
+                    )
+                  })}
+                </div>
+                {pendPaginas > 1 && (
+                  <div className="pagination">
+                    <button className="pag-btn" onClick={() => setPagPend(p => p - 1)} disabled={pagPend === 0} aria-label="Página anterior">
+                      <svg width="13" height="13" viewBox="0 0 14 14" fill="none"><path d="M9 2L4 7l5 5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                    </button>
+                    <span className="pag-info">{pagPend + 1} / {pendPaginas}</span>
+                    <button className="pag-btn" onClick={() => setPagPend(p => p + 1)} disabled={pagPend >= pendPaginas - 1} aria-label="Página siguiente">
+                      <svg width="13" height="13" viewBox="0 0 14 14" fill="none"><path d="M5 2l5 5-5 5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                    </button>
+                  </div>
+                )}
+                <div style={{ height: 12 }} />
+              </>
             )}
 
             {/* Completadas */}
-            {completadas.length > 0 && (
-              <div style={{ background: 'white', borderRadius: 16, margin: '0 1rem 12px', border: '1.5px solid #EAD8C8', overflow: 'hidden', opacity: 0.75 }}>
-                <div className="section-title">Completadas · {completadas.length}</div>
-                {completadas.map(tarea => {
-                  const miembro = getMiembro(tarea.asignada_a)
-                  const esMia = tarea.asignada_a === session?.miembroId
-                  return (
-                    <div key={tarea.id} className="tarea-card">
-                      <button
-                        className={`tarea-check done${esMia ? '' : ' locked'}`}
-                        onClick={() => esMia && toggleCompletada(tarea)}
-                        disabled={toggling === tarea.id || !esMia}
-                        aria-label={esMia ? 'Marcar pendiente' : 'Solo el asignado puede cambiar esta tarea'}
-                        title={esMia ? undefined : `Solo ${miembro?.nombre ?? 'el asignado'} puede cambiar esta tarea`}
-                      >
-                        <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-                          <path d="M2 6l3 3 5-5" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
-                        </svg>
-                      </button>
-                      <span className="tarea-nombre done">{tarea.nombre}</span>
-                      {miembro && (
-                        <div className="tarea-avatar" style={{ background: miembro.color }} title={miembro.nombre}>
-                          {miembro.nombre[0].toUpperCase()}
-                        </div>
-                      )}
-                      <button
-                        className="tarea-del"
-                        onClick={() => eliminarTarea(tarea.id)}
-                        disabled={borrando === tarea.id}
-                        aria-label="Eliminar"
-                      >
-                        <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-                          <path d="M2 3.5h10M5.5 3.5V2.5a.5.5 0 01.5-.5h2a.5.5 0 01.5.5v1M5.5 6v4M8.5 6v4M3 3.5l.7 8a.5.5 0 00.5.5h5.6a.5.5 0 00.5-.5l.7-8" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
-                        </svg>
-                      </button>
-                    </div>
-                  )
-                })}
+            {showCompletadas && completadas.length > 0 && (
+              <>
+                <div style={{ background: 'white', borderRadius: 16, margin: '0 1rem 0', border: '1.5px solid #EAD8C8', overflow: 'hidden', opacity: 0.75 }}>
+                  <div className="section-title">Completadas · {completadas.length}</div>
+                  {completadasPag.map(tarea => {
+                    const miembro = getMiembro(tarea.asignada_a)
+                    const esMia = tarea.asignada_a === session?.miembroId
+                    return (
+                      <div key={tarea.id} className="tarea-card">
+                        <button
+                          className={`tarea-check done${esMia ? '' : ' locked'}`}
+                          onClick={() => esMia && toggleCompletada(tarea)}
+                          disabled={toggling === tarea.id || !esMia}
+                          aria-label={esMia ? 'Marcar pendiente' : 'Solo el asignado puede cambiar esta tarea'}
+                          title={esMia ? undefined : `Solo ${miembro?.nombre ?? 'el asignado'} puede cambiar esta tarea`}
+                        >
+                          <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                            <path d="M2 6l3 3 5-5" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+                          </svg>
+                        </button>
+                        <span className="tarea-nombre done">{tarea.nombre}</span>
+                        {miembro && (
+                          <div className="tarea-avatar" style={{ background: miembro.color }} title={miembro.nombre}>
+                            {miembro.nombre[0].toUpperCase()}
+                          </div>
+                        )}
+                        <button
+                          className="tarea-del"
+                          onClick={() => eliminarTarea(tarea.id)}
+                          disabled={borrando === tarea.id}
+                          aria-label="Eliminar"
+                        >
+                          <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                            <path d="M2 3.5h10M5.5 3.5V2.5a.5.5 0 01.5-.5h2a.5.5 0 01.5.5v1M5.5 6v4M8.5 6v4M3 3.5l.7 8a.5.5 0 00.5.5h5.6a.5.5 0 00.5-.5l.7-8" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
+                          </svg>
+                        </button>
+                      </div>
+                    )
+                  })}
+                </div>
+                {compPaginas > 1 && (
+                  <div className="pagination">
+                    <button className="pag-btn" onClick={() => setPagComp(p => p - 1)} disabled={pagComp === 0} aria-label="Página anterior">
+                      <svg width="13" height="13" viewBox="0 0 14 14" fill="none"><path d="M9 2L4 7l5 5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                    </button>
+                    <span className="pag-info">{pagComp + 1} / {compPaginas}</span>
+                    <button className="pag-btn" onClick={() => setPagComp(p => p + 1)} disabled={pagComp >= compPaginas - 1} aria-label="Página siguiente">
+                      <svg width="13" height="13" viewBox="0 0 14 14" fill="none"><path d="M5 2l5 5-5 5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                    </button>
+                  </div>
+                )}
+                <div style={{ height: 12 }} />
+              </>
+            )}
+
+            {/* Empty state por filtro */}
+            {((filtro === 'pendientes' && pendientes.length === 0) || (filtro === 'completadas' && completadas.length === 0)) && (
+              <div className="empty-state">
+                <div style={{ fontFamily: 'Nunito, sans-serif', color: '#B09080', fontSize: '0.88rem' }}>
+                  No hay tareas {filtro === 'pendientes' ? 'pendientes' : 'completadas'} esta semana
+                </div>
               </div>
             )}
           </>
