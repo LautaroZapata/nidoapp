@@ -142,16 +142,28 @@ export default function TareasPage() {
   async function toggleCompletada(tarea: Tarea) {
     if (toggling || tarea.asignada_a !== session?.miembroId) return
     setToggling(tarea.id)
+    // Optimistic update
+    setTareas(prev => prev.map(t => t.id === tarea.id ? { ...t, completada: !tarea.completada } : t))
     const supabase = createClient()
-    await supabase.from('tareas').update({ completada: !tarea.completada }).eq('id', tarea.id)
+    const { error } = await supabase.from('tareas').update({ completada: !tarea.completada }).eq('id', tarea.id)
+    if (error) {
+      // Revert on failure
+      setTareas(prev => prev.map(t => t.id === tarea.id ? { ...t, completada: tarea.completada } : t))
+    }
     setToggling(null)
   }
 
   async function eliminarTarea(id: string) {
     if (borrando) return
     setBorrando(id)
+    // Optimistic update
+    setTareas(prev => prev.filter(t => t.id !== id))
     const supabase = createClient()
-    await supabase.from('tareas').delete().eq('id', id)
+    const { error } = await supabase.from('tareas').delete().eq('id', id)
+    if (error) {
+      // Revert on failure
+      cargarDatos()
+    }
     setBorrando(null)
   }
 
