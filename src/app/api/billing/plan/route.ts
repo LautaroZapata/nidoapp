@@ -12,39 +12,44 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'salaId requerido' }, { status: 400 })
   }
 
-  const supabase = createAdminClient()
-  const { data: sala } = await supabase
-    .from('salas')
-    .select('id, plan_tier')
-    .eq('id', salaId)
-    .single()
+  try {
+    const supabase = createAdminClient()
+    const { data: sala } = await supabase
+      .from('salas')
+      .select('id, plan_tier')
+      .eq('id', salaId)
+      .single()
 
-  if (!sala) {
-    return NextResponse.json({ error: 'Sala no encontrada' }, { status: 404 })
-  }
+    if (!sala) {
+      return NextResponse.json({ error: 'Sala no encontrada' }, { status: 404 })
+    }
 
-  const plan = await getSalaPlan(salaId)
+    const plan = await getSalaPlan(salaId)
 
-  if (plan === 'free') {
+    if (plan === 'free') {
+      return NextResponse.json({
+        plan,
+        limites: {
+          historialMeses: FREE_LIMITS.historialMeses,
+          maxMiembros: FREE_LIMITS.maxMiembros,
+        },
+      })
+    }
+
+    // Pro: determinar maxMiembros según tier
+    const tier = normalizeTier(sala.plan_tier)
+    const maxMiembros = tier === 'casa' ? null : TIERS.nido.maxMiembros
+
     return NextResponse.json({
       plan,
+      tier,
       limites: {
-        historialMeses: FREE_LIMITS.historialMeses,
-        maxMiembros: FREE_LIMITS.maxMiembros,
+        historialMeses: null,
+        maxMiembros,
       },
     })
+  } catch (err) {
+    console.error('[BillingPlan]', err)
+    return NextResponse.json({ error: 'Error interno del servidor' }, { status: 500 })
   }
-
-  // Pro: determinar maxMiembros según tier
-  const tier = normalizeTier(sala.plan_tier)
-  const maxMiembros = tier === 'casa' ? null : TIERS.nido.maxMiembros
-
-  return NextResponse.json({
-    plan,
-    tier,
-    limites: {
-      historialMeses: null,
-      maxMiembros,
-    },
-  })
 }
