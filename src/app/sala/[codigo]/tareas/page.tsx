@@ -121,13 +121,14 @@ export default function TareasPage() {
     e.preventDefault()
     setFormError('')
     if (!formNombre.trim()) { setFormError('El nombre es obligatorio'); return }
+    if (!formAsignada) { setFormError('Tenés que asignar la tarea a alguien'); return }
     if (!session) return
     setGuardando(true)
     const supabase = createClient()
     const { error } = await supabase.from('tareas').insert({
       sala_id: session.salaId,
       nombre: formNombre.trim(),
-      asignada_a: formAsignada || null,
+      asignada_a: formAsignada,
       semana,
       completada: false,
     })
@@ -139,7 +140,7 @@ export default function TareasPage() {
   }
 
   async function toggleCompletada(tarea: Tarea) {
-    if (toggling) return
+    if (toggling || tarea.asignada_a !== session?.miembroId) return
     setToggling(tarea.id)
     const supabase = createClient()
     await supabase.from('tareas').update({ completada: !tarea.completada }).eq('id', tarea.id)
@@ -210,7 +211,8 @@ export default function TareasPage() {
           cursor: pointer; flex-shrink: 0; transition: all 0.15s;
         }
         .tarea-check.done { background: #C05A3B; border-color: #C05A3B; }
-        .tarea-check:active { transform: scale(0.88); }
+        .tarea-check.locked { border-color: #E0D0C8; background: #F5EDE8; cursor: not-allowed; }
+        .tarea-check:not(.locked):active { transform: scale(0.88); }
         .tarea-nombre {
           flex: 1;
           font-family: 'Nunito', sans-serif; font-size: 0.92rem;
@@ -338,17 +340,25 @@ export default function TareasPage() {
                 <div className="section-title">Pendientes · {pendientes.length}</div>
                 {pendientes.map(tarea => {
                   const miembro = getMiembro(tarea.asignada_a)
+                  const esMia = tarea.asignada_a === session?.miembroId
                   return (
                     <div key={tarea.id} className="tarea-card">
                       <button
-                        className={`tarea-check${tarea.completada ? ' done' : ''}`}
-                        onClick={() => toggleCompletada(tarea)}
-                        disabled={toggling === tarea.id}
-                        aria-label="Marcar completada"
+                        className={`tarea-check${esMia ? '' : ' locked'}`}
+                        onClick={() => esMia && toggleCompletada(tarea)}
+                        disabled={toggling === tarea.id || !esMia}
+                        aria-label={esMia ? 'Marcar completada' : 'Solo el asignado puede completar esta tarea'}
+                        title={esMia ? undefined : `Solo ${miembro?.nombre ?? 'el asignado'} puede completar esta tarea`}
                       >
-                        {(toggling === tarea.id || tarea.completada) && (
+                        {toggling === tarea.id && (
                           <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
                             <path d="M2 6l3 3 5-5" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+                          </svg>
+                        )}
+                        {!esMia && (
+                          <svg width="10" height="10" viewBox="0 0 12 14" fill="none">
+                            <rect x="1" y="6" width="10" height="7" rx="1.5" stroke="#C8B0A8" strokeWidth="1.4"/>
+                            <path d="M3 6V4a3 3 0 016 0v2" stroke="#C8B0A8" strokeWidth="1.4" strokeLinecap="round"/>
                           </svg>
                         )}
                       </button>
@@ -380,13 +390,15 @@ export default function TareasPage() {
                 <div className="section-title">Completadas · {completadas.length}</div>
                 {completadas.map(tarea => {
                   const miembro = getMiembro(tarea.asignada_a)
+                  const esMia = tarea.asignada_a === session?.miembroId
                   return (
                     <div key={tarea.id} className="tarea-card">
                       <button
-                        className="tarea-check done"
-                        onClick={() => toggleCompletada(tarea)}
-                        disabled={toggling === tarea.id}
-                        aria-label="Marcar pendiente"
+                        className={`tarea-check done${esMia ? '' : ' locked'}`}
+                        onClick={() => esMia && toggleCompletada(tarea)}
+                        disabled={toggling === tarea.id || !esMia}
+                        aria-label={esMia ? 'Marcar pendiente' : 'Solo el asignado puede cambiar esta tarea'}
+                        title={esMia ? undefined : `Solo ${miembro?.nombre ?? 'el asignado'} puede cambiar esta tarea`}
                       >
                         <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
                           <path d="M2 6l3 3 5-5" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
@@ -453,13 +465,14 @@ export default function TareasPage() {
               </div>
 
               <div>
-                <label className="form-label">Asignada a (opcional)</label>
+                <label className="form-label">Asignada a</label>
                 <select
                   className="form-input"
                   value={formAsignada}
                   onChange={e => setFormAsignada(e.target.value)}
+                  required
                 >
-                  <option value="">Sin asignar</option>
+                  <option value="">Elegir miembro…</option>
                   {miembros.map(m => (
                     <option key={m.id} value={m.id}>{m.nombre}</option>
                   ))}
