@@ -396,6 +396,47 @@ function extractFacebook(html: string): Partial<ScrapedData> {
 
 // ── Site-specific: Instagram ─────────────────
 
+/** Extrae la caption real del HTML del embed de Instagram.
+ *  Instagram pone el caption en el cuerpo del embed, no en og:description. */
+function parseInstagramEmbedCaption(html: string): string | null {
+  // Patrón 1: <div class="Caption"> ... texto ... </div>
+  const captionDivMatch = html.match(/<div[^>]+class="[^"]*Caption[^"]*"[^>]*>([\s\S]*?)<\/div>/i)
+  if (captionDivMatch) {
+    const text = stripHtml(captionDivMatch[1]).trim()
+    if (text.length > 10 && !/^see (this|an) instagram/i.test(text)) return text.slice(0, 600)
+  }
+
+  // Patrón 2: <p class="..."> con la caption
+  const pTagMatch = html.match(/<p[^>]+class="[^"]*[Cc]aption[^"]*"[^>]*>([\s\S]*?)<\/p>/i)
+  if (pTagMatch) {
+    const text = stripHtml(pTagMatch[1]).trim()
+    if (text.length > 10) return text.slice(0, 600)
+  }
+
+  // Patrón 3: buscar el JSON _sharedData o additionalData embebido en el HTML
+  const sharedDataMatch = html.match(/window\._sharedData\s*=\s*(\{[\s\S]*?\});\s*<\/script>/)
+  if (sharedDataMatch) {
+    try {
+      const json = JSON.parse(sharedDataMatch[1])
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const edges: any[] = json?.entry_data?.PostPage?.[0]?.graphql?.shortcode_media?.edge_media_to_caption?.edges
+      if (edges?.[0]?.node?.text) return String(edges[0].node.text).slice(0, 600)
+    } catch { /* ignorar */ }
+  }
+
+  // Patrón 4: buscar texto entre comillas largas en el HTML del embed (último recurso)
+  const textBlockMatch = html.match(/<article[\s\S]*?<\/article>/i)
+  if (textBlockMatch) {
+    const text = stripHtml(textBlockMatch[0]).replace(/\s+/g, ' ').trim()
+    // Ignorar si parece boilerplate de Instagram
+    if (text.length > 20 && !/^(instagram|see this|view this)/i.test(text)) {
+      return text.slice(0, 600)
+    }
+  }
+
+  return null
+}
+
 function extractInstagram(html: string): Partial<ScrapedData> {
   const data: Partial<ScrapedData> = {}
 
@@ -403,7 +444,8 @@ function extractInstagram(html: string): Partial<ScrapedData> {
   if (title) data.titulo = title
 
   const desc = getMetaContent(html, 'og:description') || getMetaContent(html, 'description')
-  if (desc) {
+  // Solo usar og:description si no es el texto genérico de Instagram
+  if (desc && !/^see (this|an) instagram (post|photo|reel)/i.test(desc)) {
     data.notas = desc
     const priceMatch = desc.match(/(U\$S|USD|US\$|\$)\s*([\d.,]+)/i)
     if (priceMatch) {
@@ -707,6 +749,23 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    // ── Facebook: detectar login wall antes de parsear ──
+    if (site === 'facebook' && html) {
+      const fbTitle = getMetaContent(html, 'og:title') ?? ''
+      const isLoginWall =
+        /log\s*in|iniciar\s*sesión|inicia\s*sesión/i.test(fbTitle) ||
+        html.includes('"requireLogin":true') ||
+        html.includes('"isLoginPage":true') ||
+        html.includes('id="login_form"') ||
+        (html.includes('login') && !html.includes('og:description'))
+      if (isLoginWall) {
+        return NextResponse.json(
+          { error: 'Facebook requiere iniciar sesión para ver este contenido. Probá con un enlace público o de Marketplace abierto.' },
+          { status: 422 }
+        )
+      }
+    }
+
     // ── Extract from HTML (si tenemos) ──
     const ogData: Partial<ScrapedData> = html ? extractFromOG(html) : {}
     const jsonLdData: Partial<ScrapedData> = html ? extractFromJsonLd(html) : {}
@@ -737,8 +796,10 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // ── Instagram: fallback con embed si no se obtuvo data ──
-    if (site === 'instagram' && !(siteData.fotos?.length) && !(ogData.fotos?.length)) {
+    // ── Instagram: siempre intentar embed para caption real y fotos adicionales ──
+    // og:description de Instagram es siempre texto genérico ("See this Instagram post by @user...")
+    // El embed contiene la caption real y a veces más fotos.
+    if (site === 'instagram') {
       const embedUrl = getInstagramEmbedUrl(url)
       if (embedUrl) {
         try {
@@ -755,14 +816,36 @@ export async function POST(req: NextRequest) {
           clearTimeout(embedTimeout)
           if (embedRes.ok) {
             const embedHtml = await embedRes.text()
+
+            // 1. Intentar extraer caption real del embed
+            const embedCaption = parseInstagramEmbedCaption(embedHtml)
+            if (embedCaption) {
+              siteData.notas = embedCaption
+              // Re-extraer datos numéricos de la caption real
+              const priceM = embedCaption.match(/(U\$S|USD|US\$|\$)\s*([\d.,]+)/i)
+              if (priceM && !siteData.precio) {
+                const p = parsePrice(`${priceM[1]} ${priceM[2]}`)
+                if (p) { siteData.precio = p.amount; siteData.moneda = p.currency }
+              }
+              const m2M = embedCaption.match(/([\d]+)\s*m[²2]/i)
+              if (m2M && !siteData.m2) siteData.m2 = parseInt(m2M[1])
+              const dormM = embedCaption.match(/(\d+)\s*(?:dorm|dormitorio|hab)/i)
+              if (dormM && !siteData.dormitorios) siteData.dormitorios = parseInt(dormM[1])
+            }
+
+            // 2. Si el embed tiene más fotos que OG, usarlas
             const embedSite = extractInstagram(embedHtml)
             const embedOg = extractFromOG(embedHtml)
-            // Usar lo que venga del embed
-            if (embedSite.fotos?.length || embedOg.fotos?.length) {
-              siteData = { ...embedSite }
-              if (!siteData.fotos?.length && embedOg.fotos?.length) siteData.fotos = embedOg.fotos
-              if (!siteData.notas && embedOg.notas) siteData.notas = embedOg.notas
-              if (!siteData.titulo && embedOg.titulo) siteData.titulo = embedOg.titulo
+            const embedFotos = (embedSite.fotos?.length ?? 0) > (embedOg.fotos?.length ?? 0)
+              ? embedSite.fotos ?? []
+              : embedOg.fotos ?? []
+            if (embedFotos.length > (siteData.fotos?.length ?? 0)) {
+              siteData.fotos = embedFotos
+            }
+
+            // 3. Si no teníamos titulo, tomarlo del embed
+            if (!siteData.titulo && (embedSite.titulo || embedOg.titulo)) {
+              siteData.titulo = embedSite.titulo || embedOg.titulo
             }
           }
         } catch { /* embed fallback es best-effort */ }
