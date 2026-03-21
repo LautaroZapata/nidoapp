@@ -695,6 +695,11 @@ export default function GastosPage() {
     e.preventDefault()
     setFormError('')
     if (!form.descripcion.trim()) { setFormError('La descripción es obligatoria'); return }
+    if (form.descripcion.trim().length > 100) {
+      setFormError('La descripción no puede superar los 100 caracteres')
+      setGuardando(false)
+      return
+    }
     const importe = parseFloat(form.importe)
     if (!importe || importe <= 0) { setFormError('El importe debe ser mayor a 0'); return }
 
