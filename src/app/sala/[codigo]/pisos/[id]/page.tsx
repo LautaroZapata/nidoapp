@@ -248,13 +248,20 @@ export default function PisoDetallePage() {
     if (fileInputRef.current) fileInputRef.current.value = ''
   }
 
-  async function handleEliminarFoto(idx: number) {
+  function handleEliminarFoto(idx: number) {
     if (!piso) return
-    const nuevasFotos = piso.fotos.filter((_, i) => i !== idx)
-    const supabase = createClient()
-    await supabase.from('pisos').update({ fotos: nuevasFotos }).eq('id', pisoId)
-    setPiso({ ...piso, fotos: nuevasFotos })
-    setFotoActiva(Math.min(fotoActiva, nuevasFotos.length - 1))
+    setConfirmDialog({
+      title: 'Eliminar foto',
+      message: 'La foto será eliminada permanentemente.',
+      onConfirm: async () => {
+        setConfirmDialog(null)
+        const nuevasFotos = piso.fotos.filter((_, i) => i !== idx)
+        const supabase = createClient()
+        await supabase.from('pisos').update({ fotos: nuevasFotos }).eq('id', pisoId)
+        setPiso({ ...piso, fotos: nuevasFotos })
+        setFotoActiva(Math.min(fotoActiva, nuevasFotos.length - 1))
+      },
+    })
   }
 
   async function handleAgregarVideo(e: React.FormEvent) {
@@ -278,13 +285,20 @@ export default function PisoDetallePage() {
     setGuardandoVideo(false)
   }
 
-  async function handleEliminarVideo(idx: number) {
+  function handleEliminarVideo(idx: number) {
     if (!piso) return
-    const nuevosVideos = (piso.videos ?? []).filter((_, i) => i !== idx)
-    const supabase = createClient()
-    await supabase.from('pisos').update({ videos: nuevosVideos }).eq('id', pisoId)
-    setPiso({ ...piso, videos: nuevosVideos })
-    if (videoActivo !== null && videoActivo >= nuevosVideos.length) setVideoActivo(nuevosVideos.length > 0 ? nuevosVideos.length - 1 : null)
+    setConfirmDialog({
+      title: 'Eliminar video',
+      message: 'El video será eliminado permanentemente.',
+      onConfirm: async () => {
+        setConfirmDialog(null)
+        const nuevosVideos = (piso.videos ?? []).filter((_, i) => i !== idx)
+        const supabase = createClient()
+        await supabase.from('pisos').update({ videos: nuevosVideos }).eq('id', pisoId)
+        setPiso({ ...piso, videos: nuevosVideos })
+        if (videoActivo !== null && videoActivo >= nuevosVideos.length) setVideoActivo(nuevosVideos.length > 0 ? nuevosVideos.length - 1 : null)
+      },
+    })
   }
 
   const SUPPORTED_SITES = [

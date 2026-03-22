@@ -6,6 +6,7 @@ import { Fraunces, Nunito } from 'next/font/google'
 import { createClient } from '@/lib/supabase'
 import { getSession } from '@/lib/session'
 import type { Tarea, Miembro } from '@/lib/types'
+import { ConfirmModal } from '@/components/ConfirmModal'
 
 const fraunces = Fraunces({
   weight: 'variable',
@@ -66,6 +67,7 @@ export default function TareasPage() {
   const [filtro, setFiltro] = useState<'todas' | 'pendientes' | 'completadas'>('todas')
   const [pagPend, setPagPend] = useState(0)
   const [pagComp, setPagComp] = useState(0)
+  const [confirmDialog, setConfirmDialog] = useState<{ title?: string; message: string; onConfirm: () => void } | null>(null)
 
   const cargarDatos = useCallback(async () => {
     if (!session) return
@@ -156,18 +158,21 @@ export default function TareasPage() {
     setToggling(null)
   }
 
-  async function eliminarTarea(id: string) {
+  function eliminarTarea(id: string) {
     if (borrando) return
-    setBorrando(id)
-    // Optimistic update
-    setTareas(prev => prev.filter(t => t.id !== id))
-    const supabase = createClient()
-    const { error } = await supabase.from('tareas').delete().eq('id', id)
-    if (error) {
-      // Revert on failure
-      cargarDatos()
-    }
-    setBorrando(null)
+    setConfirmDialog({
+      title: 'Eliminar tarea',
+      message: '¿Querés eliminar esta tarea? Esta acción no se puede deshacer.',
+      onConfirm: async () => {
+        setConfirmDialog(null)
+        setBorrando(id)
+        setTareas(prev => prev.filter(t => t.id !== id))
+        const supabase = createClient()
+        const { error } = await supabase.from('tareas').delete().eq('id', id)
+        if (error) cargarDatos()
+        setBorrando(null)
+      },
+    })
   }
 
   useEffect(() => {
@@ -596,6 +601,14 @@ export default function TareasPage() {
           </div>
         </div>
       )}
+
+      <ConfirmModal
+        open={!!confirmDialog}
+        title={confirmDialog?.title}
+        message={confirmDialog?.message ?? ''}
+        onConfirm={() => confirmDialog?.onConfirm()}
+        onCancel={() => setConfirmDialog(null)}
+      />
     </div>
   )
 }
