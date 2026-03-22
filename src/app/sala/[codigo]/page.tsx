@@ -420,13 +420,25 @@ export default function SalaPage() {
           .s-mod-icon { font-size: 1.5rem; margin-bottom: 6px; }
           .s-mod-name { font-size: 0.88rem; }
           .s-mod-desc { font-size: 0.7rem; }
-          .s-miembros { padding: 0.9rem 1rem; }
-          .s-invite-btn span { display:none; }
+          .s-nido-header { padding: 0.85rem 1rem 0.65rem; }
+          .s-nido-sep { margin: 0 1rem; }
+          .s-miembro { padding: 0.55rem 1rem; }
+          .s-nido-sep-bottom { margin: 0.2rem 1rem 0; }
+          .s-nido-invite-wrap { padding: 0.65rem 1rem 0.85rem; }
+          .s-miembro-name { font-size: 0.86rem; }
         }
         @media (max-width: 360px) {
           .s-wrap { padding: 0 0.75rem 3rem; }
           .s-sala-name { font-size: 1.1rem; }
           .s-header-right { gap: 6px; }
+          .s-nido-header { padding: 0.75rem 0.9rem 0.6rem; }
+          .s-nido-sep { margin: 0 0.9rem; }
+          .s-miembro { padding: 0.5rem 0.9rem; }
+          .s-nido-sep-bottom { margin: 0.15rem 0.9rem 0; }
+          .s-nido-invite-wrap { padding: 0.6rem 0.9rem 0.75rem; }
+          .s-miembro-av { width: 30px; height: 30px; font-size: 0.72rem; }
+          .s-miembro-name { font-size: 0.82rem; }
+          .s-nido-invite-btn { font-size: 0.8rem; padding: 9px 12px; }
         }
 
         /* Desktop layout — context panel left, modules right */
