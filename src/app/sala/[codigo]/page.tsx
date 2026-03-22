@@ -4,7 +4,7 @@ import { useEffect, useState, useRef } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { Fraunces, Nunito } from 'next/font/google'
 import { createClient } from '@/lib/supabase'
-import { getSession, clearSession } from '@/lib/session'
+import { getSession, setSession, clearSession } from '@/lib/session'
 import type { Miembro, Invitacion } from '@/lib/types'
 import type { PostgrestError } from '@supabase/supabase-js'
 import dynamic from 'next/dynamic'
@@ -19,6 +19,11 @@ type DbResult<T> = { data: T | null; error: PostgrestError | null }
 
 const fraunces = Fraunces({ weight: 'variable', subsets: ['latin'], variable: '--font-serif' })
 const nunito = Nunito({ subsets: ['latin'], weight: ['300','400','500','600','700'], variable: '--font-body' })
+
+const COLORES = [
+  '#C05A3B', '#5A8869', '#C8823A', '#7B5EA7', '#2E86AB',
+  '#E84855', '#3BB273', '#D4A017', '#6B4226', '#1A535C',
+]
 
 export default function SalaPage() {
   const params = useParams()
@@ -62,6 +67,16 @@ export default function SalaPage() {
   const [billingLoading, setBillingLoading] = useState(false)
   const [billingError, setBillingError] = useState<string | null>(null)
   const [showPlanes, setShowPlanes] = useState(false)
+
+  // Config / personalization
+  const [editingNidoName, setEditingNidoName] = useState(false)
+  const [newNidoName, setNewNidoName] = useState('')
+  const [savingNidoName, setSavingNidoName] = useState(false)
+  const [editingMyName, setEditingMyName] = useState(false)
+  const [newMyName, setNewMyName] = useState('')
+  const [savingMyName, setSavingMyName] = useState(false)
+  const [showColorPicker, setShowColorPicker] = useState(false)
+  const [savingColor, setSavingColor] = useState(false)
 
   async function handleCheckout(tier: TierType) {
     if (!session) return
@@ -297,6 +312,57 @@ export default function SalaPage() {
     setTimeout(() => setInviteLinkCopiado(false), 2000)
   }
 
+  async function handleSaveNidoName() {
+    if (!session || !newNidoName.trim() || newNidoName.trim() === session.salaNombre) {
+      setEditingNidoName(false); return
+    }
+    setSavingNidoName(true)
+    const supabase = createClient()
+    const { error } = await supabase.from('salas').update({ nombre: newNidoName.trim() }).eq('id', session.salaId)
+    if (!error) {
+      const updated = { ...session, salaNombre: newNidoName.trim() }
+      setSession(updated)
+      setLocalSession(updated)
+    }
+    setSavingNidoName(false)
+    setEditingNidoName(false)
+  }
+
+  async function handleSaveMyName() {
+    if (!session || !newMyName.trim() || newMyName.trim().toLowerCase() === session.miembroNombre) {
+      setEditingMyName(false); return
+    }
+    setSavingMyName(true)
+    const supabase = createClient()
+    const nombre = newMyName.trim().toLowerCase()
+    const { error } = await supabase.from('miembros').update({ nombre }).eq('id', session.miembroId)
+    if (!error) {
+      const updated = { ...session, miembroNombre: nombre }
+      setSession(updated)
+      setLocalSession(updated)
+      setMiembros(prev => prev.map(m => m.id === session.miembroId ? { ...m, nombre } : m))
+    }
+    setSavingMyName(false)
+    setEditingMyName(false)
+  }
+
+  async function handleChangeColor(color: string) {
+    if (!session || color === session.miembroColor) {
+      setShowColorPicker(false); return
+    }
+    setSavingColor(true)
+    const supabase = createClient()
+    const { error } = await supabase.from('miembros').update({ color }).eq('id', session.miembroId)
+    if (!error) {
+      const updated = { ...session, miembroColor: color }
+      setSession(updated)
+      setLocalSession(updated)
+      setMiembros(prev => prev.map(m => m.id === session.miembroId ? { ...m, color } : m))
+    }
+    setSavingColor(false)
+    setShowColorPicker(false)
+  }
+
   if (!session) return null
 
   const modulos = [
@@ -445,9 +511,8 @@ export default function SalaPage() {
         @media (min-width: 1024px) {
           .s-wrap { max-width: none; padding: 0 2.5rem 2rem; }
           .s-desktop-cols { display: grid; grid-template-columns: 260px 1fr; gap: 2rem; align-items: start; }
-          .s-miembros { grid-column: 1; grid-row: 1; margin-bottom: 0; position: sticky; top: 1.5rem; }
-          .s-grid { grid-column: 2; grid-row: 1 / span 2; grid-template-columns: 1fr 1fr; }
-          .s-plan { grid-column: 1; grid-row: 2; margin-top: 0; }
+          .s-miembros { grid-column: 1; grid-row: 1; margin-bottom: 0; }
+          .s-grid { grid-column: 2; grid-row: 1 / span 4; grid-template-columns: 1fr 1fr; }
           .s-mod { padding: 2rem 1.75rem; min-height: 170px; }
           .s-mod-icon { font-size: 2.5rem; margin-bottom: 14px; }
           .s-mod-name { font-size: 1.15rem; }
@@ -465,6 +530,48 @@ export default function SalaPage() {
           .s-mod { padding: 2.5rem 2rem; min-height: 200px; }
           .s-mod-icon { font-size: 2.8rem; }
           .s-mod-name { font-size: 1.2rem; }
+        }
+
+        /* Config / personalization card */
+        .s-config { background: white; border-radius: 20px; border: 1.5px solid #EAD8C8; overflow: hidden; margin-bottom: 1.5rem; animation: s-fadeup 0.5s 0.12s cubic-bezier(0.22, 1, 0.36, 1) both; box-shadow: 0 2px 12px rgba(150,80,40,0.06); }
+        .s-config-header { display: flex; align-items: center; justify-content: space-between; padding: 1rem 1.25rem 0.75rem; }
+        .s-config-title { font-family: var(--font-serif),'Georgia',serif; font-size: 1rem; font-weight: 700; color: #2A1A0E; letter-spacing: -0.018em; }
+        .s-config-sep { height: 1px; background: #F0E4D8; margin: 0 1.25rem; }
+        .s-config-body { padding: 0.75rem 1.25rem 1rem; display: flex; flex-direction: column; gap: 14px; }
+        .s-config-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 38px; }
+        .s-config-label { font-size: 0.72rem; font-weight: 700; color: #8A5A40; text-transform: uppercase; letter-spacing: 0.08em; flex-shrink: 0; }
+        .s-config-value { font-size: 0.88rem; color: #2A1A0E; font-weight: 500; display: flex; align-items: center; gap: 8px; min-width: 0; }
+        .s-config-value span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .s-config-edit-btn { background: none; border: 1.5px solid #E0CAB8; border-radius: 8px; color: #A07060; width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: all 0.18s; flex-shrink: 0; }
+        .s-config-edit-btn:hover { background: #FFF8F5; border-color: #C05A3B; color: #C05A3B; }
+        .s-config-input-row { display: flex; align-items: center; gap: 8px; width: 100%; }
+        .s-config-input { flex: 1; padding: 8px 12px; background: white; border: 1.5px solid #E0CAB8; border-radius: 10px; font-size: 0.88rem; font-family: var(--font-body),'Nunito',sans-serif; color: #2A1A0E; outline: none; transition: border-color 0.18s, box-shadow 0.18s; min-width: 0; }
+        .s-config-input:focus { border-color: #C05A3B; box-shadow: 0 0 0 3px rgba(192,90,59,0.1); }
+        .s-config-save { padding: 7px 14px; background: #C05A3B; color: white; border: none; border-radius: 10px; font-size: 0.78rem; font-weight: 700; font-family: var(--font-body),'Nunito',sans-serif; cursor: pointer; transition: all 0.18s; white-space: nowrap; display: flex; align-items: center; gap: 5px; }
+        .s-config-save:hover:not(:disabled) { background: #A04730; }
+        .s-config-save:disabled { opacity: 0.55; cursor: not-allowed; }
+        .s-config-cancel { padding: 7px 10px; background: none; border: 1.5px solid #E0CAB8; color: #A07060; border-radius: 10px; font-size: 0.78rem; font-weight: 600; font-family: var(--font-body),'Nunito',sans-serif; cursor: pointer; transition: all 0.18s; }
+        .s-config-cancel:hover { border-color: #C0A898; color: #6B4030; }
+        .s-config-color-current { width: 26px; height: 26px; border-radius: 50%; border: 2.5px solid rgba(255,255,255,0.7); box-shadow: 0 2px 6px rgba(0,0,0,0.12); flex-shrink: 0; cursor: pointer; transition: transform 0.15s; }
+        .s-config-color-current:hover { transform: scale(1.1); }
+        .s-color-grid { display: flex; flex-wrap: wrap; gap: 8px; padding: 4px 0 2px; }
+        .s-color-dot { width: 30px; height: 30px; border-radius: 50%; border: 2.5px solid transparent; cursor: pointer; transition: all 0.18s; display: flex; align-items: center; justify-content: center; }
+        .s-color-dot:hover { transform: scale(1.12); box-shadow: 0 3px 10px rgba(0,0,0,0.15); }
+        .s-color-dot.active { border-color: #2A1A0E; box-shadow: 0 0 0 3px rgba(42,26,14,0.12); }
+        .s-config-sep-inner { height: 1px; background: #F0E4D8; margin: 2px 0; }
+        @media (max-width: 480px) {
+          .s-config-header { padding: 0.85rem 1rem 0.65rem; }
+          .s-config-sep { margin: 0 1rem; }
+          .s-config-body { padding: 0.65rem 1rem 0.85rem; }
+        }
+        @media (max-width: 360px) {
+          .s-config-header { padding: 0.75rem 0.9rem 0.6rem; }
+          .s-config-sep { margin: 0 0.9rem; }
+          .s-config-body { padding: 0.6rem 0.9rem 0.75rem; }
+        }
+        @media (min-width: 1024px) {
+          .s-config { grid-column: 1; grid-row: 2; margin-top: 0; margin-bottom: 0; }
+          .s-plan { grid-column: 1; grid-row: 3; margin-top: 0; }
         }
 
         /* Plan section */
@@ -700,6 +807,119 @@ export default function SalaPage() {
               </div>
             )
           })()}
+
+          {/* Config / personalization */}
+          <div className="s-config">
+            <div className="s-config-header">
+              <div className="s-config-title">Personalizar</div>
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none" style={{ color: '#B09080' }}>
+                <path d="M8.5 2.5l3 3-7.5 7.5H1v-3l7.5-7.5z" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round"/>
+                <path d="M7 4l3 3" stroke="currentColor" strokeWidth="1.3"/>
+              </svg>
+            </div>
+            <div className="s-config-sep" />
+            <div className="s-config-body">
+
+              {/* Nido name */}
+              <div>
+                <div className="s-config-label">Nombre del nido</div>
+                {editingNidoName ? (
+                  <div className="s-config-input-row" style={{ marginTop: 6 }}>
+                    <input
+                      className="s-config-input"
+                      value={newNidoName}
+                      onChange={e => setNewNidoName(e.target.value)}
+                      placeholder="Nombre del nido"
+                      autoFocus
+                      onKeyDown={e => { if (e.key === 'Enter') handleSaveNidoName(); if (e.key === 'Escape') setEditingNidoName(false) }}
+                    />
+                    <button className="s-config-save" onClick={handleSaveNidoName} disabled={savingNidoName}>
+                      {savingNidoName ? '...' : '✓'}
+                    </button>
+                    <button className="s-config-cancel" onClick={() => setEditingNidoName(false)}>✗</button>
+                  </div>
+                ) : (
+                  <div className="s-config-row" style={{ marginTop: 4 }}>
+                    <div className="s-config-value"><span>{session.salaNombre}</span></div>
+                    <button className="s-config-edit-btn" onClick={() => { setNewNidoName(session.salaNombre); setEditingNidoName(true) }} title="Editar nombre">
+                      <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M7.5 2l2.5 2.5L4 10.5H1.5V8L7.5 2z" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round"/></svg>
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              <div className="s-config-sep-inner" />
+
+              {/* My display name */}
+              <div>
+                <div className="s-config-label">Tu nombre</div>
+                {editingMyName ? (
+                  <div className="s-config-input-row" style={{ marginTop: 6 }}>
+                    <input
+                      className="s-config-input"
+                      value={newMyName}
+                      onChange={e => setNewMyName(e.target.value)}
+                      placeholder="Tu nombre en el nido"
+                      autoFocus
+                      onKeyDown={e => { if (e.key === 'Enter') handleSaveMyName(); if (e.key === 'Escape') setEditingMyName(false) }}
+                    />
+                    <button className="s-config-save" onClick={handleSaveMyName} disabled={savingMyName}>
+                      {savingMyName ? '...' : '✓'}
+                    </button>
+                    <button className="s-config-cancel" onClick={() => setEditingMyName(false)}>✗</button>
+                  </div>
+                ) : (
+                  <div className="s-config-row" style={{ marginTop: 4 }}>
+                    <div className="s-config-value"><span>{session.miembroNombre}</span></div>
+                    <button className="s-config-edit-btn" onClick={() => { setNewMyName(session.miembroNombre); setEditingMyName(true) }} title="Editar nombre">
+                      <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M7.5 2l2.5 2.5L4 10.5H1.5V8L7.5 2z" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round"/></svg>
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              <div className="s-config-sep-inner" />
+
+              {/* Avatar color */}
+              <div>
+                <div className="s-config-label">Tu color</div>
+                <div className="s-config-row" style={{ marginTop: 4 }}>
+                  <div className="s-config-value">
+                    <div
+                      className="s-config-color-current"
+                      style={{ backgroundColor: session.miembroColor }}
+                      onClick={() => setShowColorPicker(v => !v)}
+                      title="Cambiar color"
+                    />
+                    <span style={{ fontSize: '0.82rem', color: '#A07060' }}>
+                      {showColorPicker ? 'Elegí un color' : 'Tocar para cambiar'}
+                    </span>
+                  </div>
+                </div>
+                {showColorPicker && (
+                  <div className="s-color-grid" style={{ marginTop: 8 }}>
+                    {COLORES.map(c => (
+                      <button
+                        key={c}
+                        className={`s-color-dot${c === session.miembroColor ? ' active' : ''}`}
+                        style={{ backgroundColor: c }}
+                        onClick={() => handleChangeColor(c)}
+                        disabled={savingColor}
+                        title={c}
+                      >
+                        {c === session.miembroColor && (
+                          <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                            <path d="M2 6l3 3 5-5" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+                          </svg>
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+            </div>
+          </div>
 
           {/* Modules */}
           <div className="s-grid">
