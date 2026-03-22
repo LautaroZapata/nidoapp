@@ -8,6 +8,7 @@ import { getSession, clearSession } from '@/lib/session'
 import type { Miembro, Invitacion } from '@/lib/types'
 import type { PostgrestError } from '@supabase/supabase-js'
 import dynamic from 'next/dynamic'
+import { ConfirmModal } from '@/components/ConfirmModal'
 import { registrarPush, estadoPush } from '@/lib/push'
 import { normalizeTier, TIERS, FREE_FEATURES, FREE_LIMITS, getTierParaMiembros } from '@/lib/features'
 import type { TierType } from '@/lib/features'
@@ -51,6 +52,9 @@ export default function SalaPage() {
   const [showOnboarding, setShowOnboarding] = useState(false)
   const [pushStatus, setPushStatus] = useState<'granted' | 'denied' | 'default' | 'unsupported'>('unsupported')
   const [pushLoading, setPushLoading] = useState(false)
+
+  // Confirm dialog
+  const [confirmDialog, setConfirmDialog] = useState<{ title?: string; message: string; onConfirm: () => void } | null>(null)
 
   // Plan
   const [planInfo, setPlanInfo] = useState<{ plan_type: 'free' | 'pro'; plan_tier: string | null; owner_user_id: string | null; stripe_customer_id: string | null } | null>(null)
@@ -248,6 +252,18 @@ export default function SalaPage() {
     router.replace('/dashboard')
   }
 
+  function handleRemoverMiembro(miembroId: string, nombre: string) {
+    setConfirmDialog({
+      title: `Quitar a ${nombre}`,
+      message: `${nombre} será quitado del nido. Su historial de actividad se mantiene. Podrá volver si lo invitás de nuevo.`,
+      onConfirm: async () => {
+        setConfirmDialog(null)
+        const supabase = createClient()
+        await supabase.from('miembros').update({ user_id: null }).eq('id', miembroId)
+      },
+    })
+  }
+
   async function handleConectarWpp() {
     setWppLoading(true); setShowWpp(true); setWppCode('')
     const s = getSession()
@@ -333,15 +349,29 @@ export default function SalaPage() {
         .s-dropdown-sep { height:1px; background:#EAD8C8; margin:4px 0; }
         .s-dropdown-label { padding:8px 16px 4px; font-size:0.68rem; font-weight:700; color:#B09080; text-transform:uppercase; letter-spacing:0.08em; }
 
-        /* Members card */
-        .s-miembros { background: white; border-radius: 18px; border: 1.5px solid #EAD8C8; padding: 1.1rem 1.25rem; margin-bottom: 1.5rem; animation: s-fadeup 0.5s 0.05s cubic-bezier(0.22, 1, 0.36, 1) both; box-shadow: 0 2px 12px rgba(150,80,40,0.06); }
-        .s-miembros-label { font-size: 0.7rem; font-weight: 700; color: #B09080; text-transform: uppercase; letter-spacing: 0.09em; margin-bottom: 10px; }
-        .s-miembros-list { display: flex; gap: 14px; flex-wrap: wrap; }
-        .s-miembro { display: flex; align-items: center; gap: 8px; }
-        .s-miembro-av { width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 0.75rem; font-weight: 700; color: white; box-shadow: 0 2px 6px rgba(0,0,0,0.1); }
-        .s-miembro-name { font-size: 0.85rem; font-weight: 600; color: #2A1A0E; }
-        .s-miembro-you { font-size: 0.72rem; color: #C05A3B; font-weight: 500; }
-        .s-miembro-owner { font-size: 0.66rem; font-weight: 700; color: #C8823A; background: rgba(200,130,58,0.1); padding: 1px 6px; border-radius: 20px; border: 1px solid rgba(200,130,58,0.22); white-space: nowrap; }
+        /* Nido / Members card */
+        .s-miembros { background: white; border-radius: 20px; border: 1.5px solid #EAD8C8; overflow: hidden; margin-bottom: 1.5rem; animation: s-fadeup 0.5s 0.05s cubic-bezier(0.22, 1, 0.36, 1) both; box-shadow: 0 2px 12px rgba(150,80,40,0.06); }
+        .s-nido-header { display: flex; align-items: center; justify-content: space-between; padding: 1rem 1.25rem 0.75rem; }
+        .s-nido-title { font-family: var(--font-serif),'Georgia',serif; font-size: 1rem; font-weight: 700; color: #2A1A0E; letter-spacing: -0.018em; }
+        .s-nido-count { font-size: 0.68rem; font-weight: 700; color: #B09080; background: #F5EDE5; padding: 3px 9px; border-radius: 20px; border: 1px solid #E5D0C0; }
+        .s-nido-sep { height: 1px; background: #F0E4D8; margin: 0 1.25rem; }
+        .s-miembros-list { display: flex; flex-direction: column; padding: 0.5rem 0; }
+        .s-miembro { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 0.6rem 1.25rem; transition: background 0.15s; }
+        .s-miembro:hover { background: #FDF8F4; }
+        .s-miembro-left { display: flex; align-items: center; gap: 10px; min-width: 0; }
+        .s-miembro-av { width: 34px; height: 34px; border-radius: 50%; flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-size: 0.8rem; font-weight: 700; color: white; box-shadow: 0 2px 6px rgba(0,0,0,0.1); }
+        .s-miembro-info { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+        .s-miembro-name { font-size: 0.9rem; font-weight: 600; color: #2A1A0E; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .s-miembro-badges { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; }
+        .s-miembro-you { font-size: 0.65rem; color: #C05A3B; font-weight: 700; background: rgba(192,90,59,0.09); padding: 1px 6px; border-radius: 20px; border: 1px solid rgba(192,90,59,0.18); }
+        .s-miembro-owner { font-size: 0.65rem; font-weight: 700; color: #C8823A; background: rgba(200,130,58,0.1); padding: 1px 6px; border-radius: 20px; border: 1px solid rgba(200,130,58,0.22); white-space: nowrap; }
+        .s-miembro-remove { width: 28px; height: 28px; border-radius: 8px; background: transparent; border: 1.5px solid transparent; color: #D0A898; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.18s; flex-shrink: 0; }
+        .s-miembro-remove:hover { background: rgba(192,60,40,0.08); border-color: rgba(192,60,40,0.2); color: #C04040; }
+        .s-nido-sep-bottom { height: 1px; background: #F0E4D8; margin: 0.25rem 1.25rem 0; }
+        .s-nido-invite-wrap { padding: 0.75rem 1.25rem 1rem; }
+        .s-nido-invite-btn { width: 100%; display: flex; align-items: center; justify-content: center; gap: 7px; padding: 10px 16px; background: #C05A3B; color: white; border: none; border-radius: 12px; font-size: 0.84rem; font-weight: 700; font-family: var(--font-body),'Nunito',sans-serif; cursor: pointer; transition: all 0.2s; }
+        .s-nido-invite-btn:hover { background: #A04730; transform: translateY(-1px); box-shadow: 0 5px 16px rgba(192,90,59,0.3); }
+        .s-nido-invite-btn:active { transform: translateY(0); }
 
         /* Module grid */
         .s-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; animation: s-fadeup 0.5s 0.1s cubic-bezier(0.22, 1, 0.36, 1) both; }
@@ -404,8 +434,6 @@ export default function SalaPage() {
           .s-wrap { max-width: none; padding: 0 2.5rem 2rem; }
           .s-desktop-cols { display: grid; grid-template-columns: 260px 1fr; gap: 2rem; align-items: start; }
           .s-miembros { grid-column: 1; grid-row: 1; margin-bottom: 0; position: sticky; top: 1.5rem; }
-          .s-miembros-list { flex-direction: column; gap: 6px; }
-          .s-miembro { padding: 6px 8px; background: rgba(234,216,200,0.25); border-radius: 10px; }
           .s-grid { grid-column: 2; grid-row: 1 / span 2; grid-template-columns: 1fr 1fr; }
           .s-plan { grid-column: 1; grid-row: 2; margin-top: 0; }
           .s-mod { padding: 2rem 1.75rem; min-height: 170px; }
@@ -524,12 +552,6 @@ export default function SalaPage() {
               </button>
             </div>
             <div className="s-header-right">
-              <button className="s-invite-btn" onClick={handleInvitar}>
-                <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-                  <path d="M6 1v10M1 6h10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-                </svg>
-                <span>Invitar</span>
-              </button>
               <div className="s-menu-wrap" ref={menuRef}>
                 <div
                   className="s-avatar"
@@ -606,28 +628,66 @@ export default function SalaPage() {
           </div>
 
           <div className="s-desktop-cols">
-          {/* Members */}
-          <div className="s-miembros">
-            <div className="s-miembros-label">Miembros · {miembros.length}</div>
-            <div className="s-miembros-list">
-              {miembros.map((m) => (
-                <div key={m.id} className="s-miembro">
-                  <div className="s-miembro-av" style={{ backgroundColor: m.color }}>
-                    {m.nombre[0].toUpperCase()}
-                  </div>
-                  <div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '5px', flexWrap: 'wrap' }}>
-                      <div className="s-miembro-name">{m.nombre}</div>
-                      {m.user_id && planInfo?.owner_user_id && m.user_id === planInfo.owner_user_id && (
-                        <span className="s-miembro-owner">👑 dueño</span>
-                      )}
-                    </div>
-                    {m.id === session.miembroId && <div className="s-miembro-you">tú</div>}
-                  </div>
+          {/* Nido / Members card */}
+          {(() => {
+            const esOwner = !!(currentUserId && planInfo?.owner_user_id === currentUserId)
+            return (
+              <div className="s-miembros">
+                <div className="s-nido-header">
+                  <div className="s-nido-title">Tu nido</div>
+                  <span className="s-nido-count">{miembros.length} {miembros.length === 1 ? 'miembro' : 'miembros'}</span>
                 </div>
-              ))}
-            </div>
-          </div>
+                <div className="s-nido-sep" />
+                <div className="s-miembros-list">
+                  {miembros.map((m) => {
+                    const esDueño = !!(m.user_id && planInfo?.owner_user_id && m.user_id === planInfo.owner_user_id)
+                    const esTu    = m.id === session.miembroId
+                    const puedeQuitar = esOwner && !esTu && !esDueño
+                    return (
+                      <div key={m.id} className="s-miembro">
+                        <div className="s-miembro-left">
+                          <div className="s-miembro-av" style={{ backgroundColor: m.color }}>
+                            {m.nombre[0].toUpperCase()}
+                          </div>
+                          <div className="s-miembro-info">
+                            <div className="s-miembro-name">{m.nombre}</div>
+                            <div className="s-miembro-badges">
+                              {esDueño && <span className="s-miembro-owner">👑 dueño</span>}
+                              {esTu    && <span className="s-miembro-you">tú</span>}
+                            </div>
+                          </div>
+                        </div>
+                        {puedeQuitar && (
+                          <button
+                            className="s-miembro-remove"
+                            title={`Quitar a ${m.nombre}`}
+                            onClick={() => handleRemoverMiembro(m.id, m.nombre)}
+                          >
+                            <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                              <path d="M1 1l10 10M11 1L1 11" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
+                            </svg>
+                          </button>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+                {esOwner && (
+                  <>
+                    <div className="s-nido-sep-bottom" />
+                    <div className="s-nido-invite-wrap">
+                      <button className="s-nido-invite-btn" onClick={handleInvitar}>
+                        <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
+                          <path d="M6.5 1v11M1 6.5h11" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
+                        </svg>
+                        Invitar miembro
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
+            )
+          })()}
 
           {/* Modules */}
           <div className="s-grid">
@@ -935,6 +995,16 @@ export default function SalaPage() {
           onClose={() => setShowOnboarding(false)}
         />
       )}
+
+      {/* Remove member confirmation */}
+      <ConfirmModal
+        open={!!confirmDialog}
+        title={confirmDialog?.title}
+        message={confirmDialog?.message ?? ''}
+        confirmLabel="Sí, quitar"
+        onConfirm={() => confirmDialog?.onConfirm()}
+        onCancel={() => setConfirmDialog(null)}
+      />
 
       {/* Leave confirmation */}
       {showLeave && (
