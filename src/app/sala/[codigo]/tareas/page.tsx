@@ -83,7 +83,8 @@ export default function TareasPage() {
       supabase
         .from('miembros')
         .select()
-        .eq('sala_id', session.salaId),
+        .eq('sala_id', session.salaId)
+        .not('user_id', 'is', null),
     ])
     if (tareasData) setTareas(tareasData as Tarea[])
     if (miembrosData) setMiembros(miembrosData as Miembro[])
