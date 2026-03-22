@@ -303,7 +303,6 @@ export default function SalaPage() {
     { nombre: 'Aptos', descripcion: 'Buscar y comparar aptos', href: `/sala/${codigo}/pisos`, icono: '🏠', disponible: true, color: '#C05A3B' },
     { nombre: 'Gastos', descripcion: 'Gastos compartidos', href: `/sala/${codigo}/gastos`, icono: '💰', disponible: true, color: '#5A8869' },
     { nombre: 'Compras', descripcion: 'Lista de compras', href: `/sala/${codigo}/compras`, icono: '🛒', disponible: true, color: '#C8823A' },
-    { nombre: 'Tareas', descripcion: 'Rotación de tareas', href: `/sala/${codigo}/tareas`, icono: '✅', disponible: true, color: '#A09080' },
   ]
 
   return (
