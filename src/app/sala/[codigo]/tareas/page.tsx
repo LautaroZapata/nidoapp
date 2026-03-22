@@ -281,19 +281,18 @@ export default function TareasPage() {
         .modal-backdrop {
           position: fixed; inset: 0; z-index: 300;
           background: rgba(42,26,14,0.45); backdrop-filter: blur(6px);
-          display: flex; align-items: flex-end; justify-content: center;
+          display: flex; align-items: center; justify-content: center;
+          padding: 1.25rem;
         }
-        @media (min-width: 640px) { .modal-backdrop { align-items: center; } }
         .modal-sheet {
           width: 100%; max-width: 480px;
-          background: #FFF8F2; border-radius: 22px 22px 0 0;
+          background: #FFF8F2; border-radius: 22px;
           padding: 1.5rem 1.25rem 2rem;
-          animation: sheet-in 0.28s cubic-bezier(0.22,1,0.36,1);
+          animation: sheet-in 0.24s cubic-bezier(0.22,1,0.36,1);
         }
-        @media (min-width: 640px) { .modal-sheet { border-radius: 22px; } }
         @keyframes sheet-in {
-          from { transform: translateY(40px); opacity: 0; }
-          to   { transform: translateY(0);    opacity: 1; }
+          from { transform: scale(0.96); opacity: 0; }
+          to   { transform: scale(1);    opacity: 1; }
         }
         .form-label {
           font-family: 'Nunito', sans-serif; font-size: 0.75rem;
@@ -303,7 +302,7 @@ export default function TareasPage() {
         .form-input {
           width: 100%; padding: 11px 13px; border-radius: 10px;
           border: 1.5px solid #EAD8C8; background: white;
-          font-family: 'Nunito', sans-serif; font-size: 0.92rem;
+          font-family: 'Nunito', sans-serif; font-size: 1rem;
           color: #2A1A0E; outline: none; box-sizing: border-box;
         }
         .form-input:focus { border-color: #C05A3B; box-shadow: 0 0 0 3px rgba(192,90,59,0.1); }
