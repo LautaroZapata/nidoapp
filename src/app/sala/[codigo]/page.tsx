@@ -507,29 +507,32 @@ export default function SalaPage() {
           .s-nido-invite-btn { font-size: 0.8rem; padding: 9px 12px; }
         }
 
-        /* Desktop layout — context panel left, modules right */
+        /* Desktop layout — modules row on top, info cards in 3-col row below */
         @media (min-width: 1024px) {
-          .s-wrap { max-width: none; padding: 0 2.5rem 2rem; }
-          .s-desktop-cols { display: grid; grid-template-columns: 260px 1fr; gap: 2rem; align-items: start; }
-          .s-miembros { grid-column: 1; grid-row: 1; margin-bottom: 0; }
-          .s-grid { grid-column: 2; grid-row: 1 / span 4; grid-template-columns: 1fr 1fr; }
-          .s-mod { padding: 2rem 1.75rem; min-height: 170px; }
-          .s-mod-icon { font-size: 2.5rem; margin-bottom: 14px; }
-          .s-mod-name { font-size: 1.15rem; }
-          .s-mod-desc { font-size: 0.82rem; }
+          .s-wrap { max-width: 920px; margin: 0 auto; padding: 0 2rem 2rem; }
+          .s-desktop-cols { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1.25rem; align-items: start; }
+          .s-grid { grid-column: 1 / -1; grid-row: 1; grid-template-columns: repeat(4, 1fr); gap: 14px; }
+          .s-miembros { grid-column: 1; grid-row: 2; margin-bottom: 0; }
+          .s-mod { padding: 1.4rem 1.15rem; min-height: auto; }
+          .s-mod-icon { font-size: 2rem; margin-bottom: 10px; }
+          .s-mod-name { font-size: 1rem; }
+          .s-mod-desc { font-size: 0.78rem; }
         }
         @media (min-width: 1280px) {
-          .s-wrap { max-width: 1380px; margin: 0 auto; padding: 0 3rem 2rem; }
-          .s-desktop-cols { grid-template-columns: 280px 1fr; gap: 2.5rem; }
-          .s-mod { padding: 2.25rem 2rem; min-height: 185px; }
+          .s-wrap { max-width: 1060px; padding: 0 2.5rem 2rem; }
+          .s-desktop-cols { gap: 1.5rem; }
+          .s-mod { padding: 1.6rem 1.35rem; }
+          .s-mod-icon { font-size: 2.2rem; margin-bottom: 12px; }
+          .s-mod-name { font-size: 1.05rem; }
+          .s-mod-desc { font-size: 0.8rem; }
         }
         @media (min-width: 1536px) {
-          .s-wrap { max-width: 1560px; padding: 0 4rem 2rem; }
-          .s-desktop-cols { grid-template-columns: 300px 1fr; gap: 3rem; }
-          .s-grid { grid-template-columns: 1fr 1fr 1fr 1fr; }
-          .s-mod { padding: 2.5rem 2rem; min-height: 200px; }
-          .s-mod-icon { font-size: 2.8rem; }
-          .s-mod-name { font-size: 1.2rem; }
+          .s-wrap { max-width: 1200px; padding: 0 3rem 2rem; }
+          .s-desktop-cols { gap: 1.75rem; }
+          .s-mod { padding: 1.85rem 1.5rem; }
+          .s-mod-icon { font-size: 2.4rem; margin-bottom: 14px; }
+          .s-mod-name { font-size: 1.1rem; }
+          .s-mod-desc { font-size: 0.82rem; }
         }
 
         /* Config / personalization card */
@@ -570,8 +573,8 @@ export default function SalaPage() {
           .s-config-body { padding: 0.6rem 0.9rem 0.75rem; }
         }
         @media (min-width: 1024px) {
-          .s-config { grid-column: 1; grid-row: 2; margin-top: 0; margin-bottom: 0; }
-          .s-plan { grid-column: 1; grid-row: 3; margin-top: 0; }
+          .s-config { grid-column: 2; grid-row: 2; margin-top: 0; margin-bottom: 0; }
+          .s-plan { grid-column: 3; grid-row: 2; margin-top: 0; }
         }
 
         /* Plan section */
