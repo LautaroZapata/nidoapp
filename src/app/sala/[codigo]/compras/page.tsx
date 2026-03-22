@@ -121,14 +121,19 @@ export default function ComprasPage() {
     setToggling(null)
   }
 
-  async function handleEliminar(id: string) {
-    setBorrando(id)
-    const supabase = createClient()
-    const { error } = await supabase.from('items_compra').delete().eq('id', id)
-    if (error) {
-      setFormError('Error al eliminar el ítem')
-    }
-    setBorrando(null)
+  function handleEliminar(id: string) {
+    setConfirmDialog({
+      title: 'Eliminar ítem',
+      message: '¿Querés eliminar este ítem de la lista? Esta acción no se puede deshacer.',
+      onConfirm: async () => {
+        setConfirmDialog(null)
+        setBorrando(id)
+        const supabase = createClient()
+        const { error } = await supabase.from('items_compra').delete().eq('id', id)
+        if (error) setFormError('Error al eliminar el ítem')
+        setBorrando(null)
+      },
+    })
   }
 
   function handleLimpiarCompletados() {

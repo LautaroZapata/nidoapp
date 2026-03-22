@@ -793,14 +793,21 @@ export default function GastosPage() {
     setModalLiquidar(null)
   }
 
-  async function handleEliminarPago(id: string) {
-    const { error } = await createClient().from('pagos').delete().eq('id', id)
-    if (error) {
-      console.error('Error eliminando pago:', error)
-      addNotif('No se pudo eliminar el pago', '❌')
-    } else {
-      setPagos(prev => prev.filter(p => p.id !== id))
-    }
+  function handleEliminarPago(id: string) {
+    setConfirmDialog({
+      title: 'Deshacer pago',
+      message: 'El pago será eliminado. Esta acción no se puede deshacer.',
+      onConfirm: async () => {
+        setConfirmDialog(null)
+        const { error } = await createClient().from('pagos').delete().eq('id', id)
+        if (error) {
+          console.error('Error eliminando pago:', error)
+          addNotif('No se pudo eliminar el pago', '❌')
+        } else {
+          setPagos(prev => prev.filter(p => p.id !== id))
+        }
+      },
+    })
   }
 
   function handleEliminar(id: string) {
