@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback, useRef, useMemo } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { Fraunces, Nunito, DM_Mono } from 'next/font/google'
 import { createClient } from '@/lib/supabase'
+import { guardarActividad } from '@/lib/push'
 import { getSession } from '@/lib/session'
 import type { Piso, VotoPiso, Miembro } from '@/lib/types'
 
@@ -373,6 +374,7 @@ export default function PisosPage() {
       setGuardando(false)
       return
     }
+    guardarActividad({ salaId: session!.salaId, texto: `Nuevo apto: ${form.titulo.trim()}`, icono: '🏠', url: `/sala/${session!.salaCodigo}/pisos` })
     setForm(FORM_INIT)
     setFotosForm([''])
     setVideosForm([''])

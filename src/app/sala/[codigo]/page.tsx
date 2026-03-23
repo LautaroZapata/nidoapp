@@ -266,6 +266,7 @@ export default function SalaPage() {
     if (!s) return
     // Deslink user_id pero mantiene el miembro (para historial de gastos, etc.)
     await supabase.from('miembros').update({ user_id: null }).eq('id', s.miembroId)
+    await supabase.from('actividad').insert({ sala_id: s.salaId, texto: `${s.miembroNombre} dejó el nido`, icono: '👋', url: `/sala/${s.salaCodigo}` }).then(() => {}, () => {})
     clearSession()
     router.replace('/dashboard')
   }

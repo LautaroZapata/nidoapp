@@ -71,6 +71,16 @@ export async function POST(req: NextRequest) {
     .eq('id', sala_id)
     .single()
 
+  // Guardar actividad persistente
+  if (sala) {
+    await admin.from('actividad').insert({
+      sala_id,
+      texto: `${target.nombre} fue quitado del nido`,
+      icono: '👋',
+      url: `/sala/${sala.codigo}`,
+    }).then(() => {}, () => {})
+  }
+
   // Enviar push notification a los demás miembros
   const pushSecret = process.env.PUSH_NOTIFY_SECRET
   if (pushSecret && sala) {

@@ -8,7 +8,7 @@ import { getSession } from '@/lib/session'
 import type { Gasto, Miembro, Pago } from '@/lib/types'
 import { calcularBalance, desglosarDeuda, EPS } from '@/lib/balance'
 import type { Debt } from '@/lib/balance'
-import { notificarSala } from '@/lib/push'
+import { notificarSala, guardarActividad } from '@/lib/push'
 import { useNotif } from '@/lib/notif-context'
 import { ConfirmModal } from '@/components/ConfirmModal'
 import { FREE_LIMITS } from '@/lib/features'
@@ -740,13 +740,15 @@ export default function GastosPage() {
       if (error) { setFormError('Error al guardar el gasto'); setGuardando(false); return }
       // Notificar a los demás miembros
       const quien = miembros.find(m => m.id === session!.miembroId)?.nombre ?? 'Alguien'
+      const textoGasto = `${quien} añadió: ${payload.descripcion} (${fmtUYU(importeFinal)})`
       notificarSala({
         salaId: session!.salaId,
         excluirMiembroId: session!.miembroId,
         titulo: '💸 Nuevo gasto',
-        cuerpo: `${quien} agregó: ${payload.descripcion} (${fmtUYU(importeFinal)})`,
+        cuerpo: textoGasto,
         url: `/sala/${session!.salaCodigo}/gastos`,
       })
+      guardarActividad({ salaId: session!.salaId, texto: textoGasto, icono: '💸', url: `/sala/${session!.salaCodigo}/gastos` })
     }
 
     setModalOpen(false)
@@ -780,13 +782,15 @@ export default function GastosPage() {
       const fromM = miembros.find(m => m.id === d.from)
       const toM   = miembros.find(m => m.id === d.to)
       if (fromM && toM) {
+        const textoPago = `${fromM.nombre} le pagó ${fmtUYU(Math.round(importeNum))} a ${toM.nombre}`
         notificarSala({
           salaId: session!.salaId,
           excluirMiembroId: d.from,
           titulo: '💸 Pago registrado',
-          cuerpo: `${fromM.nombre} le pagó ${fmtUYU(Math.round(importeNum))} a ${toM.nombre}`,
+          cuerpo: textoPago,
           url: `/sala/${session!.salaCodigo}/gastos`,
         })
+        guardarActividad({ salaId: session!.salaId, texto: textoPago, icono: '💰', url: `/sala/${session!.salaCodigo}/gastos` })
       }
     }
     setLiquidando(null)
@@ -818,9 +822,13 @@ export default function GastosPage() {
         setConfirmDialog(null)
         setBorrando(id)
         const supabase = createClient()
+        const gasto = gastos.find(g => g.id === id)
         const { error } = await supabase.from('gastos').delete().eq('id', id)
         if (!error) {
           setGastos(prev => prev.filter(g => g.id !== id))
+          if (gasto) {
+            guardarActividad({ salaId: session!.salaId, texto: `Gasto eliminado: ${gasto.descripcion}`, icono: '🗑️', url: `/sala/${session!.salaCodigo}/gastos` })
+          }
         }
         setBorrando(null)
       },

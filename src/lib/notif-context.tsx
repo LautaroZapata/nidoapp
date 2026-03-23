@@ -10,7 +10,8 @@ type NotifCtx = {
   unreadCount: number
   bellOpen: boolean
   setBellOpen: (v: boolean) => void
-  addNotif: (text: string, icon: string, url?: string) => void
+  addNotif: (text: string, icon: string, url?: string, id?: string) => void
+  loadNotifs: (items: Notif[]) => void
   clearNotifs: () => void
   markAllRead: () => void
 }
@@ -23,19 +24,28 @@ export function NotifProvider({ children }: { children: ReactNode }) {
   const [unreadCount, setUnreadCount] = useState(0)
   const [bellOpen, setBellOpen] = useState(false)
 
-  const addNotif = useCallback((text: string, icon: string, url?: string) => {
-    const n: Notif = { id: Math.random().toString(36).slice(2), text, ts: Date.now(), icon, url }
-    setNotifs(prev => [n, ...prev].slice(0, 50))
+  const addNotif = useCallback((text: string, icon: string, url?: string, id?: string) => {
+    const nId = id ?? Math.random().toString(36).slice(2)
+    const n: Notif = { id: nId, text, ts: Date.now(), icon, url }
+    setNotifs(prev => {
+      if (id && prev.some(p => p.id === id)) return prev  // dedup por ID
+      return [n, ...prev].slice(0, 50)
+    })
     setUnreadCount(c => c + 1)
     setToasts(prev => [...prev, n])
     setTimeout(() => setToasts(prev => prev.filter(t => t.id !== n.id)), 4500)
+  }, [])
+
+  const loadNotifs = useCallback((items: Notif[]) => {
+    setNotifs(items.slice(0, 50))
+    setUnreadCount(items.length)
   }, [])
 
   const clearNotifs = useCallback(() => setNotifs([]), [])
   const markAllRead = useCallback(() => setUnreadCount(0), [])
 
   return (
-    <Ctx.Provider value={{ notifs, toasts, unreadCount, bellOpen, setBellOpen, addNotif, clearNotifs, markAllRead }}>
+    <Ctx.Provider value={{ notifs, toasts, unreadCount, bellOpen, setBellOpen, addNotif, loadNotifs, clearNotifs, markAllRead }}>
       {children}
     </Ctx.Provider>
   )
@@ -62,5 +72,6 @@ export function notifAccentColor(icon: string): string {
   if (icon === '🗑️') return '#B03A1A'
   if (icon === '👋') return '#D48806'
   if (icon === '🎉') return '#52C41A'
+  if (icon === '🛒') return '#8B5CF6'
   return '#A07060'
 }
