@@ -144,10 +144,8 @@ export default function Dashboard() {
         .d-btn-primary:hover:not(:disabled) { background:#A04730; transform:translateY(-1.5px); box-shadow:0 10px 28px rgba(192,90,59,0.35); }
         .d-btn-primary:disabled { opacity:0.55; cursor:not-allowed; }
 
-        .d-overlay { position:fixed; inset:0; background:rgba(42,26,14,0.45); backdrop-filter:blur(4px); z-index:500; display:flex; align-items:flex-end; justify-content:center; padding-bottom:env(safe-area-inset-bottom,0px); }
-        @media (min-width:480px) { .d-overlay { align-items:center; padding-bottom:0; } }
-        .d-modal { background:#FAF5EE; border-radius:24px 24px 0 0; width:100%; max-width:440px; padding:2rem 1.5rem 2.5rem; animation:d-modal 0.35s cubic-bezier(0.22,1,0.36,1) both; }
-        @media (min-width:480px) { .d-modal { border-radius:24px; } }
+        .d-overlay { position:fixed; inset:0; background:rgba(42,26,14,0.45); backdrop-filter:blur(4px); z-index:500; display:flex; align-items:center; justify-content:center; padding:1rem; }
+        .d-modal { background:#FAF5EE; border-radius:20px; width:100%; max-width:440px; padding:2rem 1.5rem 2.5rem; animation:d-modal 0.35s cubic-bezier(0.22,1,0.36,1) both; max-height:90vh; overflow-y:auto; box-shadow:0 20px 60px rgba(150,80,40,0.15); }
         .d-modal-title { font-family:var(--font-serif),'Georgia',serif; font-size:1.5rem; color:#2A1A0E; margin-bottom:0.25rem; font-weight:600; }
         .d-modal-sub { font-size:0.85rem; color:#A07060; margin-bottom:1.5rem; }
         .d-field { margin-bottom:14px; }

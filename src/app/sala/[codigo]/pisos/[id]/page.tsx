@@ -546,19 +546,18 @@ export default function PisoDetallePage() {
         .d-modal-overlay {
           position: fixed; inset: 0; background: rgba(42,26,14,0.5);
           backdrop-filter: blur(6px); z-index: 100;
-          display: flex; align-items: flex-end; justify-content: center;
+          display: flex; align-items: center; justify-content: center;
+          padding: 1rem;
           animation: d-overlay 0.2s ease both;
         }
-        @media (min-width: 600px) { .d-modal-overlay { align-items: center; } }
 
         .d-modal {
           background: #FFF8F2; border: 1.5px solid #EAD8C8;
-          border-radius: 24px 24px 0 0; width: 100%; max-width: 520px;
+          border-radius: 20px; width: 100%; max-width: 520px;
           padding: 2rem; animation: d-modal 0.3s cubic-bezier(0.22, 1, 0.36, 1) both;
-          max-height: 92vh; overflow-y: auto;
-          box-shadow: 0 -8px 40px rgba(150,80,40,0.12);
+          max-height: 90vh; overflow-y: auto;
+          box-shadow: 0 20px 60px rgba(150,80,40,0.15);
         }
-        @media (min-width: 600px) { .d-modal { border-radius: 20px; box-shadow: 0 20px 60px rgba(150,80,40,0.15); } }
 
         .d-modal-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.75rem; }
         .d-modal-title { font-family: var(--font-serif), serif; font-size: 1.4rem; color: #2A1A0E; letter-spacing: -0.025em; font-weight: 600; }

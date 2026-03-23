@@ -1247,21 +1247,20 @@ export default function GastosPage() {
         .g-overlay {
           position: fixed; inset: 0; background: rgba(42,26,14,0.5);
           backdrop-filter: blur(6px); z-index: 300;
-          display: flex; align-items: flex-end; justify-content: center;
+          display: flex; align-items: center; justify-content: center;
+          padding: 1rem;
           animation: g-overlay 0.2s ease both;
         }
-        @media (min-width: 600px) { .g-overlay { align-items: center; } }
 
         .g-modal {
           background: #FFF8F2; border: 1.5px solid #EAD8C8;
-          border-radius: 24px 24px 0 0; width: 100%; max-width: 520px;
-          padding: 2rem; padding-bottom: max(2rem, calc(env(safe-area-inset-bottom) + 1rem));
+          border-radius: 20px; width: 100%; max-width: 520px;
+          padding: 2rem;
           animation: g-modal 0.3s cubic-bezier(0.22, 1, 0.36, 1) both;
-          max-height: 92vh; overflow-y: auto;
+          max-height: 90vh; overflow-y: auto;
           -webkit-overflow-scrolling: touch; overscroll-behavior: contain;
-          box-shadow: 0 -8px 40px rgba(150,80,40,0.12);
+          box-shadow: 0 20px 60px rgba(150,80,40,0.15);
         }
-        @media (min-width: 600px) { .g-modal { border-radius: 20px; box-shadow: 0 20px 60px rgba(150,80,40,0.15); } }
 
         .g-modal-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.75rem; }
         .g-modal-title { font-family: var(--font-serif), serif; font-size: 1.5rem; color: #2A1A0E; letter-spacing: -0.025em; font-weight: 600; }

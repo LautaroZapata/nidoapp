@@ -581,21 +581,20 @@ export default function PisosPage() {
         .p-overlay {
           position: fixed; inset: 0; background: rgba(42,26,14,0.5);
           backdrop-filter: blur(6px); z-index: 300;
-          display: flex; align-items: flex-end; justify-content: center;
+          display: flex; align-items: center; justify-content: center;
+          padding: 1rem;
           animation: p-overlay 0.2s ease both;
         }
-        @media (min-width: 600px) { .p-overlay { align-items: center; } }
 
         .p-modal {
           background: #FFF8F2; border: 1.5px solid #EAD8C8;
-          border-radius: 24px 24px 0 0; width: 100%; max-width: 520px;
+          border-radius: 20px; width: 100%; max-width: 520px;
           padding: 2rem 2rem 0; animation: p-modal 0.3s cubic-bezier(0.22, 1, 0.36, 1) both;
-          max-height: 90vh; overflow-y: auto;
+          max-height: 88vh; overflow-y: auto;
           overscroll-behavior: contain; -webkit-overflow-scrolling: touch;
-          box-shadow: 0 -8px 40px rgba(150,80,40,0.12);
+          box-shadow: 0 20px 60px rgba(150,80,40,0.15);
           display: flex; flex-direction: column;
         }
-        @media (min-width: 600px) { .p-modal { border-radius: 20px; box-shadow: 0 20px 60px rgba(150,80,40,0.15); } }
         .p-modal form { flex: 1; display: flex; flex-direction: column; min-height: 0; }
         .p-submit-wrap {
           position: sticky; bottom: 0;
