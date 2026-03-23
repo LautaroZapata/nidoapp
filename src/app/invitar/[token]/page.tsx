@@ -5,6 +5,7 @@ import { useParams, useRouter } from 'next/navigation'
 import { Fraunces, Nunito } from 'next/font/google'
 import { createClient } from '@/lib/supabase'
 import { setSession } from '@/lib/session'
+import { notificarSala } from '@/lib/push'
 import type { Sala, Invitacion, Miembro } from '@/lib/types'
 import type { PostgrestError } from '@supabase/supabase-js'
 
@@ -171,6 +172,7 @@ export default function InvitarPage() {
       if (reErr) { setJoinError('Error al unirte'); setJoining(false); return }
       await supabase.from('invitaciones').update({ usado_en: new Date().toISOString() }).eq('id', invite.invitacion.id as string)
       await supabase.from('actividad').insert({ sala_id: invite.sala.id, texto: `${orphaned.nombre} se unió al nido`, icono: '🎉', url: `/sala/${invite.sala.codigo}` }).then(() => {}, () => {})
+      notificarSala({ salaId: invite.sala.id, titulo: '🎉 Nuevo miembro', cuerpo: `${orphaned.nombre} se unió al nido`, url: `/sala/${invite.sala.codigo}` })
       setSession({
         salaId: invite.sala.id, salaCodigo: invite.sala.codigo, salaNombre: invite.sala.nombre,
         miembroId: orphaned.id, miembroNombre: orphaned.nombre, miembroColor: orphaned.color,
@@ -214,6 +216,7 @@ export default function InvitarPage() {
     // Mark invite as used
     await supabase.from('invitaciones').update({ usado_en: new Date().toISOString() }).eq('id', invite.invitacion.id as string)
     await supabase.from('actividad').insert({ sala_id: invite.sala.id, texto: `${miembro.nombre} se unió al nido`, icono: '🎉', url: `/sala/${invite.sala.codigo}` }).then(() => {}, () => {})
+    notificarSala({ salaId: invite.sala.id, titulo: '🎉 Nuevo miembro', cuerpo: `${miembro.nombre} se unió al nido`, url: `/sala/${invite.sala.codigo}` })
 
     setSession({
       salaId: invite.sala.id, salaCodigo: invite.sala.codigo, salaNombre: invite.sala.nombre,

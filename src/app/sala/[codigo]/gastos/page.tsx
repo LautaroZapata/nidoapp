@@ -738,12 +738,14 @@ export default function GastosPage() {
     } else {
       const { error } = await supabase.from('gastos').insert({ sala_id: session!.salaId, ...payload })
       if (error) { setFormError('Error al guardar el gasto'); setGuardando(false); return }
-      // Notificar a los demás miembros
+      // Notificar solo a los miembros involucrados en el split (no al que lo creó)
       const quien = miembros.find(m => m.id === session!.miembroId)?.nombre ?? 'Alguien'
       const textoGasto = `${quien} añadió: ${payload.descripcion} (${fmtUYU(importeFinal)})`
+      const involucrados = splits ? Object.keys(splits).filter(id => id !== session!.miembroId) : undefined
       notificarSala({
         salaId: session!.salaId,
         excluirMiembroId: session!.miembroId,
+        soloMiembroIds: involucrados && involucrados.length > 0 ? involucrados : undefined,
         titulo: '💸 Nuevo gasto',
         cuerpo: textoGasto,
         url: `/sala/${session!.salaCodigo}/gastos`,
@@ -785,7 +787,7 @@ export default function GastosPage() {
         const textoPago = `${fromM.nombre} le pagó ${fmtUYU(Math.round(importeNum))} a ${toM.nombre}`
         notificarSala({
           salaId: session!.salaId,
-          excluirMiembroId: d.from,
+          soloMiembroIds: [d.to],
           titulo: '💸 Pago registrado',
           cuerpo: textoPago,
           url: `/sala/${session!.salaCodigo}/gastos`,
@@ -829,7 +831,10 @@ export default function GastosPage() {
           if (gasto) {
             const textoElim = `Gasto eliminado: ${gasto.descripcion}`
             guardarActividad({ salaId: session!.salaId, texto: textoElim, icono: '🗑️', url: `/sala/${session!.salaCodigo}/gastos` })
-            notificarSala({ salaId: session!.salaId, excluirMiembroId: session!.miembroId, titulo: '🗑️ Gasto eliminado', cuerpo: textoElim, url: `/sala/${session!.salaCodigo}/gastos` })
+            // Solo notificar al pagador original (si no es quien lo borra)
+            if (gasto.pagado_por && gasto.pagado_por !== session!.miembroId) {
+              notificarSala({ salaId: session!.salaId, soloMiembroIds: [gasto.pagado_por], titulo: '🗑️ Gasto eliminado', cuerpo: textoElim, url: `/sala/${session!.salaCodigo}/gastos` })
+            }
           }
         }
         setBorrando(null)

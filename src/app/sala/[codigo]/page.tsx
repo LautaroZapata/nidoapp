@@ -9,7 +9,7 @@ import type { Miembro, Invitacion } from '@/lib/types'
 import type { PostgrestError } from '@supabase/supabase-js'
 import dynamic from 'next/dynamic'
 import { ConfirmModal } from '@/components/ConfirmModal'
-import { registrarPush, estadoPush, asegurarPush } from '@/lib/push'
+import { registrarPush, estadoPush, asegurarPush, notificarSala } from '@/lib/push'
 import { normalizeTier, TIERS, FREE_FEATURES, FREE_LIMITS, getTierParaMiembros } from '@/lib/features'
 import type { TierType } from '@/lib/features'
 
@@ -267,6 +267,7 @@ export default function SalaPage() {
     // Deslink user_id pero mantiene el miembro (para historial de gastos, etc.)
     await supabase.from('miembros').update({ user_id: null }).eq('id', s.miembroId)
     await supabase.from('actividad').insert({ sala_id: s.salaId, texto: `${s.miembroNombre} dejó el nido`, icono: '👋', url: `/sala/${s.salaCodigo}` }).then(() => {}, () => {})
+    notificarSala({ salaId: s.salaId, titulo: '👋 Miembro se fue', cuerpo: `${s.miembroNombre} dejó el nido`, url: `/sala/${s.salaCodigo}` })
     clearSession()
     router.replace('/dashboard')
   }
