@@ -9,7 +9,7 @@ import type { Miembro, Invitacion } from '@/lib/types'
 import type { PostgrestError } from '@supabase/supabase-js'
 import dynamic from 'next/dynamic'
 import { ConfirmModal } from '@/components/ConfirmModal'
-import { registrarPush, estadoPush } from '@/lib/push'
+import { registrarPush, estadoPush, asegurarPush } from '@/lib/push'
 import { normalizeTier, TIERS, FREE_FEATURES, FREE_LIMITS, getTierParaMiembros } from '@/lib/features'
 import type { TierType } from '@/lib/features'
 
@@ -186,8 +186,11 @@ export default function SalaPage() {
       setTimeout(() => setShowOnboarding(true), 600)
     }
 
-    // Estado de notificaciones push
-    estadoPush().then(setPushStatus)
+    // Estado de notificaciones push + re-suscripción automática
+    estadoPush().then(status => {
+      setPushStatus(status)
+      if (status === 'granted') asegurarPush(s.miembroId, s.salaId)
+    })
 
     // ── Realtime: miembros ──
     const chMiembros = supabase
