@@ -170,6 +170,7 @@ export default function InvitarPage() {
         .from('miembros').update({ user_id: user.id }).eq('id', orphaned.id)
       if (reErr) { setJoinError('Error al unirte'); setJoining(false); return }
       await supabase.from('invitaciones').update({ usado_en: new Date().toISOString() }).eq('id', invite.invitacion.id as string)
+      await supabase.from('actividad').insert({ sala_id: invite.sala.id, texto: `${orphaned.nombre} se unió al nido`, icono: '🎉', url: `/sala/${invite.sala.codigo}` }).then(() => {}, () => {})
       setSession({
         salaId: invite.sala.id, salaCodigo: invite.sala.codigo, salaNombre: invite.sala.nombre,
         miembroId: orphaned.id, miembroNombre: orphaned.nombre, miembroColor: orphaned.color,
@@ -212,6 +213,7 @@ export default function InvitarPage() {
 
     // Mark invite as used
     await supabase.from('invitaciones').update({ usado_en: new Date().toISOString() }).eq('id', invite.invitacion.id as string)
+    await supabase.from('actividad').insert({ sala_id: invite.sala.id, texto: `${miembro.nombre} se unió al nido`, icono: '🎉', url: `/sala/${invite.sala.codigo}` }).then(() => {}, () => {})
 
     setSession({
       salaId: invite.sala.id, salaCodigo: invite.sala.codigo, salaNombre: invite.sala.nombre,

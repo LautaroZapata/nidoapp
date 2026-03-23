@@ -6,7 +6,7 @@ import { Fraunces, Nunito } from 'next/font/google'
 import { createClient } from '@/lib/supabase'
 import { getSession } from '@/lib/session'
 import type { ItemCompra, Miembro } from '@/lib/types'
-import { notificarSala } from '@/lib/push'
+import { notificarSala, guardarActividad } from '@/lib/push'
 import { ConfirmModal } from '@/components/ConfirmModal'
 
 const fraunces = Fraunces({
@@ -101,13 +101,15 @@ export default function ComprasPage() {
     })
     if (error) { setFormError('Error al añadir el ítem'); setGuardando(false); return }
     const quien = miembros.find(m => m.id === session!.miembroId)?.nombre ?? 'Alguien'
+    const textoCompra = `${quien} agregó: ${form.nombre.trim()}${form.cantidad > 1 ? ` (x${form.cantidad})` : ''}`
     notificarSala({
       salaId: session!.salaId,
       excluirMiembroId: session!.miembroId,
       titulo: '🛒 Nueva compra',
-      cuerpo: `${quien} agregó: ${form.nombre.trim()}${form.cantidad > 1 ? ` (x${form.cantidad})` : ''}`,
+      cuerpo: textoCompra,
       url: `/sala/${codigo}/compras`,
     })
+    guardarActividad({ salaId: session!.salaId, texto: textoCompra, icono: '🛒', url: `/sala/${codigo}/compras` })
     setModalOpen(false)
     setGuardando(false)
     setForm(FORM_INIT)

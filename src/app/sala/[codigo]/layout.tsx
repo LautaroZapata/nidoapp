@@ -1,11 +1,10 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useParams, usePathname, useRouter } from 'next/navigation'
 import { NotifProvider, useNotif, fmtTimeAgo, notifAccentColor, type Notif } from '@/lib/notif-context'
 import { getSession } from '@/lib/session'
 import { createClient } from '@/lib/supabase'
-import type { Miembro } from '@/lib/types'
 
 function IconNido() {
   return (
@@ -62,8 +61,7 @@ function SalaLayoutInner({ children }: { children: React.ReactNode }) {
   const codigo   = params.codigo as string
 
   const [session] = useState(getSession)
-  const miembrosRef = useRef<Miembro[]>([])
-  const { addNotif, notifs, toasts, unreadCount, bellOpen, setBellOpen, clearNotifs, markAllRead } = useNotif()
+  const { addNotif, loadNotifs, notifs, toasts, unreadCount, bellOpen, setBellOpen, clearNotifs, markAllRead } = useNotif()
 
   const tabs = [
     { label: 'Nido',    href: `/sala/${codigo}`,         icon: IconNido    },
@@ -78,82 +76,39 @@ function SalaLayoutInner({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!session) return
     const supabase = createClient()
-    supabase.from('miembros').select().eq('sala_id', session.salaId).not('user_id', 'is', null).then(({ data }) => {
-      if (data) miembrosRef.current = data as Miembro[]
-    })
 
-    const chGastos = supabase
-      .channel(`notif_gastos_${session.salaId}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'gastos', filter: `sala_id=eq.${session.salaId}` }, (payload) => {
-        const url = `/sala/${codigo}/gastos`
-        if (payload.eventType === 'INSERT') {
-          const g = payload.new as { descripcion: string; importe: number; pagado_por: string }
-          const quien = miembrosRef.current.find(m => m.id === g.pagado_por)?.nombre ?? 'Alguien'
-          addNotif(`${quien} añadió: ${g.descripcion} ($${g.importe.toLocaleString('es-UY')})`, '💸', url)
-        } else if (payload.eventType === 'DELETE') {
-          const old = payload.old as { descripcion?: string }
-          if (old.descripcion) addNotif(`Gasto eliminado: ${old.descripcion}`, '🗑️', url)
+    // Cargar historial de actividad desde la DB
+    supabase
+      .from('actividad')
+      .select('id, texto, icono, url, creado_en')
+      .eq('sala_id', session.salaId)
+      .order('creado_en', { ascending: false })
+      .limit(50)
+      .then(({ data }) => {
+        if (data && data.length > 0) {
+          loadNotifs(data.map(a => ({
+            id: a.id,
+            text: a.texto,
+            icon: a.icono,
+            url: a.url ?? undefined,
+            ts: new Date(a.creado_en).getTime(),
+          })))
         }
       })
-      .subscribe()
 
-    const chPagos = supabase
-      .channel(`notif_pagos_${session.salaId}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'pagos', filter: `sala_id=eq.${session.salaId}` }, (payload) => {
-        const url = `/sala/${codigo}/gastos`
-        if (payload.eventType === 'INSERT') {
-          const p = payload.new as { de_id: string; a_id: string; importe: number }
-          const ms = miembrosRef.current
-          const fromM = ms.find(m => m.id === p.de_id)?.nombre
-          const toM   = ms.find(m => m.id === p.a_id)?.nombre
-          const texto = fromM && toM
-            ? `${fromM} le pagó $${p.importe.toLocaleString('es-UY')} a ${toM}`
-            : 'Pago registrado'
-          addNotif(texto, '💰', url)
-        }
-      })
-      .subscribe()
-
-    const chPisos = supabase
-      .channel(`notif_pisos_${session.salaId}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'pisos', filter: `sala_id=eq.${session.salaId}` }, (payload) => {
-        const url = `/sala/${codigo}/pisos`
-        if (payload.eventType === 'INSERT') {
-          const p = payload.new as { titulo: string }
-          addNotif(`Nuevo apto: ${p.titulo}`, '🏠', url)
-        } else if (payload.eventType === 'DELETE') {
-          const old = payload.old as { titulo?: string }
-          if (old.titulo) addNotif(`Apto eliminado: ${old.titulo}`, '🗑️', url)
-        }
-      })
-      .subscribe()
-
-    const chMiembros = supabase
-      .channel(`notif_miembros_${session.salaId}`)
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'miembros', filter: `sala_id=eq.${session.salaId}` }, (payload) => {
-        const oldM = payload.old as { id?: string; user_id?: string | null }
-        const newM = payload.new as { id?: string; nombre?: string; user_id?: string | null }
-        // Detectar cuando un miembro es quitado (user_id pasa de algo a null)
-        if (oldM.user_id && !newM.user_id && newM.nombre) {
-          // No notificar si soy yo quien fue removido
-          if (oldM.user_id !== session.miembroId) {
-            addNotif(`${newM.nombre} fue quitado del nido`, '👋', `/sala/${codigo}`)
-          }
-        }
-        // Detectar cuando un nuevo miembro se une (user_id pasa de null a algo)
-        if (!oldM.user_id && newM.user_id && newM.nombre) {
-          addNotif(`${newM.nombre} se unió al nido`, '🎉', `/sala/${codigo}`)
-        }
+    // Escuchar nuevos eventos de actividad en tiempo real
+    const chActividad = supabase
+      .channel(`actividad_${session.salaId}`)
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'actividad', filter: `sala_id=eq.${session.salaId}` }, (payload) => {
+        const a = payload.new as { id: string; texto: string; icono: string; url: string | null; creado_en: string }
+        addNotif(a.texto, a.icono, a.url ?? undefined, a.id)
       })
       .subscribe()
 
     return () => {
-      supabase.removeChannel(chGastos)
-      supabase.removeChannel(chPagos)
-      supabase.removeChannel(chPisos)
-      supabase.removeChannel(chMiembros)
+      supabase.removeChannel(chActividad)
     }
-  }, [session, addNotif, codigo])
+  }, [session, addNotif, loadNotifs])
 
   function handleNotifClick(n: Notif) {
     if (n.url) {

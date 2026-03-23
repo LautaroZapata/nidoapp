@@ -122,3 +122,24 @@ export async function notificarSala(params: {
     // push es best-effort, nunca debe romper el flujo principal
   }
 }
+
+/** Guarda un evento de actividad en la DB (persistente). */
+export async function guardarActividad(params: {
+  salaId: string
+  texto: string
+  icono: string
+  url?: string
+}) {
+  try {
+    const { createClient } = await import('@/lib/supabase')
+    const supabase = createClient()
+    await supabase.from('actividad').insert({
+      sala_id: params.salaId,
+      texto: params.texto,
+      icono: params.icono,
+      url: params.url ?? null,
+    })
+  } catch {
+    // best-effort
+  }
+}
