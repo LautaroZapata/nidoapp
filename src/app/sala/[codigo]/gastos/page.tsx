@@ -828,7 +828,16 @@ export default function GastosPage() {
         const gasto = gastos.find(g => g.id === id)
         const { error } = await supabase.from('gastos').delete().eq('id', id)
         if (!error) {
-          setGastos(prev => prev.filter(g => g.id !== id))
+          const remaining = gastos.filter(g => g.id !== id)
+          setGastos(remaining)
+
+          // Si no quedan gastos variables compartidos, los pagos ya no tienen sentido → limpiarlos
+          const quedanVariables = remaining.some(g => g.tipo === 'variable' && !isPersonal(g))
+          if (!quedanVariables && pagos.length > 0) {
+            await supabase.from('pagos').delete().eq('sala_id', session!.salaId)
+            setPagos([])
+          }
+
           if (gasto) {
             const textoElim = `Gasto eliminado: ${gasto.descripcion}`
             guardarActividad({ salaId: session!.salaId, texto: textoElim, icono: '🗑️', url: `/sala/${session!.salaCodigo}/gastos` })
