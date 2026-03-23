@@ -106,12 +106,13 @@ create policy "Acceso público items_compra" on items_compra for all using (true
 create policy "Acceso público tareas" on tareas for all using (true) with check (true);
 
 -- ============================================
--- Habilitar Realtime para gastos, items_compra y tareas
+-- Habilitar Realtime para gastos, items_compra, tareas y miembros
 -- ============================================
 
 alter publication supabase_realtime add table gastos;
 alter publication supabase_realtime add table items_compra;
 alter publication supabase_realtime add table tareas;
+alter publication supabase_realtime add table miembros;
 
 -- ============================================
 -- Migraciones (ejecutar si la tabla ya existe)

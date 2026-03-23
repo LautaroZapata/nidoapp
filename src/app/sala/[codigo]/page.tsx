@@ -273,8 +273,13 @@ export default function SalaPage() {
       message: `${nombre} será quitado del nido. Su historial de actividad se mantiene. Podrá volver si lo invitás de nuevo.`,
       onConfirm: async () => {
         setConfirmDialog(null)
-        const supabase = createClient()
-        await supabase.from('miembros').update({ user_id: null }).eq('id', miembroId)
+        const s = getSession()
+        if (!s) return
+        await fetch('/api/sala/remove-member', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ miembro_id: miembroId, sala_id: s.salaId }),
+        })
       },
     })
   }
