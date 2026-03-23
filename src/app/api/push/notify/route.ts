@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import webpush from 'web-push'
 import { createAdminClient } from '@/lib/supabase-admin'
+import { createServerClient } from '@supabase/ssr'
+import { cookies } from 'next/headers'
 
 webpush.setVapidDetails(
   process.env.VAPID_EMAIL ?? 'mailto:nido@nido.app',
@@ -21,19 +23,38 @@ export interface PushPayload {
  * Envía una notificación push a todos los miembros de una sala,
  * excepto al que generó el evento.
  *
- * Puede ser llamado:
- * - Internamente desde otras API routes (con la misma SUPABASE_SERVICE_ROLE_KEY)
- * - Desde un Supabase Database Webhook (agregar PUSH_NOTIFY_SECRET como header)
+ * Autenticación (cualquiera de las dos):
+ * - Header x-push-secret (para llamadas server-to-server o webhooks)
+ * - Cookie de sesión Supabase (para llamadas desde el cliente)
  */
 export async function POST(req: NextRequest) {
-  // Autenticación: PUSH_NOTIFY_SECRET debe estar configurado
   const secret = process.env.PUSH_NOTIFY_SECRET
-  if (!secret) {
-    console.error('[Push Notify] PUSH_NOTIFY_SECRET no configurado')
-    return NextResponse.json({ error: 'Server misconfigured' }, { status: 500 })
-  }
   const headerSecret = req.headers.get('x-push-secret')
-  if (headerSecret !== secret) {
+
+  let autenticado = false
+
+  // Opción 1: secret header
+  if (secret && headerSecret === secret) {
+    autenticado = true
+  }
+
+  // Opción 2: sesión de usuario autenticado
+  if (!autenticado) {
+    try {
+      const cookieStore = await cookies()
+      const supabaseAuth = createServerClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+        { cookies: { getAll: () => cookieStore.getAll(), setAll: () => {} } },
+      )
+      const { data: { user } } = await supabaseAuth.auth.getUser()
+      if (user) autenticado = true
+    } catch {
+      // ignorar errores de auth
+    }
+  }
+
+  if (!autenticado) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 

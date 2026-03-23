@@ -370,6 +370,33 @@ export type Database = {
         }
         Relationships: []
       }
+      actividad: {
+        Row: {
+          id: string
+          sala_id: string
+          texto: string
+          icono: string
+          url: string | null
+          creado_en: string
+        }
+        Insert: {
+          id?: string
+          sala_id: string
+          texto: string
+          icono?: string
+          url?: string | null
+          creado_en?: string
+        }
+        Update: {
+          id?: string
+          sala_id?: string
+          texto?: string
+          icono?: string
+          url?: string | null
+          creado_en?: string
+        }
+        Relationships: []
+      }
       whatsapp_link_codes: {
         Row: {
           id: string
