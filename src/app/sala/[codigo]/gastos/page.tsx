@@ -827,7 +827,9 @@ export default function GastosPage() {
         if (!error) {
           setGastos(prev => prev.filter(g => g.id !== id))
           if (gasto) {
-            guardarActividad({ salaId: session!.salaId, texto: `Gasto eliminado: ${gasto.descripcion}`, icono: '🗑️', url: `/sala/${session!.salaCodigo}/gastos` })
+            const textoElim = `Gasto eliminado: ${gasto.descripcion}`
+            guardarActividad({ salaId: session!.salaId, texto: textoElim, icono: '🗑️', url: `/sala/${session!.salaCodigo}/gastos` })
+            notificarSala({ salaId: session!.salaId, excluirMiembroId: session!.miembroId, titulo: '🗑️ Gasto eliminado', cuerpo: textoElim, url: `/sala/${session!.salaCodigo}/gastos` })
           }
         }
         setBorrando(null)
