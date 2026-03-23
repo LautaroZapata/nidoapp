@@ -68,6 +68,36 @@ export async function estadoPush(): Promise<'granted' | 'denied' | 'default' | '
   return Notification.permission as 'granted' | 'denied' | 'default'
 }
 
+/**
+ * Re-suscribe silenciosamente si el permiso ya está granted pero
+ * no hay suscripción activa (expiró, se actualizó el SW, etc.).
+ * No pide permiso al usuario — solo actúa si ya lo dio antes.
+ */
+export async function asegurarPush(miembroId: string, salaId: string): Promise<void> {
+  try {
+    if (!('serviceWorker' in navigator) || !('PushManager' in window)) return
+    if (Notification.permission !== 'granted') return
+
+    const reg = await navigator.serviceWorker.ready
+    const existing = await reg.pushManager.getSubscription()
+    if (existing) return // ya hay suscripción activa, todo bien
+
+    // No hay suscripción → re-suscribir
+    const sub = await reg.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
+    })
+
+    await fetch('/api/push/subscribe', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ subscription: sub.toJSON(), miembro_id: miembroId, sala_id: salaId }),
+    })
+  } catch {
+    // best-effort, nunca debe romper el flujo principal
+  }
+}
+
 /** Notifica a los miembros de la sala (llama al endpoint interno). */
 export async function notificarSala(params: {
   salaId: string
