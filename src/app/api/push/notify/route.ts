@@ -13,6 +13,7 @@ webpush.setVapidDetails(
 export interface PushPayload {
   sala_id: string
   excluir_miembro_id?: string  // quien generó el evento, no recibe notificación
+  solo_miembro_ids?: string[]  // si se pasa, solo notifica a estos miembros
   titulo: string
   cuerpo: string
   url?: string
@@ -65,16 +66,19 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Body inválido' }, { status: 400 })
   }
 
-  const { sala_id, excluir_miembro_id, titulo, cuerpo, url } = payload
+  const { sala_id, excluir_miembro_id, solo_miembro_ids, titulo, cuerpo, url } = payload
   if (!sala_id || !titulo || !cuerpo) {
     return NextResponse.json({ error: 'Faltan parámetros' }, { status: 400 })
   }
 
   const admin = createAdminClient()
 
-  // Obtener suscripciones de la sala (excepto quien generó el evento)
+  // Obtener suscripciones de la sala, filtrando según corresponda
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let query = admin.from('push_subscriptions').select('*').eq('sala_id', sala_id) as any
+  if (solo_miembro_ids && solo_miembro_ids.length > 0) {
+    query = query.in('miembro_id', solo_miembro_ids)
+  }
   if (excluir_miembro_id) {
     query = query.neq('miembro_id', excluir_miembro_id)
   }

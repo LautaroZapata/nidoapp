@@ -102,6 +102,7 @@ export async function asegurarPush(miembroId: string, salaId: string): Promise<v
 export async function notificarSala(params: {
   salaId: string
   excluirMiembroId?: string
+  soloMiembroIds?: string[]  // si se pasa, solo notifica a estos miembros
   titulo: string
   cuerpo: string
   url?: string
@@ -113,6 +114,7 @@ export async function notificarSala(params: {
       body: JSON.stringify({
         sala_id: params.salaId,
         excluir_miembro_id: params.excluirMiembroId,
+        solo_miembro_ids: params.soloMiembroIds,
         titulo: params.titulo,
         cuerpo: params.cuerpo,
         url: params.url,
