@@ -5,6 +5,7 @@ import { useParams, usePathname, useRouter } from 'next/navigation'
 import { NotifProvider, useNotif, fmtTimeAgo, notifAccentColor, type Notif } from '@/lib/notif-context'
 import { getSession } from '@/lib/session'
 import { createClient } from '@/lib/supabase'
+import MemberAvatar from '@/components/MemberAvatar'
 
 function IconNido() {
   return (
@@ -474,9 +475,14 @@ function SalaLayoutInner({ children }: { children: React.ReactNode }) {
           </button>
           {session && (
             <div className="sidebar-user">
-              <div className="sidebar-user-av" style={{ background: session.miembroColor }}>
-                {session.miembroNombre[0].toUpperCase()}
-              </div>
+              <MemberAvatar
+                nombre={session.miembroNombre}
+                color={session.miembroColor}
+                gradiente={session.miembroGradiente}
+                icono={session.miembroIcono}
+                size="sm"
+                className="sidebar-user-av"
+              />
               <span className="sidebar-user-name">{session.miembroNombre}</span>
             </div>
           )}

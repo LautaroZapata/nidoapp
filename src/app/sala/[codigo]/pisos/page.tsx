@@ -5,6 +5,7 @@ import { useParams, useRouter } from 'next/navigation'
 import { Fraunces, Nunito, DM_Mono } from 'next/font/google'
 import { createClient } from '@/lib/supabase'
 import { guardarActividad, notificarSala } from '@/lib/push'
+import MemberAvatar from '@/components/MemberAvatar'
 import { getSession } from '@/lib/session'
 import type { Piso, VotoPiso, Miembro } from '@/lib/types'
 
@@ -838,9 +839,7 @@ export default function PisosPage() {
               </div>
             </div>
             <div className="p-header-right">
-              <div className="p-avatar" style={{ background: session.miembroColor }}>
-                {session.miembroNombre[0].toUpperCase()}
-              </div>
+              <MemberAvatar nombre={session.miembroNombre} color={session.miembroColor} gradiente={session.miembroGradiente} icono={session.miembroIcono} size="md" className="p-avatar" />
               <button className="p-add-btn" onClick={abrirModal}>
                 <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
                   <circle cx="7" cy="7" r="5.5" stroke="currentColor" strokeWidth="1.4" />
@@ -879,9 +878,7 @@ export default function PisosPage() {
                 <div className="p-stat">
                   <div style={{ display: 'flex', gap: 6, marginBottom: 4 }}>
                     {miembros.map(m => (
-                      <div key={m.id} className="p-avatar" style={{ background: m.color, width: 26, height: 26, fontSize: '0.65rem' }}>
-                        {m.nombre[0].toUpperCase()}
-                      </div>
+                      <MemberAvatar key={m.id} nombre={m.nombre} color={m.color} gradiente={m.gradiente} icono={m.icono} size="sm" style={{ width: 26, height: 26 }} />
                     ))}
                   </div>
                   <div className="p-stat-label">{miembros.length} miembros</div>
@@ -1023,9 +1020,7 @@ export default function PisosPage() {
                         {piso.votos.map(v => {
                           const m = miembros.find(mb => mb.id === v.miembro_id)
                           return m ? (
-                            <div key={v.id} className="p-votes-av" style={{ background: m.color }} title={m.nombre}>
-                              {m.nombre[0].toUpperCase()}
-                            </div>
+                            <MemberAvatar key={v.id} nombre={m.nombre} color={m.color} gradiente={m.gradiente} icono={m.icono} size="sm" style={{ width: 22, height: 22 }} />
                           ) : null
                         })}
                       </div>

@@ -7,6 +7,8 @@ export type Session = {
   miembroId: string
   miembroNombre: string
   miembroColor: string
+  miembroGradiente?: string | null
+  miembroIcono?: string | null
 }
 
 export function getSession(): Session | null {
