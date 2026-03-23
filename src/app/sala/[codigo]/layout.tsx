@@ -128,10 +128,30 @@ function SalaLayoutInner({ children }: { children: React.ReactNode }) {
       })
       .subscribe()
 
+    const chMiembros = supabase
+      .channel(`notif_miembros_${session.salaId}`)
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'miembros', filter: `sala_id=eq.${session.salaId}` }, (payload) => {
+        const oldM = payload.old as { id?: string; user_id?: string | null }
+        const newM = payload.new as { id?: string; nombre?: string; user_id?: string | null }
+        // Detectar cuando un miembro es quitado (user_id pasa de algo a null)
+        if (oldM.user_id && !newM.user_id && newM.nombre) {
+          // No notificar si soy yo quien fue removido
+          if (oldM.user_id !== session.miembroId) {
+            addNotif(`${newM.nombre} fue quitado del nido`, '👋', `/sala/${codigo}`)
+          }
+        }
+        // Detectar cuando un nuevo miembro se une (user_id pasa de null a algo)
+        if (!oldM.user_id && newM.user_id && newM.nombre) {
+          addNotif(`${newM.nombre} se unió al nido`, '🎉', `/sala/${codigo}`)
+        }
+      })
+      .subscribe()
+
     return () => {
       supabase.removeChannel(chGastos)
       supabase.removeChannel(chPagos)
       supabase.removeChannel(chPisos)
+      supabase.removeChannel(chMiembros)
     }
   }, [session, addNotif, codigo])
 
@@ -409,7 +429,7 @@ function SalaLayoutInner({ children }: { children: React.ReactNode }) {
                   <div style={{ fontSize: '2rem', marginBottom: 10 }}>🔔</div>
                   <div style={{ fontFamily: 'var(--font-nunito), Nunito, sans-serif', fontWeight: 700, color: '#2A1A0E', fontSize: '0.9rem', marginBottom: 4 }}>Sin actividad aún</div>
                   <div style={{ fontFamily: 'var(--font-nunito), Nunito, sans-serif', color: '#B09080', fontSize: '0.78rem', lineHeight: 1.5 }}>
-                    Las notificaciones de gastos,<br/>pagos y aptos aparecerán aquí.
+                    Las notificaciones de gastos, pagos,<br/>aptos y miembros aparecerán aquí.
                   </div>
                 </div>
               ) : notifs.map((n: Notif) => {
