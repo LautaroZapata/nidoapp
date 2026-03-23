@@ -7,6 +7,7 @@ import { createClient } from '@/lib/supabase'
 import { getSession } from '@/lib/session'
 import type { ItemCompra, Miembro } from '@/lib/types'
 import { guardarActividad } from '@/lib/push'
+import MemberAvatar from '@/components/MemberAvatar'
 import { ConfirmModal } from '@/components/ConfirmModal'
 
 const fraunces = Fraunces({
@@ -490,9 +491,7 @@ export default function ComprasPage() {
                   En vivo
                 </div>
               )}
-              <div className="c-avatar" style={{ background: session.miembroColor }}>
-                {session.miembroNombre[0].toUpperCase()}
-              </div>
+              <MemberAvatar nombre={session.miembroNombre} color={session.miembroColor} gradiente={session.miembroGradiente} icono={session.miembroIcono} size="md" className="c-avatar" />
               <button className="c-add-btn" onClick={() => { setForm(FORM_INIT); setFormError(''); setModalOpen(true) }}>
                 <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
                   <circle cx="7" cy="7" r="5.5" stroke="currentColor" strokeWidth="1.4" />

@@ -7,6 +7,7 @@ import { createClient } from '@/lib/supabase'
 import { getSession } from '@/lib/session'
 import type { Tarea, Miembro } from '@/lib/types'
 import { ConfirmModal } from '@/components/ConfirmModal'
+import MemberAvatar from '@/components/MemberAvatar'
 
 const fraunces = Fraunces({
   weight: 'variable',
@@ -437,9 +438,7 @@ export default function TareasPage() {
                         </button>
                         <span className="tarea-nombre">{tarea.nombre}</span>
                         {miembro && (
-                          <div className="tarea-avatar" style={{ background: miembro.color }} title={miembro.nombre}>
-                            {miembro.nombre[0].toUpperCase()}
-                          </div>
+                          <MemberAvatar nombre={miembro.nombre} color={miembro.color} gradiente={miembro.gradiente} icono={miembro.icono} size="sm" style={{ width: 22, height: 22 }} />
                         )}
                         <button
                           className="tarea-del"
@@ -493,9 +492,7 @@ export default function TareasPage() {
                         </button>
                         <span className="tarea-nombre done">{tarea.nombre}</span>
                         {miembro && (
-                          <div className="tarea-avatar" style={{ background: miembro.color }} title={miembro.nombre}>
-                            {miembro.nombre[0].toUpperCase()}
-                          </div>
+                          <MemberAvatar nombre={miembro.nombre} color={miembro.color} gradiente={miembro.gradiente} icono={miembro.icono} size="sm" style={{ width: 22, height: 22 }} />
                         )}
                         <button
                           className="tarea-del"

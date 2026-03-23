@@ -9,9 +9,12 @@ import type { Miembro, Invitacion } from '@/lib/types'
 import type { PostgrestError } from '@supabase/supabase-js'
 import dynamic from 'next/dynamic'
 import { ConfirmModal } from '@/components/ConfirmModal'
+import MemberAvatar from '@/components/MemberAvatar'
 import { registrarPush, estadoPush, asegurarPush, notificarSala } from '@/lib/push'
 import { normalizeTier, TIERS, FREE_FEATURES, FREE_LIMITS, getTierParaMiembros } from '@/lib/features'
 import type { TierType } from '@/lib/features'
+import { calcularBadges, type Badge } from '@/lib/badges'
+import type { Gasto, ItemCompra, Tarea, Piso } from '@/lib/types'
 
 const OnboardingModal = dynamic(() => import('@/components/OnboardingModal'), { ssr: false })
 
@@ -75,8 +78,45 @@ export default function SalaPage() {
   const [editingMyName, setEditingMyName] = useState(false)
   const [newMyName, setNewMyName] = useState('')
   const [savingMyName, setSavingMyName] = useState(false)
+  const [memberBadges, setMemberBadges] = useState<Map<string, Badge[]>>(new Map())
   const [showColorPicker, setShowColorPicker] = useState(false)
   const [savingColor, setSavingColor] = useState(false)
+  const [showGradientPicker, setShowGradientPicker] = useState(false)
+  const [showIconPicker, setShowIconPicker] = useState(false)
+  const [savingGradient, setSavingGradient] = useState(false)
+  const [savingIcon, setSavingIcon] = useState(false)
+
+  const ICONOS = ['🐱', '🐶', '🦊', '🐼', '🐸', '🦄', '🐝', '🦋', '🐙', '🎸', '🎮', '🏀', '🌮', '☕', '🍕', '🎯', '🔥', '💎', '🌊', '🌻']
+
+  async function handleChangeGradient(gradiente: string | null) {
+    if (!session) return
+    setSavingGradient(true)
+    const supabase = createClient()
+    const { error } = await supabase.from('miembros').update({ gradiente }).eq('id', session.miembroId)
+    if (!error) {
+      const updated = { ...session, miembroGradiente: gradiente }
+      setSession(updated)
+      setLocalSession(updated)
+      setMiembros(prev => prev.map(m => m.id === session.miembroId ? { ...m, gradiente } : m))
+    }
+    setSavingGradient(false)
+    setShowGradientPicker(false)
+  }
+
+  async function handleChangeIcon(icono: string | null) {
+    if (!session) return
+    setSavingIcon(true)
+    const supabase = createClient()
+    const { error } = await supabase.from('miembros').update({ icono }).eq('id', session.miembroId)
+    if (!error) {
+      const updated = { ...session, miembroIcono: icono }
+      setSession(updated)
+      setLocalSession(updated)
+      setMiembros(prev => prev.map(m => m.id === session.miembroId ? { ...m, icono } : m))
+    }
+    setSavingIcon(false)
+    setShowIconPicker(false)
+  }
 
   async function handleCheckout(tier: TierType) {
     if (!session) return
@@ -237,6 +277,46 @@ export default function SalaPage() {
     if (menuOpen) document.addEventListener('mousedown', handleClick)
     return () => document.removeEventListener('mousedown', handleClick)
   }, [menuOpen])
+
+  // Calcular badges cuando hay miembros
+  useEffect(() => {
+    if (!session || miembros.length === 0) return
+    const supabase = createClient()
+    Promise.all([
+      supabase.from('gastos').select('*').eq('sala_id', session.salaId),
+      supabase.from('items_compra').select('*').eq('sala_id', session.salaId),
+      supabase.from('tareas').select('*').eq('sala_id', session.salaId),
+      supabase.from('pisos').select('*').eq('sala_id', session.salaId),
+    ]).then(([gastosRes, itemsRes, tareasRes, pisosRes]) => {
+      const gastos = (gastosRes.data ?? []) as Gasto[]
+      const items = (itemsRes.data ?? []) as ItemCompra[]
+      const tareasList = (tareasRes.data ?? []) as Tarea[]
+      const pisosList = (pisosRes.data ?? []) as Piso[]
+      // Determinar quién tiene deudas (simplificado: quien pagó menos de lo que le toca)
+      const deudores: string[] = []
+      if (gastos.length > 0) {
+        const totalPagado = new Map<string, number>()
+        const totalDeuda = new Map<string, number>()
+        for (const g of gastos) {
+          if (g.tipo === 'variable' && g.pagado_por) {
+            totalPagado.set(g.pagado_por, (totalPagado.get(g.pagado_por) ?? 0) + g.importe)
+          }
+          if (g.splits) {
+            for (const [id, amount] of Object.entries(g.splits)) {
+              totalDeuda.set(id, (totalDeuda.get(id) ?? 0) + (amount as number))
+            }
+          }
+        }
+        for (const m of miembros) {
+          const pagado = totalPagado.get(m.id) ?? 0
+          const deuda = totalDeuda.get(m.id) ?? 0
+          if (deuda > pagado + 1) deudores.push(m.id)
+        }
+      }
+      setMemberBadges(calcularBadges({ miembros, gastos, items, tareas: tareasList, pisos: pisosList, deudores }))
+    })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [miembros.length])
 
   function copiarCodigo() {
     navigator.clipboard.writeText(codigo)
@@ -441,6 +521,7 @@ export default function SalaPage() {
         .s-miembro-badges { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; }
         .s-miembro-you { font-size: 0.65rem; color: #C05A3B; font-weight: 700; background: rgba(192,90,59,0.09); padding: 1px 6px; border-radius: 20px; border: 1px solid rgba(192,90,59,0.18); }
         .s-miembro-owner { font-size: 0.65rem; font-weight: 700; color: #C8823A; background: rgba(200,130,58,0.1); padding: 1px 6px; border-radius: 20px; border: 1px solid rgba(200,130,58,0.22); white-space: nowrap; }
+        .s-miembro-badge { font-size: 0.72rem; cursor: default; }
         .s-miembro-remove { width: 28px; height: 28px; border-radius: 8px; background: transparent; border: 1.5px solid transparent; color: #D0A898; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.18s; flex-shrink: 0; }
         .s-miembro-remove:hover { background: rgba(192,60,40,0.08); border-color: rgba(192,60,40,0.2); color: #C04040; }
         .s-nido-sep-bottom { height: 1px; background: #F0E4D8; margin: 0.25rem 1.25rem 0; }
@@ -683,15 +764,15 @@ export default function SalaPage() {
             </div>
             <div className="s-header-right">
               <div className="s-menu-wrap" ref={menuRef}>
-                <div
+                <MemberAvatar
+                  nombre={session.miembroNombre}
+                  color={session.miembroColor}
+                  gradiente={session.miembroGradiente}
+                  icono={session.miembroIcono}
+                  size="md"
                   className="s-avatar"
-                  style={{ backgroundColor: session.miembroColor }}
                   onClick={() => setMenuOpen(v => !v)}
-                  role="button"
-                  aria-label="Menú"
-                >
-                  {session.miembroNombre[0].toUpperCase()}
-                </div>
+                />
                 {menuOpen && (
                   <div className="s-dropdown">
                     <div className="s-dropdown-label">{session.miembroNombre}</div>
@@ -776,14 +857,22 @@ export default function SalaPage() {
                     return (
                       <div key={m.id} className="s-miembro">
                         <div className="s-miembro-left">
-                          <div className="s-miembro-av" style={{ backgroundColor: m.color }}>
-                            {m.nombre[0].toUpperCase()}
-                          </div>
+                          <MemberAvatar
+                            nombre={m.nombre}
+                            color={m.color}
+                            gradiente={m.gradiente}
+                            icono={m.icono}
+                            size="md"
+                            className="s-miembro-av"
+                          />
                           <div className="s-miembro-info">
                             <div className="s-miembro-name">{m.nombre}</div>
                             <div className="s-miembro-badges">
                               {esDueño && <span className="s-miembro-owner">👑 dueño</span>}
                               {esTu    && <span className="s-miembro-you">tú</span>}
+                              {(memberBadges.get(m.id) ?? []).map(b => (
+                                <span key={b.id} className="s-miembro-badge" title={b.descripcion}>{b.icono}</span>
+                              ))}
                             </div>
                           </div>
                         </div>
@@ -927,6 +1016,113 @@ export default function SalaPage() {
                     ))}
                   </div>
                 )}
+              </div>
+
+              <div className="s-config-sep-inner" />
+
+              {/* Gradiente (color secundario) */}
+              <div>
+                <div className="s-config-label">Gradiente</div>
+                <div className="s-config-row" style={{ marginTop: 4 }}>
+                  <div className="s-config-value" style={{ gap: 8 }}>
+                    <div
+                      style={{
+                        width: 24, height: 24, borderRadius: '50%', cursor: 'pointer', border: '2px solid rgba(160,112,96,0.3)',
+                        background: session.miembroGradiente
+                          ? `linear-gradient(135deg, ${session.miembroColor}, ${session.miembroGradiente})`
+                          : session.miembroColor,
+                      }}
+                      onClick={() => setShowGradientPicker(v => !v)}
+                      title="Elegir gradiente"
+                    />
+                    <span style={{ fontSize: '0.82rem', color: '#A07060' }}>
+                      {session.miembroGradiente ? 'Gradiente activo' : 'Sin gradiente'}
+                    </span>
+                    {session.miembroGradiente && (
+                      <button
+                        style={{ fontSize: '0.7rem', color: '#C05A3B', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline' }}
+                        onClick={() => handleChangeGradient(null)}
+                        disabled={savingGradient}
+                      >quitar</button>
+                    )}
+                  </div>
+                </div>
+                {showGradientPicker && (
+                  <div className="s-color-grid" style={{ marginTop: 8 }}>
+                    {COLORES.filter(c => c !== session.miembroColor).map(c => (
+                      <button
+                        key={c}
+                        className={`s-color-dot${c === session.miembroGradiente ? ' active' : ''}`}
+                        style={{ backgroundColor: c }}
+                        onClick={() => handleChangeGradient(c)}
+                        disabled={savingGradient}
+                        title={c}
+                      >
+                        {c === session.miembroGradiente && (
+                          <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                            <path d="M2 6l3 3 5-5" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+                          </svg>
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="s-config-sep-inner" />
+
+              {/* Icono personal */}
+              <div>
+                <div className="s-config-label">Tu icono</div>
+                <div className="s-config-row" style={{ marginTop: 4 }}>
+                  <div className="s-config-value" style={{ gap: 8 }}>
+                    <span style={{ fontSize: '1.2rem', cursor: 'pointer' }} onClick={() => setShowIconPicker(v => !v)}>
+                      {session.miembroIcono ?? '❓'}
+                    </span>
+                    <span style={{ fontSize: '0.82rem', color: '#A07060' }}>
+                      {showIconPicker ? 'Elegí un icono' : 'Tocar para cambiar'}
+                    </span>
+                    {session.miembroIcono && (
+                      <button
+                        style={{ fontSize: '0.7rem', color: '#C05A3B', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline' }}
+                        onClick={() => handleChangeIcon(null)}
+                        disabled={savingIcon}
+                      >quitar</button>
+                    )}
+                  </div>
+                </div>
+                {showIconPicker && (
+                  <div className="s-color-grid" style={{ marginTop: 8 }}>
+                    {ICONOS.map(ic => (
+                      <button
+                        key={ic}
+                        className={`s-color-dot${ic === session.miembroIcono ? ' active' : ''}`}
+                        style={{ fontSize: '1.1rem', background: ic === session.miembroIcono ? 'rgba(90,136,105,0.2)' : 'rgba(255,245,238,0.6)' }}
+                        onClick={() => handleChangeIcon(ic)}
+                        disabled={savingIcon}
+                      >
+                        {ic}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="s-config-sep-inner" />
+
+              {/* Preview del avatar */}
+              <div>
+                <div className="s-config-label">Tu avatar</div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 8 }}>
+                  <MemberAvatar
+                    nombre={session.miembroNombre}
+                    color={session.miembroColor}
+                    gradiente={session.miembroGradiente}
+                    icono={session.miembroIcono}
+                    size="lg"
+                  />
+                  <span style={{ fontSize: '0.78rem', color: '#A07060' }}>Así te ven los demás</span>
+                </div>
               </div>
 
             </div>

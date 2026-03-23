@@ -49,6 +49,8 @@ export type Database = {
           sala_id: string
           nombre: string
           color: string
+          gradiente: string | null
+          icono: string | null
           password_hash: string | null
           salt: string | null
           user_id: string | null
@@ -61,6 +63,8 @@ export type Database = {
           sala_id: string
           nombre: string
           color?: string
+          gradiente?: string | null
+          icono?: string | null
           password_hash?: string | null
           salt?: string | null
           user_id?: string | null
@@ -73,6 +77,8 @@ export type Database = {
           sala_id?: string
           nombre?: string
           color?: string
+          gradiente?: string | null
+          icono?: string | null
           password_hash?: string | null
           salt?: string | null
           user_id?: string | null

@@ -7,6 +7,7 @@ import { createClient } from '@/lib/supabase'
 import { getSession } from '@/lib/session'
 import type { Piso, VotoPiso, Miembro } from '@/lib/types'
 import { ConfirmModal } from '@/components/ConfirmModal'
+import MemberAvatar from '@/components/MemberAvatar'
 
 const fraunces = Fraunces({
   weight: 'variable',
@@ -1575,9 +1576,7 @@ export default function PisoDetallePage() {
                     const esTuyo = voto.miembro_id === session.miembroId
                     return (
                       <div key={voto.id} className="d-member-vote">
-                        <div className="d-mv-avatar" style={{ background: m.color }}>
-                          {m.nombre[0].toUpperCase()}
-                        </div>
+                        <MemberAvatar nombre={m.nombre} color={m.color} gradiente={m.gradiente} icono={m.icono} size="sm" />
                         <div className="d-mv-info">
                           <div className="d-mv-top">
                             <span className="d-mv-name">{m.nombre}</span>

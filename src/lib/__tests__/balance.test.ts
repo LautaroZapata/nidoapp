@@ -5,7 +5,7 @@ import type { Gasto, Miembro, Pago } from '../types'
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function mkMiembro(id: string): Miembro {
-  return { id, sala_id: 's1', nombre: id, color: '#000', password_hash: null, salt: null, user_id: null, telefono: null, whatsapp_phone: null, creado_en: '2024-01-01' }
+  return { id, sala_id: 's1', nombre: id, color: '#000', gradiente: null, icono: null, password_hash: null, salt: null, user_id: null, telefono: null, whatsapp_phone: null, creado_en: '2024-01-01' }
 }
 
 function mkGasto(overrides: Partial<Gasto> & { id: string; importe: number; pagado_por: string }): Gasto {
