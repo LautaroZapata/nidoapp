@@ -36,9 +36,14 @@ const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36
 // ── Helpers ──────────────────────────────────
 
 function getMetaContent(html: string, property: string): string | null {
+  const esc = escapeRegex(property)
+  // Separate patterns for double-quoted and single-quoted content
+  // to avoid cutting off at apostrophes inside double-quoted values (and vice-versa)
   const patterns = [
-    new RegExp(`<meta[^>]+(?:property|name)=["']${escapeRegex(property)}["'][^>]+content=["']([^"']*)["']`, 'i'),
-    new RegExp(`<meta[^>]+content=["']([^"']*)["'][^>]+(?:property|name)=["']${escapeRegex(property)}["']`, 'i'),
+    new RegExp(`<meta[^>]+(?:property|name)=["']${esc}["'][^>]+content="([^"]*)"`, 'i'),
+    new RegExp(`<meta[^>]+(?:property|name)=["']${esc}["'][^>]+content='([^']*)'`, 'i'),
+    new RegExp(`<meta[^>]+content="([^"]*)"[^>]+(?:property|name)=["']${esc}["']`, 'i'),
+    new RegExp(`<meta[^>]+content='([^']*)'[^>]+(?:property|name)=["']${esc}["']`, 'i'),
   ]
   for (const re of patterns) {
     const m = html.match(re)
@@ -49,9 +54,12 @@ function getMetaContent(html: string, property: string): string | null {
 
 function getAllMetaContent(html: string, property: string): string[] {
   const results: string[] = []
+  const esc = escapeRegex(property)
   const patterns = [
-    new RegExp(`<meta[^>]+(?:property|name)=["']${escapeRegex(property)}["'][^>]+content=["']([^"']*)["']`, 'gi'),
-    new RegExp(`<meta[^>]+content=["']([^"']*)["'][^>]+(?:property|name)=["']${escapeRegex(property)}["']`, 'gi'),
+    new RegExp(`<meta[^>]+(?:property|name)=["']${esc}["'][^>]+content="([^"]*)"`, 'gi'),
+    new RegExp(`<meta[^>]+(?:property|name)=["']${esc}["'][^>]+content='([^']*)'`, 'gi'),
+    new RegExp(`<meta[^>]+content="([^"]*)"[^>]+(?:property|name)=["']${esc}["']`, 'gi'),
+    new RegExp(`<meta[^>]+content='([^']*)'[^>]+(?:property|name)=["']${esc}["']`, 'gi'),
   ]
   for (const re of patterns) {
     let m

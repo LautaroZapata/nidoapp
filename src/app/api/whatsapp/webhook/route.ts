@@ -599,6 +599,18 @@ export async function POST(req: NextRequest) {
   } else {
     // Solo llega acá si ningún pre-parser lo capturó
     accion = await parsearMensaje(texto, miembro.nombre, nombresMiembros)
+
+    // Construir confirmacion server-side (el LLM solo devuelve datos estructurados)
+    if (accion.accion === 'crear_gasto' && !accion.confirmacion) {
+      const si: SplitInfo = accion.split === 'parcial' && accion.split_con
+        ? { split: 'parcial', split_con: accion.split_con }
+        : { split: accion.split as 'igual' | 'personal' }
+      accion.confirmacion = buildGastoConfirmacion(
+        accion.descripcion, accion.monto, si, miembro.nombre, compañeros?.length ?? 1
+      )
+    } else if (accion.accion === 'agregar_compra' && !accion.confirmacion) {
+      accion.confirmacion = `¿Agregamos a la lista de compras?\n\n${accion.items.map((i: string) => `• ${i}`).join('\n')}\n\nRespondé *si* o *no*`
+    }
   }
 
   console.log('[Nido] Acción:', accion.accion)
@@ -718,14 +730,14 @@ export async function POST(req: NextRequest) {
       )
     } else {
       await guardarPendiente(miembro.id, accion)
-      await enviarMensaje(deFono, accion.confirmacion)
+      await enviarMensaje(deFono, accion.confirmacion!)
     }
     return NextResponse.json({ status: 'ok' })
   }
 
   if (accion.accion === 'agregar_compra') {
     await guardarPendiente(miembro.id, accion)
-    await enviarMensaje(deFono, accion.confirmacion)
+    await enviarMensaje(deFono, accion.confirmacion!)
     return NextResponse.json({ status: 'ok' })
   }
 

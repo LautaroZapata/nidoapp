@@ -5,39 +5,27 @@ const groq = new Groq({ apiKey: process.env.GROQ_API_KEY })
 export type CategoriaGasto = 'alquiler' | 'suministros' | 'internet' | 'comida' | 'limpieza' | 'otro'
 
 export type AccionNido =
-  | { accion: 'crear_gasto';      monto: number; descripcion: string; split: 'igual' | 'personal' | 'parcial'; split_con?: string[]; categoria: CategoriaGasto; confirmacion: string }
-  | { accion: 'agregar_compra';   items: string[];                                                              confirmacion: string }
-  | { accion: 'consultar_balance';                                                                              confirmacion: string }
-  | { accion: 'consultar_gastos';                                                                               confirmacion: string }
-  | { accion: 'liquidar_deuda';                                                                                 confirmacion: string }
-  | { accion: 'desconocido';                                                                                    confirmacion: string }
+  | { accion: 'crear_gasto';      monto: number; descripcion: string; split: 'igual' | 'personal' | 'parcial'; split_con?: string[]; categoria: CategoriaGasto; confirmacion?: string }
+  | { accion: 'agregar_compra';   items: string[];                                                              confirmacion?: string }
+  | { accion: 'consultar_balance';                                                                              confirmacion?: string }
+  | { accion: 'consultar_gastos';                                                                               confirmacion?: string }
+  | { accion: 'liquidar_deuda';                                                                                 confirmacion?: string }
+  | { accion: 'desconocido';                                                                                    confirmacion?: string }
 
-const SYSTEM_PROMPT = `Sos NidoApp bot para compañeros de cuarto. Devolvé SOLO JSON válido, sin markdown, sin texto extra.
+const SYSTEM_PROMPT = `Sos NidoApp bot. Devolvé SOLO JSON, sin markdown ni texto extra.
 
-DISTINCIÓN CLAVE (no confundir nunca):
-- crear_gasto = algo que YA fue pagado/comprado. Señales: "compré", "pagué", "gasté", "puse", "costó", "salió", "nos cobró", "compramos", "gastamos".
-- agregar_compra = algo que TODAVÍA HAY QUE comprar. Señales: "falta", "faltan", "necesitamos", "hay que comprar", "agregar a la lista".
-EJEMPLO: "compré leche" → crear_gasto (ya fue comprado). "falta leche" → agregar_compra (aún no se compró).
+CLAVE: crear_gasto=YA pagado (compré,pagué,gasté,puse,costó,salió). agregar_compra=FALTA comprar (falta,necesitamos,hay que comprar).
 
-Acciones disponibles:
-- crear_gasto: {"accion":"crear_gasto","monto":N,"descripcion":"...","split":"igual"|"personal"|"parcial","split_con":["nombre"],"categoria":"alquiler"|"suministros"|"internet"|"comida"|"limpieza"|"otro","confirmacion":"..."}
-  Si no hay monto claro, usar monto:0 y pedir el importe en confirmacion.
-- agregar_compra: {"accion":"agregar_compra","items":["..."],"confirmacion":"..."}
-- consultar_balance: {"accion":"consultar_balance","confirmacion":"..."}
-- consultar_gastos: {"accion":"consultar_gastos","confirmacion":"..."}
-- liquidar_deuda: {"accion":"liquidar_deuda","confirmacion":"..."}
-- desconocido: {"accion":"desconocido","confirmacion":"..."}
+Formatos JSON:
+crear_gasto: {"accion":"crear_gasto","monto":N,"descripcion":"...","split":"igual|personal|parcial","split_con":["nombre"],"categoria":"alquiler|suministros|internet|comida|limpieza|otro"}
+agregar_compra: {"accion":"agregar_compra","items":["..."]}
+consultar_balance: {"accion":"consultar_balance"}
+consultar_gastos: {"accion":"consultar_gastos"}
+liquidar_deuda: {"accion":"liquidar_deuda"}
+desconocido: {"accion":"desconocido"}
 
-Reglas de split:
-- split=igual: dividir entre TODOS (cuando no especifica con quién).
-- split=personal: solo para quien pagó, sin repartir.
-- split=parcial: dividir solo con algunos (ej: "con kmii", "entre lauta y yo"). split_con = array con nombres de los OTROS miembros a incluir.
-
-Reglas generales:
-- descripcion: sustantivo corto, máximo 3 palabras, sin artículos.
-- confirmacion para crear_gasto: "¿Confirmás este gasto?\n\n📌 *{descripcion}*\n💵 $N\n{emoji_categoria} Categoría: {categoria}\n👤 Pagás vos: {remitente}\n👥 División: {con quién y cuántos}\n   → $XX cada uno\n\nRespondé *si* para confirmar o *no* para cancelar"
-- confirmacion para agregar_compra: "¿Agregamos a la lista de compras?\n\n{• item1\n• item2}\n\nRespondé *si* o *no*"
-- confirmacion para desconocido: explicá qué podés hacer con ejemplos concretos.`
+Split: igual=todos, personal=solo pagador, parcial=algunos→split_con=nombres de los OTROS.
+Descripcion: sustantivo corto, max 3 palabras, sin artículos. Sin monto claro→monto:0.`
 
 export async function parsearMensaje(
   mensaje: string,
@@ -46,13 +34,13 @@ export async function parsearMensaje(
 ): Promise<AccionNido> {
   try {
     const completion = await groq.chat.completions.create({
-      model: 'llama-3.1-8b-instant',
+      model: 'llama-3.3-70b-versatile',
       messages: [
         { role: 'system', content: SYSTEM_PROMPT },
-        { role: 'user',   content: `Nido: ${miembros.join(', ')} | Remite: ${remitente}\n"${mensaje}"` },
+        { role: 'user',   content: `[${miembros.join(',')}] ${remitente}: ${mensaje}` },
       ],
       temperature: 0.1,
-      max_tokens: 120,
+      max_tokens: 80,
     })
 
     const raw   = completion.choices[0]?.message?.content?.trim() ?? ''
@@ -62,6 +50,6 @@ export async function parsearMensaje(
 
   } catch (err: unknown) {
     console.error('[Groq] Error:', err instanceof Error ? err.message : String(err))
-    return { accion: 'desconocido', confirmacion: 'Hubo un error procesando tu mensaje. Intentá de nuevo 🙏' }
+    return { accion: 'desconocido' }
   }
 }
