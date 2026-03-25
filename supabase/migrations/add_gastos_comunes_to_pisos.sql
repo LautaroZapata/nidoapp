@@ -1,0 +1,1 @@
+ALTER TABLE pisos ADD COLUMN IF NOT EXISTS gastos_comunes numeric DEFAULT NULL;

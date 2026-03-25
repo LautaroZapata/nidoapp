@@ -137,9 +137,11 @@ export default function PisosPage() {
       lista = lista.sort((a, b) => (b.promedio ?? -1) - (a.promedio ?? -1))
     } else if (orden === 'precio') {
       lista = lista.sort((a, b) => {
-        if (a.precio === null) return 1
-        if (b.precio === null) return -1
-        return a.precio - b.precio
+        const totalA = (a.precio ?? 0) + (a.gastos_comunes ?? 0)
+        const totalB = (b.precio ?? 0) + (b.gastos_comunes ?? 0)
+        if (a.precio === null && a.gastos_comunes === null) return 1
+        if (b.precio === null && b.gastos_comunes === null) return -1
+        return totalA - totalB
       })
     }
     return lista
@@ -347,9 +349,8 @@ export default function PisosPage() {
     setFormError('')
     setGuardando(true)
 
-    const alquiler = form.alquiler ? parseFloat(form.alquiler) : 0
-    const gastosCom = form.gastosCom ? parseFloat(form.gastosCom) : 0
-    const precioTotal = alquiler + gastosCom || null
+    const alquiler = form.alquiler ? parseFloat(form.alquiler) : null
+    const gastosCom = form.gastosCom ? parseFloat(form.gastosCom) : null
 
     const supabase = createClient()
     const fotos = fotosForm.map(f => f.trim()).filter(Boolean)
@@ -361,7 +362,8 @@ export default function PisosPage() {
       sala_id: session!.salaId,
       titulo: form.titulo.trim(),
       url: form.url.trim() || null,
-      precio: precioTotal,
+      precio: alquiler,
+      gastos_comunes: gastosCom,
       m2: form.m2 ? parseFloat(form.m2) : null,
       zona: form.zona.trim() || null,
       notas: form.notas.trim() || null,
@@ -991,8 +993,14 @@ export default function PisosPage() {
                   </div>
 
                   <div className="p-card-meta">
-                    {piso.precio !== null && (
-                      <span className="p-badge p-badge-price">{fmtUYU(piso.precio)}/mes</span>
+                    {(piso.precio !== null || piso.gastos_comunes !== null) && (
+                      <span className="p-badge p-badge-price">
+                        {piso.precio !== null && piso.gastos_comunes !== null
+                          ? `${fmtUYU(piso.precio + piso.gastos_comunes)}/mes`
+                          : piso.precio !== null
+                            ? `${fmtUYU(piso.precio)}/mes`
+                            : `GC ${fmtUYU(piso.gastos_comunes!)}/mes`}
+                      </span>
                     )}
                     {piso.m2 !== null && (
                       <span className="p-badge p-badge-m2">{piso.m2} m²</span>

@@ -125,6 +125,7 @@ export type Database = {
           titulo: string
           url: string | null
           precio: number | null
+          gastos_comunes: number | null
           m2: number | null
           zona: string | null
           notas: string | null
@@ -139,6 +140,7 @@ export type Database = {
           titulo: string
           url?: string | null
           precio?: number | null
+          gastos_comunes?: number | null
           m2?: number | null
           zona?: string | null
           notas?: string | null
@@ -153,6 +155,7 @@ export type Database = {
           titulo?: string
           url?: string | null
           precio?: number | null
+          gastos_comunes?: number | null
           m2?: number | null
           zona?: string | null
           notas?: string | null

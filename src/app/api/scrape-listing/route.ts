@@ -91,7 +91,7 @@ function extractJsonLd(html: string): Record<string, unknown>[] {
   return results
 }
 
-function parsePrice(s: string): { amount: number; currency: string } | null {
+export function parsePrice(s: string): { amount: number; currency: string } | null {
   if (!s) return null
   const cleaned = s.replace(/\./g, '').replace(',', '.')
   const match = cleaned.match(/(U\$S|USD|US\$|UYU|\$U|\$)\s*([\d.]+)/)
@@ -110,7 +110,7 @@ function parsePrice(s: string): { amount: number; currency: string } | null {
   return null
 }
 
-function extractNumber(s: string | null): number | null {
+export function extractNumber(s: string | null): number | null {
   if (!s) return null
   const cleaned = s.replace(/\./g, '').replace(',', '.')
   const m = cleaned.match(/([\d.]+)/)
@@ -128,7 +128,7 @@ function stripHtml(html: string): string {
 }
 
 /** Extract all image URLs from HTML, filtering out junk */
-function extractAllImages(html: string, siteHost: string): string[] {
+export function extractAllImages(html: string, siteHost: string): string[] {
   const imgs: string[] = []
   // 1. src and data-src attributes on img tags
   const imgTagRe = /<img[^>]+(?:src|data-src|data-lazy-src|data-original)=["']([^"']+)["'][^>]*>/gi
@@ -149,11 +149,11 @@ function extractAllImages(html: string, siteHost: string): string[] {
     const url = m[1].trim()
     if (isValidListingImage(url, siteHost)) imgs.push(url)
   }
-  // Dedupe, preserve order, limit to 20
-  return [...new Set(imgs)].slice(0, 20)
+  // Dedupe, preserve order, limit to 30
+  return [...new Set(imgs)].slice(0, 30)
 }
 
-function isValidListingImage(url: string, _siteHost: string): boolean {
+export function isValidListingImage(url: string, _siteHost: string): boolean {
   if (!url.startsWith('http')) return false
   const lower = url.toLowerCase()
   // Skip tiny icons, logos, avatars, tracking pixels, social icons
@@ -283,7 +283,7 @@ function extractInfoCasas(html: string): Partial<ScrapedData> {
 
 // ── Site-specific: MercadoLibre ──────────────
 
-function extractMercadoLibre(html: string): Partial<ScrapedData> {
+export function extractMercadoLibre(html: string): Partial<ScrapedData> {
   const data: Partial<ScrapedData> = {}
 
   const title = getMetaContent(html, 'og:title')
@@ -307,11 +307,42 @@ function extractMercadoLibre(html: string): Partial<ScrapedData> {
     if (p) { data.precio = p.amount; data.moneda = p.currency }
   }
 
+  // Gastos comunes / Expensas from HTML
+  const gcMatch = html.match(/(?:expensas|gastos?\s*comunes?|G\.?C\.?)\s*(?::?\s*)\$?\s*([\d.,]+)/i)
+    || html.match(/([\d.,]+)\s*(?:expensas|G\.?C\.?)/i)
+  if (gcMatch) data.gastosCom = extractNumber(gcMatch[1])
+
   const locMatch = (data.titulo || '').match(/en\s+([^-–,]+?)(?:\s*[-–]|\s*$)/i)
   if (locMatch) data.zona = locMatch[1].trim()
 
-  // Images from ML
-  data.fotos = extractAllImages(html, 'mercadolibre')
+  // Images from ML — standard extraction
+  const standardImgs = extractAllImages(html, 'mercadolibre')
+
+  // ML-specific: extract picture URLs from embedded JSON data (pictures arrays)
+  const mlJsonPicsRe = /"pictures"\s*:\s*\[([\s\S]*?)\]/g
+  let jm
+  const mlImgs: string[] = []
+  while ((jm = mlJsonPicsRe.exec(html)) !== null) {
+    const urlsInBlock = jm[1].match(/"(https?:\/\/[^"]*mlstatic\.com[^"]*)"/g)
+    if (urlsInBlock) {
+      for (const raw of urlsInBlock) {
+        const u = raw.replace(/"/g, '')
+        if (isValidListingImage(u, 'mercadolibre')) mlImgs.push(u)
+      }
+    }
+  }
+
+  // Also find mlstatic.com image URLs broadly in the HTML body
+  const mlStaticRe = /"(https?:\/\/[^"]*mlstatic\.com\/[^"]+\.(?:jpg|jpeg|png|webp)[^"]*)"/gi
+  let sm
+  while ((sm = mlStaticRe.exec(html)) !== null) {
+    const u = sm[1].trim()
+    if (isValidListingImage(u, 'mercadolibre')) mlImgs.push(u)
+  }
+
+  // Merge: standard images + ML-specific, dedupe, limit to 30
+  const allImgs = [...standardImgs, ...mlImgs]
+  data.fotos = [...new Set(allImgs)].slice(0, 30)
 
   return data
 }
@@ -521,7 +552,7 @@ async function fetchMLApi(itemId: string): Promise<Partial<ScrapedData>> {
           return u.replace(/-[A-Z]\.(\w+)$/, '-O.$1')
         })
         .filter(Boolean)
-        .slice(0, 20)
+        .slice(0, 30)
     }
 
     // Atributos (m², dormitorios, baños, gastos comunes)
@@ -537,7 +568,7 @@ async function fetchMLApi(itemId: string): Promise<Partial<ScrapedData>> {
           data.dormitorios = parseInt(val) || null
         if (['FULL_BATHROOMS', 'BATHROOMS'].includes(id) && !data.banos)
           data.banos = parseInt(val) || null
-        if (id === 'MAINTENANCE_FEE' && !data.gastosCom)
+        if (['MAINTENANCE_FEE', 'EXPENSES'].includes(id) && !data.gastosCom)
           data.gastosCom = parseFloat(val.replace(/\D/g, '')) || null
       }
     }
@@ -554,7 +585,7 @@ async function fetchMLApi(itemId: string): Promise<Partial<ScrapedData>> {
       try {
         const desc = await descRes.json()
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        if ((desc as any).plain_text) data.notas = String((desc as any).plain_text).slice(0, 500)
+        if ((desc as any).plain_text) data.notas = String((desc as any).plain_text).slice(0, 2000)
       } catch { /* ignore */ }
     }
 
@@ -640,7 +671,7 @@ Ejemplo: {"precio":25000,"gastosCom":6500,"moneda":"UYU","m2":75,"zona":"Pocitos
 
 // ── Main merge logic ─────────────────────────
 
-function mergeData(...sources: Partial<ScrapedData>[]): ScrapedData {
+export function mergeData(...sources: Partial<ScrapedData>[]): ScrapedData {
   const result: ScrapedData = { ...EMPTY }
 
   for (const src of sources) {
@@ -664,8 +695,8 @@ function mergeData(...sources: Partial<ScrapedData>[]): ScrapedData {
     result.titulo = `Apto ${parts.join(' - ')}`
   }
 
-  if (result.notas && result.notas.length > 500) {
-    result.notas = result.notas.slice(0, 497) + '...'
+  if (result.notas && result.notas.length > 2000) {
+    result.notas = result.notas.slice(0, 1997) + '...'
   }
 
   return result

@@ -145,7 +145,7 @@ export default function PisoDetallePage() {
 
   // Editar
   const [editOpen, setEditOpen] = useState(false)
-  const [editForm, setEditForm] = useState({ titulo: '', url: '', precio: '', m2: '', zona: '', notas: '', direccion: '' })
+  const [editForm, setEditForm] = useState({ titulo: '', url: '', alquiler: '', gastosCom: '', m2: '', zona: '', notas: '', direccion: '' })
   const [editGuardando, setEditGuardando] = useState(false)
   const [editError, setEditError] = useState('')
   const [editScraping, setEditScraping] = useState(false)
@@ -325,7 +325,8 @@ export default function PisoDetallePage() {
     setEditForm({
       titulo: piso.titulo,
       url: piso.url ?? '',
-      precio: piso.precio?.toString() ?? '',
+      alquiler: piso.precio?.toString() ?? '',
+      gastosCom: piso.gastos_comunes?.toString() ?? '',
       m2: piso.m2?.toString() ?? '',
       zona: piso.zona ?? '',
       notas: piso.notas ?? '',
@@ -361,7 +362,8 @@ export default function PisoDetallePage() {
       setEditForm(f => ({
         ...f,
         titulo: f.titulo || d.titulo || '',
-        precio: f.precio || (d.precio != null ? String(d.precio) : ''),
+        alquiler: f.alquiler || (d.precio != null ? String(d.precio) : ''),
+        gastosCom: f.gastosCom || (d.gastosCom != null ? String(d.gastosCom) : ''),
         m2: f.m2 || (d.m2 != null ? String(d.m2) : ''),
         zona: f.zona || d.zona || '',
         direccion: f.direccion || d.direccion || '',
@@ -427,7 +429,8 @@ export default function PisoDetallePage() {
     const { error } = await supabase.from('pisos').update({
       titulo: editForm.titulo.trim(),
       url: editForm.url.trim() || null,
-      precio: editForm.precio ? parseFloat(editForm.precio) : null,
+      precio: editForm.alquiler ? parseFloat(editForm.alquiler) : null,
+      gastos_comunes: editForm.gastosCom ? parseFloat(editForm.gastosCom) : null,
       m2: editForm.m2 ? parseFloat(editForm.m2) : null,
       zona: editForm.zona.trim() || null,
       notas: editForm.notas.trim() || null,
@@ -1030,7 +1033,7 @@ export default function PisoDetallePage() {
         @keyframes d-lb-img { from { opacity: 0; transform: scale(0.93); } to { opacity: 1; transform: scale(1); } }
 
         .d-lb-overlay {
-          position: fixed; inset: 0; z-index: 200;
+          position: fixed; inset: 0; z-index: 300;
           background: rgba(0,0,0,0.9); backdrop-filter: blur(12px);
           display: flex; align-items: center; justify-content: center;
           animation: d-lb-in 0.2s ease both;
@@ -1046,7 +1049,7 @@ export default function PisoDetallePage() {
           width: 40px; height: 40px; border-radius: 50%;
           background: rgba(255,255,255,0.12); border: 1px solid rgba(255,255,255,0.2);
           display: flex; align-items: center; justify-content: center;
-          cursor: pointer; color: white; transition: background 0.15s; z-index: 201;
+          cursor: pointer; color: white; transition: background 0.15s; z-index: 301;
         }
         .d-lb-close:hover { background: rgba(255,255,255,0.22); }
         .d-lb-nav {
@@ -1054,7 +1057,7 @@ export default function PisoDetallePage() {
           width: 44px; height: 44px; border-radius: 50%;
           background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.18);
           display: flex; align-items: center; justify-content: center;
-          cursor: pointer; color: white; transition: background 0.15s; z-index: 201;
+          cursor: pointer; color: white; transition: background 0.15s; z-index: 301;
         }
         .d-lb-nav:hover { background: rgba(255,255,255,0.2); }
         .d-lb-nav.lb-prev { left: 16px; }
@@ -1063,7 +1066,11 @@ export default function PisoDetallePage() {
           position: fixed; bottom: 22px; left: 50%; transform: translateX(-50%);
           background: rgba(0,0,0,0.5); color: rgba(255,255,255,0.75);
           font-size: 0.78rem; padding: 5px 14px; border-radius: 999px;
-          backdrop-filter: blur(4px); z-index: 201;
+          backdrop-filter: blur(4px); z-index: 301;
+        }
+
+        @media (min-width: 1024px) {
+          .d-lb-nav.lb-prev { left: 240px; }
         }
 
         @media (max-width: 640px) {
@@ -1217,8 +1224,20 @@ export default function PisoDetallePage() {
                 <div className="d-info-grid">
                   {piso.precio !== null && (
                     <div className="d-info-item">
-                      <div className="d-info-label">Precio total/mes</div>
+                      <div className="d-info-label">Alquiler</div>
                       <div className="d-info-val d-info-val-price">$ {piso.precio.toLocaleString('es-UY')}</div>
+                    </div>
+                  )}
+                  {piso.gastos_comunes !== null && (
+                    <div className="d-info-item">
+                      <div className="d-info-label">Gastos comunes</div>
+                      <div className="d-info-val d-info-val-price">$ {piso.gastos_comunes.toLocaleString('es-UY')}</div>
+                    </div>
+                  )}
+                  {piso.precio !== null && piso.gastos_comunes !== null && (
+                    <div className="d-info-item">
+                      <div className="d-info-label">Total/mes</div>
+                      <div className="d-info-val d-info-val-price">$ {(piso.precio + piso.gastos_comunes).toLocaleString('es-UY')}</div>
                     </div>
                   )}
                   {piso.m2 !== null && (
@@ -1688,9 +1707,28 @@ export default function PisoDetallePage() {
 
               <div className="d-row2">
                 <div className="d-field">
-                  <label className="d-label">Precio total/mes <span className="d-label-hint">($ UYU)</span></label>
-                  <input className="d-input" type="number" inputMode="decimal" min={0} value={editForm.precio} onChange={e => setEditForm(f => ({ ...f, precio: e.target.value }))} placeholder="28000" />
+                  <label className="d-label">Alquiler <span className="d-label-hint">($ UYU)</span></label>
+                  <input className="d-input" type="number" inputMode="decimal" min={0} value={editForm.alquiler} onChange={e => setEditForm(f => ({ ...f, alquiler: e.target.value }))} placeholder="22000" />
                 </div>
+                <div className="d-field">
+                  <label className="d-label">Gastos comunes <span className="d-label-hint">($ UYU)</span></label>
+                  <input className="d-input" type="number" inputMode="decimal" min={0} value={editForm.gastosCom} onChange={e => setEditForm(f => ({ ...f, gastosCom: e.target.value }))} placeholder="6000" />
+                </div>
+              </div>
+
+              {(editForm.alquiler || editForm.gastosCom) && ((parseFloat(editForm.alquiler) || 0) + (parseFloat(editForm.gastosCom) || 0)) > 0 && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', borderRadius: 9, background: 'rgba(46,125,82,0.08)', border: '1px solid rgba(46,125,82,0.15)', marginTop: -6, marginBottom: 14 }}>
+                  <span style={{ fontSize: '0.72rem', color: '#3A7050' }}>Total mensual:</span>
+                  <span style={{ fontFamily: 'var(--font-code), monospace', fontSize: '0.95rem', fontWeight: 500, color: '#2E7D52' }}>$ {((parseFloat(editForm.alquiler) || 0) + (parseFloat(editForm.gastosCom) || 0)).toLocaleString('es-UY')}</span>
+                  {editForm.alquiler && editForm.gastosCom && (
+                    <span style={{ fontSize: '0.68rem', color: '#5A8869', marginLeft: 'auto', opacity: 0.7 }}>
+                      $ {parseFloat(editForm.alquiler).toLocaleString('es-UY')} + $ {parseFloat(editForm.gastosCom).toLocaleString('es-UY')} GC
+                    </span>
+                  )}
+                </div>
+              )}
+
+              <div className="d-row2">
                 <div className="d-field">
                   <label className="d-label">Metros cuadrados</label>
                   <input className="d-input" type="number" inputMode="numeric" min={0} value={editForm.m2} onChange={e => setEditForm(f => ({ ...f, m2: e.target.value }))} placeholder="75" />
