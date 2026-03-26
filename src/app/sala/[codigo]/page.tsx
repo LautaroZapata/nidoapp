@@ -23,11 +23,6 @@ type DbResult<T> = { data: T | null; error: PostgrestError | null }
 const fraunces = Fraunces({ weight: 'variable', subsets: ['latin'], variable: '--font-serif' })
 const nunito = Nunito({ subsets: ['latin'], weight: ['300','400','500','600','700'], variable: '--font-body' })
 
-const COLORES = [
-  '#C05A3B', '#5A8869', '#C8823A', '#7B5EA7', '#2E86AB',
-  '#E84855', '#3BB273', '#D4A017', '#6B4226', '#1A535C',
-]
-
 export default function SalaPage() {
   const params = useParams()
   const router = useRouter()
@@ -75,48 +70,7 @@ export default function SalaPage() {
   const [editingNidoName, setEditingNidoName] = useState(false)
   const [newNidoName, setNewNidoName] = useState('')
   const [savingNidoName, setSavingNidoName] = useState(false)
-  const [editingMyName, setEditingMyName] = useState(false)
-  const [newMyName, setNewMyName] = useState('')
-  const [savingMyName, setSavingMyName] = useState(false)
   const [memberBadges, setMemberBadges] = useState<Map<string, Badge[]>>(new Map())
-  const [showColorPicker, setShowColorPicker] = useState(false)
-  const [savingColor, setSavingColor] = useState(false)
-  const [showGradientPicker, setShowGradientPicker] = useState(false)
-  const [showIconPicker, setShowIconPicker] = useState(false)
-  const [savingGradient, setSavingGradient] = useState(false)
-  const [savingIcon, setSavingIcon] = useState(false)
-
-  const ICONOS = ['🐱', '🐶', '🦊', '🐼', '🐸', '🦄', '🐝', '🦋', '🐙', '🎸', '🎮', '🏀', '🌮', '☕', '🍕', '🎯', '🔥', '💎', '🌊', '🌻']
-
-  async function handleChangeGradient(gradiente: string | null) {
-    if (!session) return
-    setSavingGradient(true)
-    const supabase = createClient()
-    const { error } = await supabase.from('miembros').update({ gradiente }).eq('id', session.miembroId)
-    if (!error) {
-      const updated = { ...session, miembroGradiente: gradiente }
-      setSession(updated)
-      setLocalSession(updated)
-      setMiembros(prev => prev.map(m => m.id === session.miembroId ? { ...m, gradiente } : m))
-    }
-    setSavingGradient(false)
-    setShowGradientPicker(false)
-  }
-
-  async function handleChangeIcon(icono: string | null) {
-    if (!session) return
-    setSavingIcon(true)
-    const supabase = createClient()
-    const { error } = await supabase.from('miembros').update({ icono }).eq('id', session.miembroId)
-    if (!error) {
-      const updated = { ...session, miembroIcono: icono }
-      setSession(updated)
-      setLocalSession(updated)
-      setMiembros(prev => prev.map(m => m.id === session.miembroId ? { ...m, icono } : m))
-    }
-    setSavingIcon(false)
-    setShowIconPicker(false)
-  }
 
   async function handleCheckout(tier: TierType) {
     if (!session) return
@@ -418,41 +372,6 @@ export default function SalaPage() {
     setEditingNidoName(false)
   }
 
-  async function handleSaveMyName() {
-    if (!session || !newMyName.trim() || newMyName.trim().toLowerCase() === session.miembroNombre) {
-      setEditingMyName(false); return
-    }
-    setSavingMyName(true)
-    const supabase = createClient()
-    const nombre = newMyName.trim().toLowerCase()
-    const { error } = await supabase.from('miembros').update({ nombre }).eq('id', session.miembroId)
-    if (!error) {
-      const updated = { ...session, miembroNombre: nombre }
-      setSession(updated)
-      setLocalSession(updated)
-      setMiembros(prev => prev.map(m => m.id === session.miembroId ? { ...m, nombre } : m))
-    }
-    setSavingMyName(false)
-    setEditingMyName(false)
-  }
-
-  async function handleChangeColor(color: string) {
-    if (!session || color === session.miembroColor) {
-      setShowColorPicker(false); return
-    }
-    setSavingColor(true)
-    const supabase = createClient()
-    const { error } = await supabase.from('miembros').update({ color }).eq('id', session.miembroId)
-    if (!error) {
-      const updated = { ...session, miembroColor: color }
-      setSession(updated)
-      setLocalSession(updated)
-      setMiembros(prev => prev.map(m => m.id === session.miembroId ? { ...m, color } : m))
-    }
-    setSavingColor(false)
-    setShowColorPicker(false)
-  }
-
   if (!session) return null
 
   const modulos = [
@@ -644,13 +563,6 @@ export default function SalaPage() {
         .s-config-save:disabled { opacity: 0.55; cursor: not-allowed; }
         .s-config-cancel { padding: 7px 10px; background: none; border: 1.5px solid #E0CAB8; color: #A07060; border-radius: 10px; font-size: 0.78rem; font-weight: 600; font-family: var(--font-body),'Nunito',sans-serif; cursor: pointer; transition: all 0.18s; }
         .s-config-cancel:hover { border-color: #C0A898; color: #6B4030; }
-        .s-config-color-current { width: 26px; height: 26px; border-radius: 50%; border: 2.5px solid rgba(255,255,255,0.7); box-shadow: 0 2px 6px rgba(0,0,0,0.12); flex-shrink: 0; cursor: pointer; transition: transform 0.15s; }
-        .s-config-color-current:hover { transform: scale(1.1); }
-        .s-color-grid { display: flex; flex-wrap: wrap; gap: 8px; padding: 4px 0 2px; }
-        .s-color-dot { width: 30px; height: 30px; border-radius: 50%; border: 2.5px solid transparent; cursor: pointer; transition: all 0.18s; display: flex; align-items: center; justify-content: center; }
-        .s-color-dot:hover { transform: scale(1.12); box-shadow: 0 3px 10px rgba(0,0,0,0.15); }
-        .s-color-dot.active { border-color: #2A1A0E; box-shadow: 0 0 0 3px rgba(42,26,14,0.12); }
-        .s-config-sep-inner { height: 1px; background: #F0E4D8; margin: 2px 0; }
         @media (max-width: 480px) {
           .s-config-header { padding: 0.85rem 1rem 0.65rem; }
           .s-config-sep { margin: 0 1rem; }
@@ -908,10 +820,10 @@ export default function SalaPage() {
             )
           })()}
 
-          {/* Config / personalization */}
+          {/* Config — Nido name */}
           <div className="s-config">
             <div className="s-config-header">
-              <div className="s-config-title">Personalizar</div>
+              <div className="s-config-title">Configuración</div>
               <svg width="14" height="14" viewBox="0 0 14 14" fill="none" style={{ color: '#B09080' }}>
                 <path d="M8.5 2.5l3 3-7.5 7.5H1v-3l7.5-7.5z" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round"/>
                 <path d="M7 4l3 3" stroke="currentColor" strokeWidth="1.3"/>
@@ -919,8 +831,6 @@ export default function SalaPage() {
             </div>
             <div className="s-config-sep" />
             <div className="s-config-body">
-
-              {/* Nido name */}
               <div>
                 <div className="s-config-label">Nombre del nido</div>
                 {editingNidoName ? (
@@ -947,184 +857,6 @@ export default function SalaPage() {
                   </div>
                 )}
               </div>
-
-              <div className="s-config-sep-inner" />
-
-              {/* My display name */}
-              <div>
-                <div className="s-config-label">Tu nombre</div>
-                {editingMyName ? (
-                  <div className="s-config-input-row" style={{ marginTop: 6 }}>
-                    <input
-                      className="s-config-input"
-                      value={newMyName}
-                      onChange={e => setNewMyName(e.target.value)}
-                      placeholder="Tu nombre en el nido"
-                      autoFocus
-                      onKeyDown={e => { if (e.key === 'Enter') handleSaveMyName(); if (e.key === 'Escape') setEditingMyName(false) }}
-                    />
-                    <button className="s-config-save" onClick={handleSaveMyName} disabled={savingMyName}>
-                      {savingMyName ? '...' : '✓'}
-                    </button>
-                    <button className="s-config-cancel" onClick={() => setEditingMyName(false)}>✗</button>
-                  </div>
-                ) : (
-                  <div className="s-config-row" style={{ marginTop: 4 }}>
-                    <div className="s-config-value"><span>{session.miembroNombre}</span></div>
-                    <button className="s-config-edit-btn" onClick={() => { setNewMyName(session.miembroNombre); setEditingMyName(true) }} title="Editar nombre">
-                      <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M7.5 2l2.5 2.5L4 10.5H1.5V8L7.5 2z" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round"/></svg>
-                    </button>
-                  </div>
-                )}
-              </div>
-
-              <div className="s-config-sep-inner" />
-
-              {/* Avatar color */}
-              <div>
-                <div className="s-config-label">Tu color</div>
-                <div className="s-config-row" style={{ marginTop: 4 }}>
-                  <div className="s-config-value">
-                    <div
-                      className="s-config-color-current"
-                      style={{ backgroundColor: session.miembroColor }}
-                      onClick={() => setShowColorPicker(v => !v)}
-                      title="Cambiar color"
-                    />
-                    <span style={{ fontSize: '0.82rem', color: '#A07060' }}>
-                      {showColorPicker ? 'Elegí un color' : 'Tocar para cambiar'}
-                    </span>
-                  </div>
-                </div>
-                {showColorPicker && (
-                  <div className="s-color-grid" style={{ marginTop: 8 }}>
-                    {COLORES.map(c => (
-                      <button
-                        key={c}
-                        className={`s-color-dot${c === session.miembroColor ? ' active' : ''}`}
-                        style={{ backgroundColor: c }}
-                        onClick={() => handleChangeColor(c)}
-                        disabled={savingColor}
-                        title={c}
-                      >
-                        {c === session.miembroColor && (
-                          <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-                            <path d="M2 6l3 3 5-5" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
-                          </svg>
-                        )}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              <div className="s-config-sep-inner" />
-
-              {/* Gradiente (color secundario) */}
-              <div>
-                <div className="s-config-label">Gradiente</div>
-                <div className="s-config-row" style={{ marginTop: 4 }}>
-                  <div className="s-config-value" style={{ gap: 8 }}>
-                    <div
-                      style={{
-                        width: 24, height: 24, borderRadius: '50%', cursor: 'pointer', border: '2px solid rgba(160,112,96,0.3)',
-                        background: session.miembroGradiente
-                          ? `linear-gradient(135deg, ${session.miembroColor}, ${session.miembroGradiente})`
-                          : session.miembroColor,
-                      }}
-                      onClick={() => setShowGradientPicker(v => !v)}
-                      title="Elegir gradiente"
-                    />
-                    <span style={{ fontSize: '0.82rem', color: '#A07060' }}>
-                      {session.miembroGradiente ? 'Gradiente activo' : 'Sin gradiente'}
-                    </span>
-                    {session.miembroGradiente && (
-                      <button
-                        style={{ fontSize: '0.7rem', color: '#C05A3B', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline' }}
-                        onClick={() => handleChangeGradient(null)}
-                        disabled={savingGradient}
-                      >quitar</button>
-                    )}
-                  </div>
-                </div>
-                {showGradientPicker && (
-                  <div className="s-color-grid" style={{ marginTop: 8 }}>
-                    {COLORES.filter(c => c !== session.miembroColor).map(c => (
-                      <button
-                        key={c}
-                        className={`s-color-dot${c === session.miembroGradiente ? ' active' : ''}`}
-                        style={{ backgroundColor: c }}
-                        onClick={() => handleChangeGradient(c)}
-                        disabled={savingGradient}
-                        title={c}
-                      >
-                        {c === session.miembroGradiente && (
-                          <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-                            <path d="M2 6l3 3 5-5" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
-                          </svg>
-                        )}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              <div className="s-config-sep-inner" />
-
-              {/* Icono personal */}
-              <div>
-                <div className="s-config-label">Tu icono</div>
-                <div className="s-config-row" style={{ marginTop: 4 }}>
-                  <div className="s-config-value" style={{ gap: 8 }}>
-                    <span style={{ fontSize: '1.2rem', cursor: 'pointer' }} onClick={() => setShowIconPicker(v => !v)}>
-                      {session.miembroIcono ?? '❓'}
-                    </span>
-                    <span style={{ fontSize: '0.82rem', color: '#A07060' }}>
-                      {showIconPicker ? 'Elegí un icono' : 'Tocar para cambiar'}
-                    </span>
-                    {session.miembroIcono && (
-                      <button
-                        style={{ fontSize: '0.7rem', color: '#C05A3B', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline' }}
-                        onClick={() => handleChangeIcon(null)}
-                        disabled={savingIcon}
-                      >quitar</button>
-                    )}
-                  </div>
-                </div>
-                {showIconPicker && (
-                  <div className="s-color-grid" style={{ marginTop: 8 }}>
-                    {ICONOS.map(ic => (
-                      <button
-                        key={ic}
-                        className={`s-color-dot${ic === session.miembroIcono ? ' active' : ''}`}
-                        style={{ fontSize: '1.1rem', background: ic === session.miembroIcono ? 'rgba(90,136,105,0.2)' : 'rgba(255,245,238,0.6)' }}
-                        onClick={() => handleChangeIcon(ic)}
-                        disabled={savingIcon}
-                      >
-                        {ic}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              <div className="s-config-sep-inner" />
-
-              {/* Preview del avatar */}
-              <div>
-                <div className="s-config-label">Tu avatar</div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 8 }}>
-                  <MemberAvatar
-                    nombre={session.miembroNombre}
-                    color={session.miembroColor}
-                    gradiente={session.miembroGradiente}
-                    icono={session.miembroIcono}
-                    size="lg"
-                  />
-                  <span style={{ fontSize: '0.78rem', color: '#A07060' }}>Así te ven los demás</span>
-                </div>
-              </div>
-
             </div>
           </div>
 
