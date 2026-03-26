@@ -6,6 +6,7 @@ import { Fraunces, Nunito, DM_Mono } from 'next/font/google'
 import { createClient } from '@/lib/supabase'
 import { getSession } from '@/lib/session'
 import type { Piso, VotoPiso, Miembro } from '@/lib/types'
+import { resolverVideoUrl, comprimirImagen, subirArchivoStorage } from '@/lib/pisos-utils'
 import { ConfirmModal } from '@/components/ConfirmModal'
 import MemberAvatar from '@/components/MemberAvatar'
 
@@ -53,57 +54,6 @@ function parseVideo(url: string): { tipo: 'youtube' | 'tiktok' | 'otro'; embedUr
     // ignore
   }
   return { tipo: 'otro' }
-}
-
-async function resolverVideoUrl(url: string): Promise<string> {
-  if (!url.includes('tiktok.com')) return url
-  // Si ya es un embed URL, devolver tal cual
-  if (url.includes('tiktok.com/embed/v2/')) return url
-  // Si ya tiene el video ID, construir embed directo
-  const matchDirecto = url.match(/\/video\/(\d+)/)
-  if (matchDirecto) return `https://www.tiktok.com/embed/v2/${matchDirecto[1]}`
-  // URL corta o sin ID: resolver via API
-  try {
-    const res = await fetch(`/api/tiktok-oembed?url=${encodeURIComponent(url)}`)
-    if (res.ok) {
-      const data = await res.json()
-      if (data.embedUrl) return data.embedUrl
-    }
-  } catch {
-    // si falla, guardar la URL original
-  }
-  return url
-}
-
-async function comprimirImagen(file: File, maxWidth = 1600, quality = 0.82): Promise<File> {
-  return new Promise((resolve) => {
-    const img = new Image()
-    const url = URL.createObjectURL(file)
-    img.onload = () => {
-      URL.revokeObjectURL(url)
-      const scale = Math.min(1, maxWidth / img.width)
-      const canvas = document.createElement('canvas')
-      canvas.width = Math.round(img.width * scale)
-      canvas.height = Math.round(img.height * scale)
-      canvas.getContext('2d')!.drawImage(img, 0, 0, canvas.width, canvas.height)
-      canvas.toBlob(
-        (blob) => resolve(blob ? new File([blob], file.name, { type: 'image/jpeg' }) : file),
-        'image/jpeg', quality
-      )
-    }
-    img.onerror = () => { URL.revokeObjectURL(url); resolve(file) }
-    img.src = url
-  })
-}
-
-async function subirArchivoStorage(salaId: string, file: File): Promise<string | null> {
-  const supabase = createClient()
-  const compressed = await comprimirImagen(file)
-  const path = `${salaId}/${Date.now()}_${Math.random().toString(36).slice(2)}.jpg`
-  const { error } = await supabase.storage.from('pisos').upload(path, compressed, { contentType: 'image/jpeg' })
-  if (error) return null
-  const { data } = supabase.storage.from('pisos').getPublicUrl(path)
-  return data.publicUrl
 }
 
 export default function PisoDetallePage() {

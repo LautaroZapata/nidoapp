@@ -6,6 +6,7 @@ import { Fraunces, Nunito, DM_Mono } from 'next/font/google'
 import { createClient } from '@/lib/supabase'
 import { getSession } from '@/lib/session'
 import type { Gasto, Miembro, Pago } from '@/lib/types'
+import { fmtUYU } from '@/lib/format'
 import { calcularBalance, desglosarDeuda, EPS } from '@/lib/balance'
 import type { Debt } from '@/lib/balance'
 import { notificarSala, guardarActividad } from '@/lib/push'
@@ -39,10 +40,6 @@ const CATEGORIA_META: Record<Categoria, { label: string; icon: string; color: st
   comida:      { label: 'Comida',      icon: '🛒', color: '#B06820', bg: 'rgba(176,104,32,0.1)',  border: 'rgba(176,104,32,0.25)'  },
   limpieza:    { label: 'Limpieza',    icon: '🧹', color: '#1E7D8A', bg: 'rgba(30,125,138,0.1)',  border: 'rgba(30,125,138,0.25)'  },
   otro:        { label: 'Otro',        icon: '📦', color: '#7A6858', bg: 'rgba(122,104,88,0.1)',  border: 'rgba(122,104,88,0.25)'  },
-}
-
-function fmtUYU(n: number) {
-  return `$ ${n.toLocaleString('es-UY')}`
 }
 
 async function exportarExcel(gastos: Gasto[], pagos: Pago[], miembros: Miembro[], salaNombre: string) {

@@ -90,39 +90,3 @@ export function desglosarDeuda(
   return result.sort((a, b) => b.gasto.fecha.localeCompare(a.gasto.fecha))
 }
 
-/** Balance neto de UN miembro específico. Positivo = le deben, negativo = debe. */
-export function calcularNetMiembro(
-  miembroId: string,
-  gastos: Array<{ tipo: string; pagado_por: string | null; importe: number; splits: Record<string, number> | null }>,
-  pagos: Array<{ de_id: string; a_id: string; importe: number }>,
-  miembros: Array<{ id: string }>,
-): number {
-  const net: Record<string, number> = {}
-  miembros.forEach(m => { net[m.id] = 0 })
-
-  gastos.forEach(g => {
-    if (g.tipo === 'fijo' || !g.pagado_por) return
-    if (!g.splits) {
-      const share = g.importe / (miembros.length || 1)
-      net[g.pagado_por] = (net[g.pagado_por] ?? 0) + g.importe - share
-      miembros.forEach(m => {
-        if (m.id !== g.pagado_por) net[m.id] = (net[m.id] ?? 0) - share
-      })
-    } else {
-      miembros.forEach(m => {
-        if (m.id === g.pagado_por) return
-        const owes = g.splits![m.id] ?? 0
-        if (owes <= 0) return
-        net[m.id] = (net[m.id] ?? 0) - owes
-        net[g.pagado_por!] = (net[g.pagado_por!] ?? 0) + owes
-      })
-    }
-  })
-
-  pagos.forEach(p => {
-    net[p.de_id] = (net[p.de_id] ?? 0) + p.importe
-    net[p.a_id]  = (net[p.a_id]  ?? 0) - p.importe
-  })
-
-  return net[miembroId] ?? 0
-}
