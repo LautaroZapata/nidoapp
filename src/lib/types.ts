@@ -56,6 +56,12 @@ export type Database = {
           user_id: string | null
           telefono: string | null
           whatsapp_phone: string | null
+          foto_url: string | null
+          bio: string | null
+          rol_casa: string | null
+          cumpleanos: string | null
+          contacto_emergencia: { nombre: string; telefono: string } | null
+          metodo_pago: string | null
           creado_en: string
         }
         Insert: {
@@ -70,6 +76,12 @@ export type Database = {
           user_id?: string | null
           telefono?: string | null
           whatsapp_phone?: string | null
+          foto_url?: string | null
+          bio?: string | null
+          rol_casa?: string | null
+          cumpleanos?: string | null
+          contacto_emergencia?: { nombre: string; telefono: string } | null
+          metodo_pago?: string | null
           creado_en?: string
         }
         Update: {
@@ -84,6 +96,12 @@ export type Database = {
           user_id?: string | null
           telefono?: string | null
           whatsapp_phone?: string | null
+          foto_url?: string | null
+          bio?: string | null
+          rol_casa?: string | null
+          cumpleanos?: string | null
+          contacto_emergencia?: { nombre: string; telefono: string } | null
+          metodo_pago?: string | null
           creado_en?: string
         }
         Relationships: []
