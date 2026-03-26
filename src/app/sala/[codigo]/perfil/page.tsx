@@ -28,13 +28,11 @@ const ALL_BADGE_DEFS = [
 type ProfileData = {
   nombre: string
   color: string
-  gradiente: string | null
   icono: string | null
   foto_url: string | null
   bio: string | null
   rol_casa: string | null
   cumpleanos: string | null
-  contacto_emergencia: { nombre: string; telefono: string } | null
   metodo_pago: string | null
 }
 
@@ -57,11 +55,7 @@ export default function PerfilPage() {
   const [rolValue, setRolValue] = useState('')
   const [cumpleValue, setCumpleValue] = useState('')
   const [metodoPagoValue, setMetodoPagoValue] = useState('')
-  const [emergNombre, setEmergNombre] = useState('')
-  const [emergTelefono, setEmergTelefono] = useState('')
-
   const [selectedColor, setSelectedColor] = useState('#C05A3B')
-  const [selectedGradiente, setSelectedGradiente] = useState<string | null>(null)
   const [selectedIcono, setSelectedIcono] = useState<string | null>(null)
 
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -102,11 +96,9 @@ export default function PerfilPage() {
 
       const p: ProfileData = {
         nombre: miembro.nombre, color: miembro.color,
-        gradiente: miembro.gradiente, icono: miembro.icono,
-        foto_url: miembro.foto_url, bio: miembro.bio,
-        rol_casa: miembro.rol_casa, cumpleanos: miembro.cumpleanos,
-        contacto_emergencia: miembro.contacto_emergencia as ProfileData['contacto_emergencia'],
-        metodo_pago: miembro.metodo_pago,
+        icono: miembro.icono, foto_url: miembro.foto_url,
+        bio: miembro.bio, rol_casa: miembro.rol_casa,
+        cumpleanos: miembro.cumpleanos, metodo_pago: miembro.metodo_pago,
       }
       setProfile(p)
       setNameValue(p.nombre)
@@ -114,10 +106,7 @@ export default function PerfilPage() {
       setRolValue(p.rol_casa ?? '')
       setCumpleValue(p.cumpleanos ?? '')
       setMetodoPagoValue(p.metodo_pago ?? '')
-      setEmergNombre(p.contacto_emergencia?.nombre ?? '')
-      setEmergTelefono(p.contacto_emergencia?.telefono ?? '')
       setSelectedColor(p.color)
-      setSelectedGradiente(p.gradiente)
       setSelectedIcono(p.icono)
 
       const salaId = session!.salaId
@@ -182,8 +171,7 @@ export default function PerfilPage() {
 
   function updateSession(updates: Partial<{
     miembroNombre: string; miembroColor: string
-    miembroGradiente: string | null; miembroIcono: string | null
-    miembroFotoUrl: string | null
+    miembroIcono: string | null; miembroFotoUrl: string | null
   }>) {
     if (!session) return
     const updated = { ...session, ...updates }
@@ -234,28 +222,11 @@ export default function PerfilPage() {
     }
   }
 
-  async function handleEmergenciaBlur() {
-    const nombre = emergNombre.trim()
-    const telefono = emergTelefono.trim()
-    const dbVal = (nombre && telefono) ? { nombre, telefono } : null
-    if (JSON.stringify(dbVal) !== JSON.stringify(profile?.contacto_emergencia ?? null)) {
-      await saveField('contacto_emergencia', dbVal)
-      setProfile(p => p ? { ...p, contacto_emergencia: dbVal } : p)
-    }
-  }
-
   async function handleColorChange(color: string) {
     setSelectedColor(color)
     await saveField('color', color)
     setProfile(prev => prev ? { ...prev, color } : prev)
     updateSession({ miembroColor: color })
-  }
-
-  async function handleGradienteChange(gradiente: string | null) {
-    setSelectedGradiente(gradiente)
-    await saveField('gradiente', gradiente)
-    setProfile(prev => prev ? { ...prev, gradiente } : prev)
-    updateSession({ miembroGradiente: gradiente })
   }
 
   async function handleIconoChange(icono: string | null) {
@@ -331,16 +302,10 @@ export default function PerfilPage() {
         {/* ── Hero: Avatar + Name + Bio ── */}
         <section className="p-hero">
           <div className="p-hero-bg" style={{
-            background: selectedGradiente
-              ? `linear-gradient(135deg, ${selectedColor}30, ${selectedGradiente}30)`
-              : `linear-gradient(135deg, ${selectedColor}25, ${selectedColor}08)`,
+            background: `linear-gradient(135deg, ${selectedColor}25, ${selectedColor}08)`,
           }} />
           <div className="p-avatar-wrap">
-            <div className="p-avatar-ring" style={{
-              background: selectedGradiente
-                ? `linear-gradient(135deg, ${selectedColor}, ${selectedGradiente})`
-                : selectedColor,
-            }}>
+            <div className="p-avatar-ring" style={{ background: selectedColor }}>
               {profile.foto_url ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img src={profile.foto_url} alt={profile.nombre} className="p-avatar-img" />
@@ -348,7 +313,6 @@ export default function PerfilPage() {
                 <MemberAvatar
                   nombre={profile.nombre}
                   color={selectedColor}
-                  gradiente={selectedGradiente}
                   icono={selectedIcono}
                   size="lg"
                   style={{ width: 88, height: 88 }}
@@ -434,26 +398,7 @@ export default function PerfilPage() {
                     className="p-color-native"
                     title="Elegir color personalizado"
                   />
-                  <div className="p-gradient-preview" style={{
-                    background: selectedGradiente
-                      ? `linear-gradient(135deg, ${selectedColor}, ${selectedGradiente})`
-                      : selectedColor,
-                  }} />
-                  {selectedGradiente && (
-                    <input
-                      type="color"
-                      value={selectedGradiente}
-                      onChange={e => handleGradienteChange(e.target.value)}
-                      className="p-color-native"
-                      title="Elegir segundo color"
-                    />
-                  )}
-                  <button
-                    className={`p-grad-toggle ${selectedGradiente ? 'active' : ''}`}
-                    onClick={() => handleGradienteChange(selectedGradiente ? null : '#5A8869')}
-                  >
-                    {selectedGradiente ? '✕ Quitar gradiente' : '+ Agregar gradiente'}
-                  </button>
+                  <div className="p-color-preview" style={{ background: selectedColor }} />
                 </div>
               </div>
 
@@ -481,7 +426,6 @@ export default function PerfilPage() {
                 <MemberAvatar
                   nombre={profile.nombre}
                   color={selectedColor}
-                  gradiente={selectedGradiente}
                   icono={selectedIcono}
                   size="lg"
                   style={{ width: 52, height: 52 }}
@@ -558,36 +502,6 @@ export default function PerfilPage() {
               </div>
             </section>
 
-            {/* Emergencia */}
-            <section className="p-card" style={{ animationDelay: '0.2s' }}>
-              <h2 className="p-card-title">
-                <span className="p-card-icon">🚨</span>
-                Contacto de emergencia
-              </h2>
-              <div className="p-field">
-                <label className="p-label">Nombre</label>
-                <input
-                  className="p-input"
-                  value={emergNombre}
-                  onChange={e => setEmergNombre(e.target.value)}
-                  onBlur={handleEmergenciaBlur}
-                  placeholder="Nombre del contacto"
-                  maxLength={60}
-                />
-              </div>
-              <div className="p-field">
-                <label className="p-label">Teléfono</label>
-                <input
-                  className="p-input"
-                  value={emergTelefono}
-                  onChange={e => setEmergTelefono(e.target.value)}
-                  onBlur={handleEmergenciaBlur}
-                  placeholder="Número de teléfono"
-                  maxLength={30}
-                  type="tel"
-                />
-              </div>
-            </section>
           </div>
         </div>
       </div>
@@ -823,22 +737,12 @@ const styles = `
   .p-color-native::-webkit-color-swatch { border: none; border-radius: 9px; }
   .p-color-native::-moz-color-swatch { border: none; border-radius: 9px; }
 
-  .p-gradient-preview {
+  .p-color-preview {
     width: 40px; height: 40px; border-radius: 12px;
     border: 2px solid rgba(42,26,14,0.1);
     transition: background 0.3s ease;
     box-shadow: 0 1px 6px rgba(0,0,0,0.08);
   }
-
-  .p-grad-toggle {
-    padding: 6px 14px; border-radius: 100px;
-    border: 1.5px solid #EAD8C8; background: #FFFCF8;
-    font-family: var(--font-nunito), 'Nunito', sans-serif;
-    font-size: 0.75rem; font-weight: 600; color: #7A5540;
-    cursor: pointer; transition: all 0.15s; white-space: nowrap;
-  }
-  .p-grad-toggle:hover { border-color: #C05A3B; color: #C05A3B; }
-  .p-grad-toggle.active { background: rgba(192,90,59,0.06); border-color: #C05A3B; color: #C05A3B; }
 
   /* ── Icon grid ── */
   .p-icon-grid { display: flex; flex-wrap: wrap; gap: 6px; }
