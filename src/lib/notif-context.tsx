@@ -73,5 +73,6 @@ export function notifAccentColor(icon: string): string {
   if (icon === '👋') return '#D48806'
   if (icon === '🎉') return '#52C41A'
   if (icon === '🛒') return '#8B5CF6'
+  if (icon === '🏆') return '#C8823A'
   return '#A07060'
 }

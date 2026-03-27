@@ -16,7 +16,11 @@ const BADGE_DEFS = {
   puntual:    { icono: '⚡', nombre: 'Al día', descripcion: 'Sin deudas pendientes' },
 } as const
 
-type BadgeId = keyof typeof BADGE_DEFS
+export type BadgeId = keyof typeof BADGE_DEFS
+
+export const ALL_BADGE_DEFS: Badge[] = Object.entries(BADGE_DEFS).map(
+  ([id, def]) => ({ id, ...def })
+)
 
 interface BadgeInput {
   miembros: Miembro[]

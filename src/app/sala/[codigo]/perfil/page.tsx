@@ -7,7 +7,7 @@ import { createClient } from '@/lib/supabase'
 import { getSession, setSession } from '@/lib/session'
 import type { Miembro, Gasto, ItemCompra, Tarea, Piso, Pago } from '@/lib/types'
 import MemberAvatar from '@/components/MemberAvatar'
-import { calcularBadges, type Badge } from '@/lib/badges'
+import { calcularBadges, ALL_BADGE_DEFS, type Badge } from '@/lib/badges'
 
 const nunito = Nunito({ subsets: ['latin'], weight: ['400', '500', '600', '700', '800'], variable: '--font-nunito' })
 
@@ -16,13 +16,9 @@ const ICONOS = [
   '🎮', '🏀', '🌮', '☕', '🍕', '🎯', '🔥', '💎', '🌊', '🌻',
 ]
 
-const ALL_BADGE_DEFS = [
-  { id: 'fundador', icono: '👑', nombre: 'Fundador', descripcion: 'Primer miembro del nido' },
-  { id: 'limpio', icono: '🧹', nombre: 'Limpio', descripcion: 'Más tareas completadas' },
-  { id: 'generoso', icono: '💰', nombre: 'Generoso', descripcion: 'Mayor gasto total pagado' },
-  { id: 'proveedor', icono: '🛒', nombre: 'Proveedor', descripcion: 'Más items agregados' },
-  { id: 'explorador', icono: '🏠', nombre: 'Explorador', descripcion: 'Más pisos agregados' },
-  { id: 'puntual', icono: '⚡', nombre: 'Al día', descripcion: 'Sin deudas pendientes' },
+const STATUS_PRESETS = [
+  '🏠 En casa', '🏖️ De viaje', '📚 Estudiando', '🛒 De compras',
+  '💤 Durmiendo', '💻 Trabajando', '🍽️ Cocinando', '🎉 De fiesta',
 ]
 
 type ProfileData = {
@@ -34,6 +30,8 @@ type ProfileData = {
   rol_casa: string | null
   cumpleanos: string | null
   metodo_pago: string | null
+  estado: string | null
+  badge_destacado: string | null
 }
 
 export default function PerfilPage() {
@@ -57,6 +55,8 @@ export default function PerfilPage() {
   const [metodoPagoValue, setMetodoPagoValue] = useState('')
   const [selectedColor, setSelectedColor] = useState('#C05A3B')
   const [selectedIcono, setSelectedIcono] = useState<string | null>(null)
+  const [estadoValue, setEstadoValue] = useState<string | null>(null)
+  const [pinnedBadge, setPinnedBadge] = useState<string | null>(null)
 
   const fileInputRef = useRef<HTMLInputElement>(null)
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -99,6 +99,7 @@ export default function PerfilPage() {
         icono: miembro.icono, foto_url: miembro.foto_url,
         bio: miembro.bio, rol_casa: miembro.rol_casa,
         cumpleanos: miembro.cumpleanos, metodo_pago: miembro.metodo_pago,
+        estado: miembro.estado, badge_destacado: miembro.badge_destacado,
       }
       setProfile(p)
       setNameValue(p.nombre)
@@ -108,6 +109,8 @@ export default function PerfilPage() {
       setMetodoPagoValue(p.metodo_pago ?? '')
       setSelectedColor(p.color)
       setSelectedIcono(p.icono)
+      setEstadoValue(p.estado)
+      setPinnedBadge(p.badge_destacado)
 
       const salaId = session!.salaId
       const [
@@ -234,6 +237,18 @@ export default function PerfilPage() {
     await saveField('icono', icono)
     setProfile(prev => prev ? { ...prev, icono } : prev)
     updateSession({ miembroIcono: icono })
+  }
+
+  async function handleEstadoChange(estado: string | null) {
+    setEstadoValue(estado)
+    await saveField('estado', estado)
+    setProfile(prev => prev ? { ...prev, estado } : prev)
+  }
+
+  async function handlePinBadge(badgeId: string | null) {
+    setPinnedBadge(badgeId)
+    await saveField('badge_destacado', badgeId)
+    setProfile(prev => prev ? { ...prev, badge_destacado: badgeId } : prev)
   }
 
   async function handlePhotoUpload(e: React.ChangeEvent<HTMLInputElement>) {
@@ -444,12 +459,21 @@ export default function PerfilPage() {
                 {ALL_BADGE_DEFS.map(def => {
                   const earned = myBadgeIds.has(def.id)
                   return (
-                    <div key={def.id} className={`p-badge${earned ? ' earned' : ''}`}>
+                    <div key={def.id} className={`p-badge${earned ? ' earned' : ''}${pinnedBadge === def.id ? ' pinned' : ''}`}>
                       <span className="p-badge-emoji">{def.icono}</span>
                       <div className="p-badge-info">
                         <span className="p-badge-name">{def.nombre}</span>
                         <span className="p-badge-desc">{def.descripcion}</span>
                       </div>
+                      {earned && (
+                        <button
+                          className={`p-badge-pin${pinnedBadge === def.id ? ' active' : ''}`}
+                          onClick={() => handlePinBadge(pinnedBadge === def.id ? null : def.id)}
+                          title={pinnedBadge === def.id ? 'Quitar pin' : 'Destacar badge'}
+                        >
+                          📌
+                        </button>
+                      )}
                     </div>
                   )
                 })}
@@ -465,6 +489,21 @@ export default function PerfilPage() {
                 <span className="p-card-icon">📝</span>
                 Sobre mí
               </h2>
+
+              <div className="p-field">
+                <label className="p-label">Estado actual</label>
+                <div className="p-status-grid">
+                  {STATUS_PRESETS.map(s => (
+                    <button
+                      key={s}
+                      className={`p-status-chip${estadoValue === s ? ' active' : ''}`}
+                      onClick={() => handleEstadoChange(estadoValue === s ? null : s)}
+                    >
+                      {s}
+                    </button>
+                  ))}
+                </div>
+              </div>
 
               <div className="p-field">
                 <label className="p-label">Rol en la casa</label>
@@ -812,4 +851,29 @@ const styles = `
   }
   .p-back-bottom:hover { border-color: #C05A3B; color: #C05A3B; }
   .p-back-bottom:active { transform: scale(0.98); }
+
+  /* Status presets */
+  .p-status-grid { display: flex; flex-wrap: wrap; gap: 6px; }
+  .p-status-chip {
+    font-size: 0.78rem; padding: 6px 12px; border-radius: 12px;
+    border: 1.5px solid #EAD8C8; background: #FFFCF8;
+    cursor: pointer; font-family: var(--font-nunito), 'Nunito', sans-serif;
+    font-weight: 600; color: #5A3E30; transition: all 0.15s; white-space: nowrap;
+  }
+  .p-status-chip:hover { border-color: #C05A3B; background: rgba(192,90,59,0.06); transform: scale(1.03); }
+  .p-status-chip:active { transform: scale(0.97); }
+  .p-status-chip.active { border-color: #C05A3B; background: rgba(192,90,59,0.1); color: #C05A3B; }
+
+  /* Badge pin */
+  .p-badge { position: relative; }
+  .p-badge-pin {
+    position: absolute; top: 50%; right: 10px; transform: translateY(-50%);
+    background: none; border: 1.5px solid transparent; border-radius: 8px;
+    font-size: 0.85rem; cursor: pointer; padding: 4px;
+    opacity: 0.3; transition: all 0.15s;
+  }
+  .p-badge:hover .p-badge-pin { opacity: 0.7; }
+  .p-badge-pin:hover { opacity: 1 !important; border-color: #C8823A; background: rgba(200,130,58,0.08); }
+  .p-badge-pin.active { opacity: 1; border-color: #C8823A; background: rgba(200,130,58,0.12); }
+  .p-badge.pinned { border-color: #C8823A; background: rgba(200,130,58,0.05); }
 `

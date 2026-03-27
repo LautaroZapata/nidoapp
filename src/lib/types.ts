@@ -58,6 +58,8 @@ export type Database = {
           rol_casa: string | null
           cumpleanos: string | null
           metodo_pago: string | null
+          estado: string | null
+          badge_destacado: string | null
           creado_en: string
         }
         Insert: {
@@ -74,6 +76,8 @@ export type Database = {
           rol_casa?: string | null
           cumpleanos?: string | null
           metodo_pago?: string | null
+          estado?: string | null
+          badge_destacado?: string | null
           creado_en?: string
         }
         Update: {
@@ -90,6 +94,8 @@ export type Database = {
           rol_casa?: string | null
           cumpleanos?: string | null
           metodo_pago?: string | null
+          estado?: string | null
+          badge_destacado?: string | null
           creado_en?: string
         }
         Relationships: []

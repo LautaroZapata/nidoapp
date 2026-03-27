@@ -13,12 +13,18 @@ import MemberAvatar from '@/components/MemberAvatar'
 import { registrarPush, estadoPush, asegurarPush, notificarSala } from '@/lib/push'
 import { normalizeTier, TIERS, FREE_FEATURES, FREE_LIMITS, getTierParaMiembros } from '@/lib/features'
 import type { TierType } from '@/lib/features'
-import { calcularBadges, type Badge } from '@/lib/badges'
+import { calcularBadges, ALL_BADGE_DEFS, type Badge } from '@/lib/badges'
+import { guardarActividad } from '@/lib/push'
 import type { Gasto, ItemCompra, Tarea, Piso } from '@/lib/types'
 
 const OnboardingModal = dynamic(() => import('@/components/OnboardingModal'), { ssr: false })
 
 type DbResult<T> = { data: T | null; error: PostgrestError | null }
+
+const STATUS_PRESETS = [
+  '🏠 En casa', '🏖️ De viaje', '📚 Estudiando', '🛒 De compras',
+  '💤 Durmiendo', '💻 Trabajando', '🍽️ Cocinando', '🎉 De fiesta',
+]
 
 const fraunces = Fraunces({ weight: 'variable', subsets: ['latin'], variable: '--font-serif' })
 const nunito = Nunito({ subsets: ['latin'], weight: ['300','400','500','600','700'], variable: '--font-body' })
@@ -67,6 +73,11 @@ export default function SalaPage() {
   const [showPlanes, setShowPlanes] = useState(false)
 
   const [memberBadges, setMemberBadges] = useState<Map<string, Badge[]>>(new Map())
+  const prevBadgesRef = useRef<Map<string, Badge[]> | null>(null)
+
+  // Status selector
+  const [statusOpen, setStatusOpen] = useState(false)
+  const statusRef = useRef<HTMLDivElement>(null)
 
   async function handleCheckout(tier: TierType) {
     if (!session) return
@@ -228,6 +239,23 @@ export default function SalaPage() {
     return () => document.removeEventListener('mousedown', handleClick)
   }, [menuOpen])
 
+  // Close status popover on outside click
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (statusRef.current && !statusRef.current.contains(e.target as Node)) setStatusOpen(false)
+    }
+    if (statusOpen) document.addEventListener('mousedown', handleClick)
+    return () => document.removeEventListener('mousedown', handleClick)
+  }, [statusOpen])
+
+  async function handleSetStatus(estado: string | null) {
+    if (!session) return
+    setStatusOpen(false)
+    const supabase = createClient()
+    await supabase.from('miembros').update({ estado }).eq('id', session.miembroId)
+    setMiembros(prev => prev.map(m => m.id === session.miembroId ? { ...m, estado } : m))
+  }
+
   // Calcular badges cuando hay miembros
   useEffect(() => {
     if (!session || miembros.length === 0) return
@@ -263,7 +291,23 @@ export default function SalaPage() {
           if (deuda > pagado + 1) deudores.push(m.id)
         }
       }
-      setMemberBadges(calcularBadges({ miembros, gastos, items, tareas: tareasList, pisos: pisosList, deudores }))
+      const newBadges = calcularBadges({ miembros, gastos, items, tareas: tareasList, pisos: pisosList, deudores })
+
+      // Detect newly earned badges (skip first load)
+      if (prevBadgesRef.current && session) {
+        const oldIds = new Set((prevBadgesRef.current.get(session.miembroId) ?? []).map(b => b.id))
+        const myNew = (newBadges.get(session.miembroId) ?? []).filter(b => !oldIds.has(b.id))
+        for (const b of myNew) {
+          guardarActividad({
+            salaId: session.salaId,
+            texto: `${session.miembroNombre} ganó el badge ${b.nombre} ${b.icono}`,
+            icono: '🏆',
+            url: `/sala/${session.salaCodigo}`,
+          })
+        }
+      }
+      prevBadgesRef.current = newBadges
+      setMemberBadges(newBadges)
     })
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [miembros.length])
@@ -416,11 +460,37 @@ export default function SalaPage() {
         .s-miembro-left { display: flex; align-items: center; gap: 10px; min-width: 0; }
         .s-miembro-av { width: 34px; height: 34px; border-radius: 50%; flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-size: 0.8rem; font-weight: 700; color: white; box-shadow: 0 2px 6px rgba(0,0,0,0.1); }
         .s-miembro-info { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+        .s-miembro-name-row { display: flex; align-items: center; gap: 4px; min-width: 0; }
         .s-miembro-name { font-size: 0.9rem; font-weight: 600; color: #2A1A0E; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .s-miembro-pinned { font-size: 0.85rem; flex-shrink: 0; }
+        .s-miembro-estado { font-size: 0.68rem; color: #8A6050; background: rgba(192,90,59,0.07); padding: 2px 8px; border-radius: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 180px; }
         .s-miembro-badges { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; }
         .s-miembro-you { font-size: 0.65rem; color: #C05A3B; font-weight: 700; background: rgba(192,90,59,0.09); padding: 1px 6px; border-radius: 20px; border: 1px solid rgba(192,90,59,0.18); }
         .s-miembro-owner { font-size: 0.65rem; font-weight: 700; color: #C8823A; background: rgba(200,130,58,0.1); padding: 1px 6px; border-radius: 20px; border: 1px solid rgba(200,130,58,0.22); white-space: nowrap; }
         .s-miembro-badge { font-size: 0.72rem; cursor: default; }
+
+        /* Status selector */
+        .s-status-wrap { position: relative; }
+        .s-status-btn { font-size: 0.68rem; color: #8A6050; background: rgba(192,90,59,0.07); padding: 2px 8px; border-radius: 12px; border: 1px solid transparent; cursor: pointer; font-family: var(--font-body),'Nunito',sans-serif; font-weight: 500; transition: all 0.15s; white-space: nowrap; }
+        .s-status-btn:hover { border-color: rgba(192,90,59,0.2); background: rgba(192,90,59,0.12); }
+        .s-status-popover { position: absolute; top: calc(100% + 6px); left: 0; z-index: 100; background: white; border: 1.5px solid #EAD8C8; border-radius: 14px; padding: 8px; display: flex; flex-wrap: wrap; gap: 6px; width: 260px; box-shadow: 0 8px 28px rgba(42,26,14,0.15); animation: s-fadeup 0.2s ease-out; }
+        .s-status-option { font-size: 0.72rem; padding: 5px 10px; border-radius: 10px; border: 1.5px solid #EAD8C8; background: #FFFCF8; cursor: pointer; font-family: var(--font-body),'Nunito',sans-serif; font-weight: 600; color: #5A3E30; transition: all 0.15s; white-space: nowrap; }
+        .s-status-option:hover { border-color: #C05A3B; background: rgba(192,90,59,0.06); }
+        .s-status-option.active { border-color: #C05A3B; background: rgba(192,90,59,0.1); color: #C05A3B; }
+        .s-status-option.clear { color: #A07060; border-style: dashed; }
+        .s-status-option.clear:hover { color: #C05A3B; border-color: #C05A3B; }
+
+        /* Logros del nido */
+        .s-logros { background: white; border-radius: 20px; border: 1.5px solid #EAD8C8; overflow: hidden; margin-bottom: 1.5rem; animation: s-fadeup 0.5s 0.15s cubic-bezier(0.22, 1, 0.36, 1) both; box-shadow: 0 2px 12px rgba(150,80,40,0.06); }
+        .s-logros-header { display: flex; align-items: center; justify-content: space-between; padding: 1rem 1.25rem 0.75rem; }
+        .s-logros-title { font-family: var(--font-serif),'Georgia',serif; font-size: 1rem; font-weight: 700; color: #2A1A0E; letter-spacing: -0.018em; }
+        .s-logros-list { padding: 0.5rem 0; }
+        .s-logro { display: flex; align-items: center; gap: 12px; padding: 0.55rem 1.25rem; }
+        .s-logro-icon { font-size: 1.3rem; flex-shrink: 0; }
+        .s-logro-info { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+        .s-logro-name { font-size: 0.82rem; font-weight: 700; color: #2A1A0E; }
+        .s-logro-holders { font-size: 0.72rem; color: #A07060; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .s-logros-empty { display: flex; align-items: center; gap: 10px; padding: 1.25rem; color: #A07060; font-size: 0.82rem; font-weight: 500; }
         .s-miembro-remove { width: 28px; height: 28px; border-radius: 8px; background: transparent; border: 1.5px solid transparent; color: #D0A898; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.18s; flex-shrink: 0; }
         .s-miembro-remove:hover { background: rgba(192,60,40,0.08); border-color: rgba(192,60,40,0.2); color: #C04040; }
         .s-nido-sep-bottom { height: 1px; background: #F0E4D8; margin: 0.25rem 1.25rem 0; }
@@ -524,6 +594,7 @@ export default function SalaPage() {
         }
 
         @media (min-width: 1024px) {
+          .s-logros { grid-column: 2; grid-row: 2; margin-bottom: 0; }
           .s-plan { grid-column: 3; grid-row: 2; margin-top: 0; }
         }
 
@@ -719,6 +790,9 @@ export default function SalaPage() {
                     const esDueño = !!(m.user_id && planInfo?.owner_user_id && m.user_id === planInfo.owner_user_id)
                     const esTu    = m.id === session.miembroId
                     const puedeQuitar = esOwner && !esTu && !esDueño
+                    const badges = memberBadges.get(m.id) ?? []
+                    const pinnedBadge = m.badge_destacado ? badges.find(b => b.id === m.badge_destacado) : null
+                    const otherBadges = pinnedBadge ? badges.filter(b => b.id !== m.badge_destacado) : badges
                     return (
                       <div key={m.id} className="s-miembro">
                         <div className="s-miembro-left">
@@ -731,11 +805,31 @@ export default function SalaPage() {
                             className="s-miembro-av"
                           />
                           <div className="s-miembro-info">
-                            <div className="s-miembro-name">{m.nombre}</div>
+                            <div className="s-miembro-name-row">
+                              <span className="s-miembro-name">{m.nombre}</span>
+                              {pinnedBadge && <span className="s-miembro-pinned" title={pinnedBadge.nombre}>{pinnedBadge.icono}</span>}
+                            </div>
+                            {esTu ? (
+                              <div className="s-status-wrap" ref={statusRef}>
+                                <button className="s-status-btn" onClick={() => setStatusOpen(v => !v)}>
+                                  {m.estado || '+ Estado'}
+                                </button>
+                                {statusOpen && (
+                                  <div className="s-status-popover">
+                                    {STATUS_PRESETS.map(s => (
+                                      <button key={s} className={`s-status-option${m.estado === s ? ' active' : ''}`} onClick={() => handleSetStatus(s)}>{s}</button>
+                                    ))}
+                                    {m.estado && <button className="s-status-option clear" onClick={() => handleSetStatus(null)}>Borrar estado</button>}
+                                  </div>
+                                )}
+                              </div>
+                            ) : m.estado ? (
+                              <span className="s-miembro-estado">{m.estado}</span>
+                            ) : null}
                             <div className="s-miembro-badges">
                               {esDueño && <span className="s-miembro-owner">👑 dueño</span>}
                               {esTu    && <span className="s-miembro-you">tú</span>}
-                              {(memberBadges.get(m.id) ?? []).map(b => (
+                              {otherBadges.map(b => (
                                 <span key={b.id} className="s-miembro-badge" title={b.descripcion}>{b.icono}</span>
                               ))}
                             </div>
@@ -772,6 +866,42 @@ export default function SalaPage() {
               </div>
             )
           })()}
+
+          {/* Logros del nido */}
+          <div className="s-logros">
+            <div className="s-logros-header">
+              <div className="s-logros-title">Logros del nido</div>
+              <span style={{ fontSize: '1rem' }}>🏆</span>
+            </div>
+            <div className="s-nido-sep" />
+            <div className="s-logros-list">
+              {(() => {
+                const earned = ALL_BADGE_DEFS.filter(def =>
+                  miembros.some(m => (memberBadges.get(m.id) ?? []).some(b => b.id === def.id))
+                )
+                if (earned.length === 0) return (
+                  <div className="s-logros-empty">
+                    <span style={{ fontSize: '1.5rem' }}>🌱</span>
+                    <span>Usen el nido para desbloquear logros</span>
+                  </div>
+                )
+                return earned.map(def => {
+                  const holders = miembros.filter(m =>
+                    (memberBadges.get(m.id) ?? []).some(b => b.id === def.id)
+                  )
+                  return (
+                    <div key={def.id} className="s-logro">
+                      <span className="s-logro-icon">{def.icono}</span>
+                      <div className="s-logro-info">
+                        <span className="s-logro-name">{def.nombre}</span>
+                        <span className="s-logro-holders">{holders.map(h => h.nombre).join(', ')}</span>
+                      </div>
+                    </div>
+                  )
+                })
+              })()}
+            </div>
+          </div>
 
           {/* Modules */}
           <div className="s-grid">
