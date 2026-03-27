@@ -55,15 +55,6 @@ function IconTareas() {
   )
 }
 
-function IconPerfil() {
-  return (
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
-      <circle cx="12" cy="8" r="4" stroke="currentColor" strokeWidth="1.7"/>
-      <path d="M5 20c0-3.31 3.13-6 7-6s7 2.69 7 6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/>
-    </svg>
-  )
-}
-
 function SalaLayoutInner({ children }: { children: React.ReactNode }) {
   const params   = useParams()
   const pathname = usePathname()
@@ -79,7 +70,6 @@ function SalaLayoutInner({ children }: { children: React.ReactNode }) {
     { label: 'Compras', href: `/sala/${codigo}/compras`, icon: IconCompras },
     { label: 'Tareas',  href: `/sala/${codigo}/tareas`,  icon: IconTareas  },
     { label: 'Aptos',   href: `/sala/${codigo}/pisos`,   icon: IconPisos   },
-    { label: 'Perfil',  href: `/sala/${codigo}/perfil`,  icon: IconPerfil  },
   ]
 
   const isDetail = pathname.split('/').length > 4
@@ -492,7 +482,6 @@ function SalaLayoutInner({ children }: { children: React.ReactNode }) {
               <MemberAvatar
                 nombre={session.miembroNombre}
                 color={session.miembroColor}
-                gradiente={session.miembroGradiente}
                 icono={session.miembroIcono}
                 fotoUrl={session.miembroFotoUrl}
                 size="sm"

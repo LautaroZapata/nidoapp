@@ -1785,9 +1785,9 @@ export default function GastosPage() {
                         style={{ animationDelay: `${idx * 0.04}s`, borderLeft: esMio ? '3px solid rgba(90,136,105,0.5)' : undefined }}
                       >
                         <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
-                          <MemberAvatar nombre={deM.nombre} color={deM.color} gradiente={deM.gradiente} icono={deM.icono} size="md" />
+                          <MemberAvatar nombre={deM.nombre} color={deM.color} fotoUrl={deM.foto_url} icono={deM.icono} size="md" />
                           <span style={{ color: '#C0A898', fontSize: '1rem' }}>→</span>
-                          <MemberAvatar nombre={aM.nombre} color={aM.color} gradiente={aM.gradiente} icono={aM.icono} size="md" />
+                          <MemberAvatar nombre={aM.nombre} color={aM.color} fotoUrl={aM.foto_url} icono={aM.icono} size="md" />
                         </div>
                         <div className="g-item-body">
                           <div style={{ fontSize: '0.87rem', fontWeight: 600, color: '#2A1A0E' }}>
@@ -2001,9 +2001,9 @@ export default function GastosPage() {
                       <div key={idx} className="g-debt-card" style={{ animationDelay: `${idx * 0.08}s` }}>
                         <div className="g-debt-card-top">
                           <div className="g-debt-avatars">
-                            <MemberAvatar nombre={fromM.nombre} color={fromM.color} gradiente={fromM.gradiente} icono={fromM.icono} size="sm" />
+                            <MemberAvatar nombre={fromM.nombre} color={fromM.color} fotoUrl={fromM.foto_url} icono={fromM.icono} size="sm" />
                             <span className="g-debt-arrow">→</span>
-                            <MemberAvatar nombre={toM.nombre} color={toM.color} gradiente={toM.gradiente} icono={toM.icono} size="sm" />
+                            <MemberAvatar nombre={toM.nombre} color={toM.color} fotoUrl={toM.foto_url} icono={toM.icono} size="sm" />
                           </div>
                           <div className="g-debt-body">
                             <div className="g-debt-text">
@@ -2123,10 +2123,10 @@ export default function GastosPage() {
                           <div key={p.id} className="g-pago-row">
                             <div className="g-pago-info">
                               <div className="g-pago-members">
-                                <MemberAvatar nombre={deM.nombre} color={deM.color} gradiente={deM.gradiente} icono={deM.icono} size="sm" />
+                                <MemberAvatar nombre={deM.nombre} color={deM.color} fotoUrl={deM.foto_url} icono={deM.icono} size="sm" />
                                 <span style={{ color: '#6B4030', fontWeight: 600 }}>{deM.nombre}</span>
                                 <span style={{ color: '#C0A898' }}>→</span>
-                                <MemberAvatar nombre={aM.nombre} color={aM.color} gradiente={aM.gradiente} icono={aM.icono} size="sm" />
+                                <MemberAvatar nombre={aM.nombre} color={aM.color} fotoUrl={aM.foto_url} icono={aM.icono} size="sm" />
                                 <span style={{ color: '#6B4030', fontWeight: 600 }}>{aM.nombre}</span>
                                 <span style={{ fontFamily: 'var(--font-code), monospace', color: '#5A8869', fontWeight: 600 }}>{fmtUYU(p.importe)}</span>
                                 <span style={{ color: '#C0A898', fontSize: '0.7rem' }}>{fmtFecha(p.fecha)}</span>
@@ -2158,10 +2158,10 @@ export default function GastosPage() {
                       <div key={p.id} className="g-pago-row">
                         <div className="g-pago-info">
                           <div className="g-pago-members">
-                            <MemberAvatar nombre={deM.nombre} color={deM.color} gradiente={deM.gradiente} icono={deM.icono} size="sm" />
+                            <MemberAvatar nombre={deM.nombre} color={deM.color} fotoUrl={deM.foto_url} icono={deM.icono} size="sm" />
                             <span style={{ color: '#6B4030', fontWeight: 600 }}>{deM.nombre}</span>
                             <span style={{ color: '#C0A898' }}>→</span>
-                            <MemberAvatar nombre={aM.nombre} color={aM.color} gradiente={aM.gradiente} icono={aM.icono} size="sm" />
+                            <MemberAvatar nombre={aM.nombre} color={aM.color} fotoUrl={aM.foto_url} icono={aM.icono} size="sm" />
                             <span style={{ color: '#6B4030', fontWeight: 600 }}>{aM.nombre}</span>
                             <span style={{ fontFamily: 'var(--font-code), monospace', color: '#5A8869', fontWeight: 600 }}>{fmtUYU(p.importe)}</span>
                             <span style={{ color: '#C0A898', fontSize: '0.7rem' }}>{fmtFecha(p.fecha)}</span>
@@ -2227,7 +2227,7 @@ export default function GastosPage() {
                     const iOwe = d.from === miId
                     return (
                       <div key={i} className="g-bp-chip">
-                        <MemberAvatar nombre={other.nombre} color={other.color} gradiente={other.gradiente} icono={other.icono} size="sm" />
+                        <MemberAvatar nombre={other.nombre} color={other.color} fotoUrl={other.foto_url} icono={other.icono} size="sm" />
                         <span className="g-bp-chip-name">{iOwe ? `A ${other.nombre}` : `De ${other.nombre}`}</span>
                         <span className="g-bp-chip-val" style={{ color: iOwe ? '#C05A3B' : '#1E6BA8' }}>
                           {iOwe ? `−${fmtUYU(Math.round(d.amount))}` : `+${fmtUYU(Math.round(d.amount))}`}
@@ -2253,9 +2253,9 @@ export default function GastosPage() {
                         <div key={i} className="g-bp-debt" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 6 }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                             <div style={{ display: 'flex', gap: 4, flexShrink: 0, alignItems: 'center' }}>
-                              <MemberAvatar nombre={fromM.nombre} color={fromM.color} gradiente={fromM.gradiente} icono={fromM.icono} size="sm" />
+                              <MemberAvatar nombre={fromM.nombre} color={fromM.color} fotoUrl={fromM.foto_url} icono={fromM.icono} size="sm" />
                               <span style={{ color: '#C0A898', fontSize: '0.75rem' }}>→</span>
-                              <MemberAvatar nombre={toM.nombre} color={toM.color} gradiente={toM.gradiente} icono={toM.icono} size="sm" />
+                              <MemberAvatar nombre={toM.nombre} color={toM.color} fotoUrl={toM.foto_url} icono={toM.icono} size="sm" />
                             </div>
                             <div className="g-bp-debt-text">
                               {d.from === miId
@@ -2332,7 +2332,7 @@ export default function GastosPage() {
               {/* Quién paga a quién */}
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 16, padding: '0.75rem 0 1.25rem' }}>
                 <div style={{ textAlign: 'center' }}>
-                  <MemberAvatar nombre={fromM.nombre} color={fromM.color} gradiente={fromM.gradiente} icono={fromM.icono} size="lg" style={{ margin: '0 auto 6px' }} />
+                  <MemberAvatar nombre={fromM.nombre} color={fromM.color} fotoUrl={fromM.foto_url} icono={fromM.icono} size="lg" style={{ margin: '0 auto 6px' }} />
                   <div style={{ fontSize: '0.8rem', fontWeight: 700, color: '#2A1A0E' }}>{fromM.nombre}</div>
                   <div style={{ fontSize: '0.7rem', color: '#A07060' }}>paga</div>
                 </div>
@@ -2340,7 +2340,7 @@ export default function GastosPage() {
                   <path d="M2 8h28M22 2l8 6-8 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                 </svg>
                 <div style={{ textAlign: 'center' }}>
-                  <MemberAvatar nombre={toM.nombre} color={toM.color} gradiente={toM.gradiente} icono={toM.icono} size="lg" style={{ margin: '0 auto 6px' }} />
+                  <MemberAvatar nombre={toM.nombre} color={toM.color} fotoUrl={toM.foto_url} icono={toM.icono} size="lg" style={{ margin: '0 auto 6px' }} />
                   <div style={{ fontSize: '0.8rem', fontWeight: 700, color: '#2A1A0E' }}>{toM.nombre}</div>
                   <div style={{ fontSize: '0.7rem', color: '#A07060' }}>recibe</div>
                 </div>
@@ -2543,7 +2543,7 @@ export default function GastosPage() {
                             const puedeCompletar = restante !== null && restante > 0 && Math.abs(valorActual - restante) > 0.5
                             return (
                               <div key={m.id} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                                <MemberAvatar nombre={m.nombre} color={m.color} gradiente={m.gradiente} icono={m.icono} size="sm" />
+                                <MemberAvatar nombre={m.nombre} color={m.color} fotoUrl={m.foto_url} icono={m.icono} size="sm" />
                                 <span className="g-split-name">{m.nombre}</span>
                                 {puedeCompletar && (
                                   <button
@@ -2685,7 +2685,7 @@ export default function GastosPage() {
                           fontFamily: 'var(--font-body), Nunito, sans-serif', transition: 'all 0.15s',
                         }}
                       >
-                        <MemberAvatar nombre={m.nombre} color={m.color} gradiente={m.gradiente} icono={m.icono} size="sm" style={{ width: 18, height: 18 }} />
+                        <MemberAvatar nombre={m.nombre} color={m.color} fotoUrl={m.foto_url} icono={m.icono} size="sm" style={{ width: 18, height: 18 }} />
                         {m.nombre}
                       </button>
                     ))}

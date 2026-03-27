@@ -58,8 +58,8 @@ export default function Dashboard() {
           miembroId: m.id,
           miembroNombre: m.nombre,
           miembroColor: m.color,
-          miembroGradiente: m.gradiente,
           miembroIcono: m.icono,
+          miembroFotoUrl: m.foto_url,
         })
         router.replace(`/sala/${m.salas.codigo}`)
         return
@@ -103,7 +103,7 @@ export default function Dashboard() {
     setSession({
       salaId: sala.id, salaCodigo: sala.codigo, salaNombre: sala.nombre,
       miembroId: miembro.id, miembroNombre: miembro.nombre, miembroColor: miembro.color,
-      miembroGradiente: miembro.gradiente, miembroIcono: miembro.icono,
+      miembroIcono: miembro.icono, miembroFotoUrl: miembro.foto_url,
     })
     router.push(`/sala/${sala.codigo}`)
   }

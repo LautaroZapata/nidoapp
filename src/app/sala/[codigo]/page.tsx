@@ -4,7 +4,7 @@ import { useEffect, useState, useRef } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { Fraunces, Nunito } from 'next/font/google'
 import { createClient } from '@/lib/supabase'
-import { getSession, setSession, clearSession } from '@/lib/session'
+import { getSession, clearSession } from '@/lib/session'
 import type { Miembro, Invitacion } from '@/lib/types'
 import type { PostgrestError } from '@supabase/supabase-js'
 import dynamic from 'next/dynamic'
@@ -66,10 +66,6 @@ export default function SalaPage() {
   const [billingError, setBillingError] = useState<string | null>(null)
   const [showPlanes, setShowPlanes] = useState(false)
 
-  // Config / personalization
-  const [editingNidoName, setEditingNidoName] = useState(false)
-  const [newNidoName, setNewNidoName] = useState('')
-  const [savingNidoName, setSavingNidoName] = useState(false)
   const [memberBadges, setMemberBadges] = useState<Map<string, Badge[]>>(new Map())
 
   async function handleCheckout(tier: TierType) {
@@ -356,22 +352,6 @@ export default function SalaPage() {
     setTimeout(() => setInviteLinkCopiado(false), 2000)
   }
 
-  async function handleSaveNidoName() {
-    if (!session || !newNidoName.trim() || newNidoName.trim() === session.salaNombre) {
-      setEditingNidoName(false); return
-    }
-    setSavingNidoName(true)
-    const supabase = createClient()
-    const { error } = await supabase.from('salas').update({ nombre: newNidoName.trim() }).eq('id', session.salaId)
-    if (!error) {
-      const updated = { ...session, salaNombre: newNidoName.trim() }
-      setSession(updated)
-      setLocalSession(updated)
-    }
-    setSavingNidoName(false)
-    setEditingNidoName(false)
-  }
-
   if (!session) return null
 
   const modulos = [
@@ -543,38 +523,7 @@ export default function SalaPage() {
           .s-mod-desc { font-size: 0.82rem; }
         }
 
-        /* Config / personalization card */
-        .s-config { background: white; border-radius: 20px; border: 1.5px solid #EAD8C8; overflow: hidden; margin-bottom: 1.5rem; animation: s-fadeup 0.5s 0.12s cubic-bezier(0.22, 1, 0.36, 1) both; box-shadow: 0 2px 12px rgba(150,80,40,0.06); }
-        .s-config-header { display: flex; align-items: center; justify-content: space-between; padding: 1rem 1.25rem 0.75rem; }
-        .s-config-title { font-family: var(--font-serif),'Georgia',serif; font-size: 1rem; font-weight: 700; color: #2A1A0E; letter-spacing: -0.018em; }
-        .s-config-sep { height: 1px; background: #F0E4D8; margin: 0 1.25rem; }
-        .s-config-body { padding: 0.75rem 1.25rem 1rem; display: flex; flex-direction: column; gap: 14px; }
-        .s-config-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 38px; }
-        .s-config-label { font-size: 0.72rem; font-weight: 700; color: #8A5A40; text-transform: uppercase; letter-spacing: 0.08em; flex-shrink: 0; }
-        .s-config-value { font-size: 0.88rem; color: #2A1A0E; font-weight: 500; display: flex; align-items: center; gap: 8px; min-width: 0; }
-        .s-config-value span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-        .s-config-edit-btn { background: none; border: 1.5px solid #E0CAB8; border-radius: 8px; color: #A07060; width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: all 0.18s; flex-shrink: 0; }
-        .s-config-edit-btn:hover { background: #FFF8F5; border-color: #C05A3B; color: #C05A3B; }
-        .s-config-input-row { display: flex; align-items: center; gap: 8px; width: 100%; }
-        .s-config-input { flex: 1; padding: 8px 12px; background: white; border: 1.5px solid #E0CAB8; border-radius: 10px; font-size: 0.88rem; font-family: var(--font-body),'Nunito',sans-serif; color: #2A1A0E; outline: none; transition: border-color 0.18s, box-shadow 0.18s; min-width: 0; }
-        .s-config-input:focus { border-color: #C05A3B; box-shadow: 0 0 0 3px rgba(192,90,59,0.1); }
-        .s-config-save { padding: 7px 14px; background: #C05A3B; color: white; border: none; border-radius: 10px; font-size: 0.78rem; font-weight: 700; font-family: var(--font-body),'Nunito',sans-serif; cursor: pointer; transition: all 0.18s; white-space: nowrap; display: flex; align-items: center; gap: 5px; }
-        .s-config-save:hover:not(:disabled) { background: #A04730; }
-        .s-config-save:disabled { opacity: 0.55; cursor: not-allowed; }
-        .s-config-cancel { padding: 7px 10px; background: none; border: 1.5px solid #E0CAB8; color: #A07060; border-radius: 10px; font-size: 0.78rem; font-weight: 600; font-family: var(--font-body),'Nunito',sans-serif; cursor: pointer; transition: all 0.18s; }
-        .s-config-cancel:hover { border-color: #C0A898; color: #6B4030; }
-        @media (max-width: 480px) {
-          .s-config-header { padding: 0.85rem 1rem 0.65rem; }
-          .s-config-sep { margin: 0 1rem; }
-          .s-config-body { padding: 0.65rem 1rem 0.85rem; }
-        }
-        @media (max-width: 360px) {
-          .s-config-header { padding: 0.75rem 0.9rem 0.6rem; }
-          .s-config-sep { margin: 0 0.9rem; }
-          .s-config-body { padding: 0.6rem 0.9rem 0.75rem; }
-        }
         @media (min-width: 1024px) {
-          .s-config { grid-column: 2; grid-row: 2; margin-top: 0; margin-bottom: 0; }
           .s-plan { grid-column: 3; grid-row: 2; margin-top: 0; }
         }
 
@@ -679,8 +628,8 @@ export default function SalaPage() {
                 <MemberAvatar
                   nombre={session.miembroNombre}
                   color={session.miembroColor}
-                  gradiente={session.miembroGradiente}
                   icono={session.miembroIcono}
+                  fotoUrl={session.miembroFotoUrl}
                   size="md"
                   className="s-avatar"
                   onClick={() => setMenuOpen(v => !v)}
@@ -688,8 +637,12 @@ export default function SalaPage() {
                 {menuOpen && (
                   <div className="s-dropdown">
                     <div className="s-dropdown-label">{session.miembroNombre}</div>
-                    <button className="s-dropdown-item" onClick={() => { setMenuOpen(false); router.push('/dashboard') }}>
+                    <button className="s-dropdown-item" onClick={() => { setMenuOpen(false); router.push(`/sala/${codigo}/perfil`) }}>
                       <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><circle cx="7" cy="5" r="2.5" stroke="currentColor" strokeWidth="1.3"/><path d="M2 12c0-2.761 2.239-5 5-5s5 2.239 5 5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/></svg>
+                      Mi perfil
+                    </button>
+                    <button className="s-dropdown-item" onClick={() => { setMenuOpen(false); router.push('/dashboard') }}>
+                      <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M3 7.5L7 3.5L11 7.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/><path d="M4.5 6.5V11C4.5 11.28 4.72 11.5 5 11.5H6.5V9H7.5V11.5H9C9.28 11.5 9.5 11.28 9.5 11V6.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/></svg>
                       Mis nidos
                     </button>
                     {(() => {
@@ -772,8 +725,8 @@ export default function SalaPage() {
                           <MemberAvatar
                             nombre={m.nombre}
                             color={m.color}
-                            gradiente={m.gradiente}
                             icono={m.icono}
+                            fotoUrl={m.foto_url}
                             size="md"
                             className="s-miembro-av"
                           />
@@ -819,46 +772,6 @@ export default function SalaPage() {
               </div>
             )
           })()}
-
-          {/* Config — Nido name */}
-          <div className="s-config">
-            <div className="s-config-header">
-              <div className="s-config-title">Configuración</div>
-              <svg width="14" height="14" viewBox="0 0 14 14" fill="none" style={{ color: '#B09080' }}>
-                <path d="M8.5 2.5l3 3-7.5 7.5H1v-3l7.5-7.5z" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round"/>
-                <path d="M7 4l3 3" stroke="currentColor" strokeWidth="1.3"/>
-              </svg>
-            </div>
-            <div className="s-config-sep" />
-            <div className="s-config-body">
-              <div>
-                <div className="s-config-label">Nombre del nido</div>
-                {editingNidoName ? (
-                  <div className="s-config-input-row" style={{ marginTop: 6 }}>
-                    <input
-                      className="s-config-input"
-                      value={newNidoName}
-                      onChange={e => setNewNidoName(e.target.value)}
-                      placeholder="Nombre del nido"
-                      autoFocus
-                      onKeyDown={e => { if (e.key === 'Enter') handleSaveNidoName(); if (e.key === 'Escape') setEditingNidoName(false) }}
-                    />
-                    <button className="s-config-save" onClick={handleSaveNidoName} disabled={savingNidoName}>
-                      {savingNidoName ? '...' : '✓'}
-                    </button>
-                    <button className="s-config-cancel" onClick={() => setEditingNidoName(false)}>✗</button>
-                  </div>
-                ) : (
-                  <div className="s-config-row" style={{ marginTop: 4 }}>
-                    <div className="s-config-value"><span>{session.salaNombre}</span></div>
-                    <button className="s-config-edit-btn" onClick={() => { setNewNidoName(session.salaNombre); setEditingNidoName(true) }} title="Editar nombre">
-                      <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M7.5 2l2.5 2.5L4 10.5H1.5V8L7.5 2z" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round"/></svg>
-                    </button>
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
 
           {/* Modules */}
           <div className="s-grid">

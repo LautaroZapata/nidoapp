@@ -1545,7 +1545,7 @@ export default function PisoDetallePage() {
                     const esTuyo = voto.miembro_id === session.miembroId
                     return (
                       <div key={voto.id} className="d-member-vote">
-                        <MemberAvatar nombre={m.nombre} color={m.color} gradiente={m.gradiente} icono={m.icono} size="sm" />
+                        <MemberAvatar nombre={m.nombre} color={m.color} fotoUrl={m.foto_url} icono={m.icono} size="sm" />
                         <div className="d-mv-info">
                           <div className="d-mv-top">
                             <span className="d-mv-name">{m.nombre}</span>

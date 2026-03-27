@@ -438,7 +438,7 @@ export default function TareasPage() {
                         </button>
                         <span className="tarea-nombre">{tarea.nombre}</span>
                         {miembro && (
-                          <MemberAvatar nombre={miembro.nombre} color={miembro.color} gradiente={miembro.gradiente} icono={miembro.icono} size="sm" style={{ width: 22, height: 22 }} />
+                          <MemberAvatar nombre={miembro.nombre} color={miembro.color} fotoUrl={miembro.foto_url} icono={miembro.icono} size="sm" style={{ width: 22, height: 22 }} />
                         )}
                         <button
                           className="tarea-del"
@@ -492,7 +492,7 @@ export default function TareasPage() {
                         </button>
                         <span className="tarea-nombre done">{tarea.nombre}</span>
                         {miembro && (
-                          <MemberAvatar nombre={miembro.nombre} color={miembro.color} gradiente={miembro.gradiente} icono={miembro.icono} size="sm" style={{ width: 22, height: 22 }} />
+                          <MemberAvatar nombre={miembro.nombre} color={miembro.color} fotoUrl={miembro.foto_url} icono={miembro.icono} size="sm" style={{ width: 22, height: 22 }} />
                         )}
                         <button
                           className="tarea-del"

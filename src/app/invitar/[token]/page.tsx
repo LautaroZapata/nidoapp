@@ -154,7 +154,7 @@ export default function InvitarPage() {
       setSession({
         salaId: invite.sala.id, salaCodigo: invite.sala.codigo, salaNombre: invite.sala.nombre,
         miembroId: existing.id, miembroNombre: existing.nombre, miembroColor: existing.color,
-        miembroGradiente: existing.gradiente, miembroIcono: existing.icono,
+        miembroIcono: existing.icono, miembroFotoUrl: existing.foto_url,
       })
       router.push(`/sala/${invite.sala.codigo}`)
       return
@@ -177,7 +177,7 @@ export default function InvitarPage() {
       setSession({
         salaId: invite.sala.id, salaCodigo: invite.sala.codigo, salaNombre: invite.sala.nombre,
         miembroId: orphaned.id, miembroNombre: orphaned.nombre, miembroColor: orphaned.color,
-        miembroGradiente: orphaned.gradiente, miembroIcono: orphaned.icono,
+        miembroIcono: orphaned.icono, miembroFotoUrl: orphaned.foto_url,
       })
       router.push(`/sala/${invite.sala.codigo}`)
       return
@@ -223,7 +223,7 @@ export default function InvitarPage() {
     setSession({
       salaId: invite.sala.id, salaCodigo: invite.sala.codigo, salaNombre: invite.sala.nombre,
       miembroId: miembro.id, miembroNombre: miembro.nombre, miembroColor: miembro.color,
-      miembroGradiente: miembro.gradiente, miembroIcono: miembro.icono,
+      miembroIcono: miembro.icono, miembroFotoUrl: miembro.foto_url,
     })
     router.push(`/sala/${invite.sala.codigo}`)
   }
