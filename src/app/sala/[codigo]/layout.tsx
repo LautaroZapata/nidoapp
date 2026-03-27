@@ -25,16 +25,6 @@ function IconGastos() {
   )
 }
 
-function IconCompras() {
-  return (
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
-      <path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round"/>
-      <path d="M3 6h18" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/>
-      <path d="M16 10a4 4 0 01-8 0" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/>
-    </svg>
-  )
-}
-
 function IconPisos() {
   return (
     <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
@@ -67,7 +57,6 @@ function SalaLayoutInner({ children }: { children: React.ReactNode }) {
   const tabs = [
     { label: 'Nido',    href: `/sala/${codigo}`,         icon: IconNido    },
     { label: 'Gastos',  href: `/sala/${codigo}/gastos`,  icon: IconGastos  },
-    { label: 'Compras', href: `/sala/${codigo}/compras`, icon: IconCompras },
     { label: 'Tareas',  href: `/sala/${codigo}/tareas`,  icon: IconTareas  },
     { label: 'Aptos',   href: `/sala/${codigo}/pisos`,   icon: IconPisos   },
   ]
