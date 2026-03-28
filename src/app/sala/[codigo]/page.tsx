@@ -579,37 +579,32 @@ export default function SalaPage() {
           .s-logro-icon { font-size: 1.1rem; }
         }
 
-        /* Desktop layout — modules row on top, info cards in 3-col row below */
+        /* Desktop layout — 2-col grid: sidebar left, main right */
         @media (min-width: 1024px) {
-          .s-wrap { max-width: 920px; margin: 0 auto; padding: 0 2rem 2rem; }
-          .s-desktop-cols { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1.25rem; align-items: start; }
-          .s-grid { grid-column: 1 / -1; grid-row: 1; grid-template-columns: repeat(4, 1fr); gap: 14px; }
-          .s-miembros { grid-column: 1; grid-row: 2; margin-bottom: 0; }
-          .s-mod { padding: 1.4rem 1.15rem; min-height: auto; }
-          .s-mod-icon { font-size: 2rem; margin-bottom: 10px; }
-          .s-mod-name { font-size: 1rem; }
-          .s-mod-desc { font-size: 0.78rem; }
-        }
-        @media (min-width: 1280px) {
-          .s-wrap { max-width: 1060px; padding: 0 2.5rem 2rem; }
-          .s-desktop-cols { gap: 1.5rem; }
-          .s-mod { padding: 1.6rem 1.35rem; }
-          .s-mod-icon { font-size: 2.2rem; margin-bottom: 12px; }
-          .s-mod-name { font-size: 1.05rem; }
-          .s-mod-desc { font-size: 0.8rem; }
-        }
-        @media (min-width: 1536px) {
-          .s-wrap { max-width: 1200px; padding: 0 3rem 2rem; }
-          .s-desktop-cols { gap: 1.75rem; }
-          .s-mod { padding: 1.85rem 1.5rem; }
+          .s-wrap { max-width: 1280px; margin: 0 auto; padding: 0 2.5rem 2rem; }
+          .s-desktop-cols {
+            display: grid;
+            grid-template-columns: 300px 1fr;
+            grid-template-rows: auto auto;
+            gap: 1rem 1.5rem;
+            align-items: start;
+          }
+          .s-miembros { grid-column: 1; grid-row: 1; margin-bottom: 0; }
+          .s-plan    { grid-column: 1; grid-row: 2; margin-top: 0; }
+          .s-grid    { grid-column: 2; grid-row: 1; grid-template-columns: 1fr 1fr; gap: 14px; }
+          .s-logros  { grid-column: 2; grid-row: 2; margin-bottom: 0; }
+          .s-mod { padding: 1.75rem 1.5rem; min-height: 160px; display: flex; flex-direction: column; justify-content: flex-start; }
           .s-mod-icon { font-size: 2.4rem; margin-bottom: 14px; }
           .s-mod-name { font-size: 1.1rem; }
-          .s-mod-desc { font-size: 0.82rem; }
+          .s-mod-desc { font-size: 0.8rem; }
         }
-
-        @media (min-width: 1024px) {
-          .s-logros { grid-column: 2; grid-row: 2; margin-bottom: 0; }
-          .s-plan { grid-column: 3; grid-row: 2; margin-top: 0; }
+        @media (min-width: 1400px) {
+          .s-wrap { max-width: 1500px; padding: 0 3.5rem 2rem; }
+          .s-desktop-cols { grid-template-columns: 340px 1fr; gap: 1.25rem 1.75rem; }
+          .s-mod { padding: 2.1rem 1.75rem; min-height: 180px; display: flex; flex-direction: column; justify-content: flex-start; }
+          .s-mod-icon { font-size: 2.8rem; margin-bottom: 16px; }
+          .s-mod-name { font-size: 1.15rem; }
+          .s-mod-desc { font-size: 0.82rem; }
         }
 
         /* Plan section */
