@@ -26,7 +26,6 @@ type ProfileData = {
   color: string
   icono: string | null
   foto_url: string | null
-  bio: string | null
   rol_casa: string | null
   cumpleanos: string | null
   metodo_pago: string | null
@@ -49,7 +48,6 @@ export default function PerfilPage() {
 
   const [editingName, setEditingName] = useState(false)
   const [nameValue, setNameValue] = useState('')
-  const [bioValue, setBioValue] = useState('')
   const [rolValue, setRolValue] = useState('')
   const [cumpleValue, setCumpleValue] = useState('')
   const [metodoPagoValue, setMetodoPagoValue] = useState('')
@@ -97,13 +95,12 @@ export default function PerfilPage() {
       const p: ProfileData = {
         nombre: miembro.nombre, color: miembro.color,
         icono: miembro.icono, foto_url: miembro.foto_url,
-        bio: miembro.bio, rol_casa: miembro.rol_casa,
+        rol_casa: miembro.rol_casa,
         cumpleanos: miembro.cumpleanos, metodo_pago: miembro.metodo_pago,
         estado: miembro.estado, badge_destacado: miembro.badge_destacado,
       }
       setProfile(p)
       setNameValue(p.nombre)
-      setBioValue(p.bio ?? '')
       setRolValue(p.rol_casa ?? '')
       setCumpleValue(p.cumpleanos ?? '')
       setMetodoPagoValue(p.metodo_pago ?? '')
@@ -191,14 +188,6 @@ export default function PerfilPage() {
     setProfile(prev => prev ? { ...prev, nombre: trimmed } : prev)
     updateSession({ miembroNombre: trimmed })
     setEditingName(false)
-  }
-
-  async function handleBioBlur() {
-    const dbVal = bioValue.trim() || null
-    if (dbVal !== (profile?.bio ?? null)) {
-      await saveField('bio', dbVal)
-      setProfile(prev => prev ? { ...prev, bio: dbVal } : prev)
-    }
   }
 
   async function handleRolBlur() {
@@ -376,19 +365,6 @@ export default function PerfilPage() {
           )}
 
           {profile.rol_casa && <span className="p-rol-tag">{profile.rol_casa}</span>}
-
-          <div className="p-bio-wrap">
-            <textarea
-              className="p-bio"
-              value={bioValue}
-              onChange={e => { if (e.target.value.length <= 200) setBioValue(e.target.value) }}
-              onBlur={handleBioBlur}
-              placeholder="¿Qué estás haciendo?"
-              maxLength={200}
-              rows={2}
-            />
-            <span className="p-bio-count">{bioValue.length}/200</span>
-          </div>
         </section>
 
         {/* ── Grid: 2 columns on desktop ── */}
