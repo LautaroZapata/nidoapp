@@ -726,10 +726,6 @@ export default function SalaPage() {
                       <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><circle cx="7" cy="5" r="2.5" stroke="currentColor" strokeWidth="1.3"/><path d="M2 12c0-2.761 2.239-5 5-5s5 2.239 5 5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/></svg>
                       Mi perfil
                     </button>
-                    <button className="s-dropdown-item" onClick={() => { setMenuOpen(false); router.push('/dashboard') }}>
-                      <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M3 7.5L7 3.5L11 7.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/><path d="M4.5 6.5V11C4.5 11.28 4.72 11.5 5 11.5H6.5V9H7.5V11.5H9C9.28 11.5 9.5 11.28 9.5 11V6.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/></svg>
-                      Mis nidos
-                    </button>
                     {(() => {
                       const esPro = planInfo?.plan_type === 'pro'
                       const miMiembro = miembros.find(m => m.id === session.miembroId)
