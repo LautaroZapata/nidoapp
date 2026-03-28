@@ -550,6 +550,13 @@ export default function SalaPage() {
           .s-nido-sep-bottom { margin: 0.2rem 1rem 0; }
           .s-nido-invite-wrap { padding: 0.65rem 1rem 0.85rem; }
           .s-miembro-name { font-size: 0.86rem; }
+          .s-status-popover { width: calc(100vw - 3rem); left: 50%; transform: translateX(-50%); }
+          .s-status-option { font-size: 0.75rem; padding: 7px 10px; }
+          .s-status-btn { font-size: 0.72rem; padding: 3px 9px; }
+          .s-miembro-estado { font-size: 0.72rem; }
+          .s-modal { padding: 1.5rem 1.25rem 2rem; }
+          .planes-close { width: 36px; height: 36px; }
+          .s-logro { padding: 0.55rem 1rem; }
         }
         @media (max-width: 360px) {
           .s-wrap { padding: 0 0.75rem 3rem; }
@@ -563,6 +570,10 @@ export default function SalaPage() {
           .s-miembro-av { width: 30px; height: 30px; font-size: 0.72rem; }
           .s-miembro-name { font-size: 0.82rem; }
           .s-nido-invite-btn { font-size: 0.8rem; padding: 9px 12px; }
+          .s-grid { grid-template-columns: 1fr; }
+          .s-status-popover { width: calc(100vw - 2rem); }
+          .s-logro { padding: 0.5rem 0.9rem; gap: 10px; }
+          .s-logro-icon { font-size: 1.1rem; }
         }
 
         /* Desktop layout — modules row on top, info cards in 3-col row below */
@@ -652,7 +663,7 @@ export default function SalaPage() {
         .planes-close { width: 32px; height: 32px; border-radius: 8px; background: #F0E8DF; border: 1px solid #E0C8B8; display: flex; align-items: center; justify-content: center; cursor: pointer; color: #A07060; flex-shrink: 0; transition: background 0.15s; }
         .planes-close:hover { background: #E0D0C0; }
         .planes-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; padding: 1.25rem 1.5rem 1.5rem; }
-        @media (max-width: 600px) { .planes-grid { grid-template-columns: 1fr; } }
+        @media (max-width: 480px) { .planes-grid { grid-template-columns: 1fr; } }
         .plan-card { border-radius: 16px; padding: 1.25rem; border: 1.5px solid #EAD8C8; background: white; display: flex; flex-direction: column; position: relative; transition: border-color 0.2s, box-shadow 0.2s; }
         .plan-card-recommended { border-color: #C05A3B; box-shadow: 0 0 0 3px rgba(192,90,59,0.12); }
         .plan-card-casa { border-color: #5A8869; }

@@ -1425,6 +1425,15 @@ export default function GastosPage() {
           .g-modal-title { font-size: 1.25rem; }
           .g-cat-grid { grid-template-columns: repeat(3, 1fr); }
           .g-split-input { width: 80px; }
+          .g-del-btn { width: 34px; height: 34px; }
+          .g-edit-btn { width: 34px; height: 34px; }
+          .g-pago-del-btn { width: 30px; height: 30px; }
+          .g-modal-close { width: 36px; height: 36px; }
+          .g-empty-icon { width: 56px; height: 56px; font-size: 1.6rem; margin-bottom: 1rem; }
+          .g-all-good-icon { width: 56px; height: 56px; font-size: 1.6rem; margin-bottom: 1rem; }
+          .g-empty-title { font-size: 1.3rem; }
+          .g-all-good-title { font-size: 1.3rem; }
+          .g-section-label { font-size: 0.72rem; }
         }
         @media (max-width: 420px) {
           .g-wrap { padding: 0 0.75rem 5rem; }
@@ -1433,6 +1442,11 @@ export default function GastosPage() {
           .g-stat { padding: 0.7rem 0.85rem; }
           .g-debt-av { width: 30px; height: 30px; font-size: 0.68rem; }
           .g-tipo-badge { display: none; }
+          .g-modal { padding: 1.25rem 1rem; }
+          .g-cat-grid { grid-template-columns: repeat(2, 1fr); }
+          .g-split-input { width: 70px; }
+          .g-empty-title { font-size: 1.1rem; }
+          .g-header-left { gap: 0.6rem; }
         }
       `}</style>
 

@@ -458,11 +458,18 @@ export default function ComprasPage() {
           .c-item-nombre { font-size: 0.87rem; }
           .c-modal { padding: 1.5rem 1.25rem; }
           .c-modal-title { font-size: 1.25rem; }
+          .c-header-left { gap: 0.65rem; }
+          .c-del-btn { width: 32px; height: 32px; }
+          .c-check-wrap { width: 26px; height: 26px; }
+          .c-empty-icon { width: 56px; height: 56px; font-size: 1.6rem; margin-bottom: 1rem; }
         }
         @media (max-width: 420px) {
           .c-wrap { padding: 0 0.75rem 5rem; }
           .c-stat { padding: 0.7rem 0.85rem; }
           .c-stat-val { font-size: 1.05rem; }
+          .c-header-title { font-size: 1rem; }
+          .c-header-left { gap: 0.5rem; }
+          .c-item { padding: 0.65rem 0.75rem; }
         }
       `}</style>
 

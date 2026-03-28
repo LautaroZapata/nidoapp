@@ -45,7 +45,12 @@
       "WebFetch(domain:www.veocasas.com)",
       "Bash(find /c/Development/nidoapp/src/app/api -type f -name *.ts -o -name *.tsx)",
       "Bash(git pull:*)",
-      "Bash(git stash:*)"
+      "Bash(git stash:*)",
+      "Bash(find /c/Development/nidoapp -name *.sql -o -name *schema* -o -name *migration*)",
+      "Bash(find /c/Development/nidoapp/src -name \"*.tsx\" -type f -exec grep -l \"session\\\\.\" {})",
+      "Bash(npx jest:*)",
+      "Bash(npm test:*)",
+      "Bash(find /c/Development/nidoapp -name *.sql -o -name schema.*)"
     ]
   }
 }

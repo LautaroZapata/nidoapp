@@ -282,6 +282,22 @@ export default function TareasPage() {
           font-size: 1.5rem; font-weight: 300;
         }
         .fab:active { transform: scale(0.92); box-shadow: 0 2px 10px rgba(192,90,59,0.3); }
+        @media (max-width: 480px) {
+          .tareas-page { padding: 0 0 80px; }
+          .tareas-header { padding: 1.25rem 1rem 0; }
+          .tareas-title { font-size: 1.25rem; }
+          .week-nav { padding: 0.75rem 1rem; }
+          .week-btn { width: 36px; height: 36px; }
+          .section-title { font-size: 0.75rem; }
+          .tarea-card { padding: 12px 1rem; gap: 10px; }
+          .tarea-check { width: 26px; height: 26px; }
+          .tarea-del { width: 32px; height: 32px; }
+          .pag-btn { width: 34px; height: 34px; }
+          .filter-tab { padding: 6px 12px; font-size: 0.8rem; }
+          .filter-tabs { padding: 0 1rem 0.75rem; }
+          .modal-sheet { padding: 1.25rem 1rem 1.75rem; }
+          .empty-state { padding: 2.5rem 1rem; }
+        }
         @media (min-width: 1024px) {
           .fab { bottom: 1.5rem; right: calc(50% - 300px + 1.25rem); }
         }

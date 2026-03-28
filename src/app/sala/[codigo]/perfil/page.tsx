@@ -719,7 +719,7 @@ const styles = `
     display: grid; gap: 16px;
     grid-template-columns: 1fr;
   }
-  @media (min-width: 640px) {
+  @media (min-width: 768px) {
     .p-grid { grid-template-columns: 1fr 1fr; }
   }
   .p-col { display: flex; flex-direction: column; gap: 16px; }
@@ -876,4 +876,17 @@ const styles = `
   .p-badge-pin:hover { opacity: 1 !important; border-color: #C8823A; background: rgba(200,130,58,0.08); }
   .p-badge-pin.active { opacity: 1; border-color: #C8823A; background: rgba(200,130,58,0.12); }
   .p-badge.pinned { border-color: #C8823A; background: rgba(200,130,58,0.05); }
+
+  @media (max-width: 480px) {
+    .p-page { padding: 0 12px 48px; }
+    .p-hero { padding: 24px 16px 20px; border-radius: 20px; }
+    .p-avatar-img { width: 80px; height: 80px; }
+    .p-name-display { font-size: 1.2rem; }
+    .p-card { padding: 16px; }
+    .p-card-title { font-size: 0.85rem; }
+    .p-icon-btn { width: 42px; height: 42px; }
+    .p-color-native { width: 44px; height: 44px; }
+    .p-status-chip { font-size: 0.8rem; padding: 7px 12px; }
+    .p-badge-pin { width: 32px; height: 32px; }
+  }
 `

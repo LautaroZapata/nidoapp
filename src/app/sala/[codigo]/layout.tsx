@@ -134,7 +134,7 @@ function SalaLayoutInner({ children }: { children: React.ReactNode }) {
           align-items: center;
           justify-content: center;
           gap: 3px;
-          padding: 10px 4px 11px;
+          padding: 10px 4px 12px;
           background: none;
           border: none;
           cursor: pointer;
@@ -148,7 +148,7 @@ function SalaLayoutInner({ children }: { children: React.ReactNode }) {
         .bnav-item.active { color: #C05A3B; }
 
         .bnav-label {
-          font-size: 0.62rem;
+          font-size: 0.7rem;
           font-weight: 600;
           letter-spacing: 0.02em;
           line-height: 1;
@@ -207,7 +207,7 @@ function SalaLayoutInner({ children }: { children: React.ReactNode }) {
         .notif-text {
           font-size: 0.82rem; color: #2A1A0E; line-height: 1.4;
           font-family: var(--font-nunito), Nunito, sans-serif;
-          white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+          display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
         }
         .notif-time {
           font-size: 0.68rem; color: #B09080; margin-top: 2px;
@@ -360,7 +360,7 @@ function SalaLayoutInner({ children }: { children: React.ReactNode }) {
                 )}
                 <button
                   onClick={() => setBellOpen(false)}
-                  style={{ width: 30, height: 30, borderRadius: 8, background: '#F0E8DF', border: '1px solid #E0C8B8', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#A07060' }}
+                  style={{ width: 36, height: 36, borderRadius: 8, background: '#F0E8DF', border: '1px solid #E0C8B8', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#A07060' }}
                 >
                   <svg width="11" height="11" viewBox="0 0 12 12" fill="none"><path d="M1 1l10 10M11 1L1 11" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/></svg>
                 </button>

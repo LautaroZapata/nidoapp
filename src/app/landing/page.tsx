@@ -398,7 +398,7 @@ export default function LandingPage() {
           .l-step-line { display: none; }
           .l-nav-login { display: none; }
         }
-        @media (max-width: 420px) {
+        @media (max-width: 480px) {
           .l-hero { padding: 5rem 1rem 2rem; }
           .l-nav { padding: 0.75rem 1rem; }
           .l-hero-title { font-size: clamp(2rem, 9vw, 2.8rem); }
@@ -409,6 +409,10 @@ export default function LandingPage() {
           .l-wpp-banner { padding: 4rem 1rem; }
           .l-steps { padding: 4rem 1rem; }
           .l-cta { padding: 4rem 1rem; }
+          .l-hero-stats { flex-direction: column; gap: 1rem; align-items: flex-start; }
+          .l-feat-card { padding: 1.25rem 1rem; }
+          .l-step-n { font-size: 2.5rem; }
+          .l-cta { padding: 3.5rem 1rem; }
         }
       `}</style>
 

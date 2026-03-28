@@ -773,6 +773,14 @@ export default function PisosPage() {
           .p-sort-group { width: 100%; }
           .p-sort-btn { flex: 1; padding: 9px 6px; font-size: 0.72rem; text-align: center; }
         }
+        @media (max-width: 420px) {
+          .p-grid { grid-template-columns: 1fr; }
+          .p-modal { padding: 1.25rem 1rem 0; }
+          .p-label { font-size: 0.72rem; }
+          .p-row2 { grid-template-columns: 1fr; }
+          .p-sort-btn { padding: 10px 8px; }
+          .p-search { min-width: 120px; }
+        }
       `}</style>
 
       <div className="p-root">

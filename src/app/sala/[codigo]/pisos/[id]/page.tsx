@@ -1045,6 +1045,13 @@ export default function PisoDetallePage() {
           .d-gallery { margin: -1rem -1rem 1rem; }
           .d-piso-title { font-size: 1.3rem; }
           .d-info-grid { grid-template-columns: 1fr; }
+          .d-modal { padding: 1.25rem 1rem 0; }
+          .d-gallery-main { height: 200px; }
+          .d-photos-grid { grid-template-columns: repeat(auto-fill, minmax(70px, 1fr)); }
+          .d-row2 { grid-template-columns: 1fr; }
+          .d-label { font-size: 0.72rem; }
+          .d-video-embed iframe { height: 240px; }
+          .d-map-iframe { height: 200px; }
         }
       `}</style>
 
