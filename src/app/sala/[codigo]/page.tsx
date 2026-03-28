@@ -457,6 +457,9 @@ export default function SalaPage() {
         .s-miembros-list { display: flex; flex-direction: column; padding: 0.5rem 0; }
         .s-miembro { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 0.6rem 1.25rem; transition: background 0.15s; }
         .s-miembro:hover { background: #FDF8F4; }
+        .s-miembro-link { cursor: pointer; }
+        .s-miembro-link .s-miembro-left { transition: opacity 0.15s; }
+        .s-miembro-link:hover .s-miembro-left { opacity: 0.8; }
         .s-miembro-left { display: flex; align-items: center; gap: 10px; min-width: 0; }
         .s-miembro-av { width: 34px; height: 34px; border-radius: 50%; flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-size: 0.8rem; font-weight: 700; color: white; box-shadow: 0 2px 6px rgba(0,0,0,0.1); }
         .s-miembro-info { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
@@ -805,7 +808,11 @@ export default function SalaPage() {
                     const pinnedBadge = m.badge_destacado ? badges.find(b => b.id === m.badge_destacado) : null
                     const otherBadges = pinnedBadge ? badges.filter(b => b.id !== m.badge_destacado) : badges
                     return (
-                      <div key={m.id} className="s-miembro">
+                      <div
+                        key={m.id}
+                        className={`s-miembro${!esTu ? ' s-miembro-link' : ''}`}
+                        onClick={!esTu ? () => router.push(`/sala/${codigo}/miembro/${m.id}`) : undefined}
+                      >
                         <div className="s-miembro-left">
                           <MemberAvatar
                             nombre={m.nombre}
@@ -821,7 +828,7 @@ export default function SalaPage() {
                               {pinnedBadge && <span className="s-miembro-pinned" title={pinnedBadge.nombre}>{pinnedBadge.icono}</span>}
                             </div>
                             {esTu ? (
-                              <div className="s-status-wrap" ref={statusRef}>
+                              <div className="s-status-wrap" ref={statusRef} onClick={e => e.stopPropagation()}>
                                 <button className="s-status-btn" onClick={() => setStatusOpen(v => !v)}>
                                   {m.estado || '+ Estado'}
                                 </button>
@@ -850,7 +857,7 @@ export default function SalaPage() {
                           <button
                             className="s-miembro-remove"
                             title={`Quitar a ${m.nombre}`}
-                            onClick={() => handleRemoverMiembro(m.id, m.nombre)}
+                            onClick={e => { e.stopPropagation(); handleRemoverMiembro(m.id, m.nombre) }}
                           >
                             <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
                               <path d="M1 1l10 10M11 1L1 11" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
