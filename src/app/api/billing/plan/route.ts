@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase-admin'
-import { getSalaPlan, FREE_LIMITS, TIERS, normalizeTier } from '@/lib/features'
+import { FREE_LIMITS, TIERS, normalizeTier } from '@/lib/features'
+import { getSalaPlan } from '@/lib/features-server'
 
 /**
  * GET /api/billing/plan?salaId=xxx

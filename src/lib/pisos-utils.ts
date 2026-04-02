@@ -1,5 +1,33 @@
 import { createClient } from '@/lib/supabase'
 
+export const SUPPORTED_SITES = [
+  { pattern: /infocasas/i, label: 'InfoCasas' },
+  { pattern: /mercadolibre/i, label: 'MercadoLibre' },
+  { pattern: /veocasas/i, label: 'VeoCasas' },
+  { pattern: /instagram\.com/i, label: 'Instagram' },
+  { pattern: /facebook\.com|fb\.me|fb\.com/i, label: 'Facebook' },
+]
+
+export function detectSupportedSite(url: string): string | null {
+  if (!url.trim()) return null
+  try { new URL(url) } catch { return null }
+  for (const s of SUPPORTED_SITES) {
+    if (s.pattern.test(url)) return s.label
+  }
+  if (/^https?:\/\/.+\..+/.test(url)) return 'sitio'
+  return null
+}
+
+export function buildNotas(d: { notas?: string; dormitorios?: number; banos?: number; moneda?: string }): string {
+  const parts: string[] = []
+  if (d.dormitorios) parts.push(`${d.dormitorios} dormitorio${d.dormitorios > 1 ? 's' : ''}`)
+  if (d.banos) parts.push(`${d.banos} baño${d.banos > 1 ? 's' : ''}`)
+  if (d.moneda) parts.push(`Moneda: ${d.moneda}`)
+  const header = parts.length > 0 ? parts.join(' · ') : ''
+  if (d.notas && header) return `${header}\n${d.notas}`
+  return d.notas || header
+}
+
 export async function resolverVideoUrl(url: string): Promise<string> {
   if (!url.includes('tiktok.com')) return url
   if (url.includes('tiktok.com/embed/v2/')) return url

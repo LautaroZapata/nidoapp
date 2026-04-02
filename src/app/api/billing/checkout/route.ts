@@ -2,8 +2,9 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient as createSupabaseClient } from '@supabase/supabase-js'
 import { createCheckout } from '@/lib/lemonsqueezy'
 import { createAdminClient } from '@/lib/supabase-admin'
-import { getTierParaMiembros, getVariantId, TIERS } from '@/lib/features'
+import { getTierParaMiembros, TIERS } from '@/lib/features'
 import type { TierType } from '@/lib/features'
+import { getVariantId } from '@/lib/features-server'
 
 /**
  * POST /api/billing/checkout

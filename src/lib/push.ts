@@ -93,7 +93,8 @@ export async function asegurarPush(miembroId: string, salaId: string): Promise<v
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ subscription: sub.toJSON(), miembro_id: miembroId, sala_id: salaId }),
     })
-  } catch {
+  } catch (err) {
+    console.warn('Push registration failed:', err)
     // best-effort, nunca debe romper el flujo principal
   }
 }

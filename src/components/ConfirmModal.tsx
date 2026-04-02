@@ -31,7 +31,7 @@ export function ConfirmModal({
     if (!open) return
     const handler = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onCancel()
-      if (e.key === 'Enter') onConfirm()
+      // Removed: Enter auto-confirm is dangerous for destructive actions
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)

@@ -184,7 +184,6 @@ async function exportarExcel(gastos: Gasto[], pagos: Pago[], miembros: Miembro[]
   // SHEET 3 — RESUMEN
   // ─────────────────────────────────────────────
   // Balance
-  const EPS = 0.5
   const net: Record<string, number> = {}
   miembros.forEach(m => { net[m.id] = 0 })
   gastos.forEach(g => {
@@ -295,13 +294,15 @@ function fmtFecha(iso: string) {
 
 // calcularBalance, desglosarDeuda, EPS, Debt importados desde @/lib/balance
 
-const FORM_INIT = {
-  descripcion: '',
-  importe: '',
-  tipo: 'fijo' as 'fijo' | 'variable',
-  categoria: 'otro' as Categoria,
-  fecha: new Date().toISOString().slice(0, 10),
-  pagadoPor: null as string | null,
+function getFormInit() {
+  return {
+    descripcion: '',
+    importe: '',
+    tipo: 'fijo' as 'fijo' | 'variable',
+    categoria: 'otro' as Categoria,
+    fecha: new Date().toISOString().slice(0, 10),
+    pagadoPor: null as string | null,
+  }
 }
 
 const MESES_ES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre']
@@ -482,7 +483,7 @@ export default function GastosPage() {
   const [tab, setTab] = useState<'gastos' | 'balance' | 'historial' | 'stats'>('gastos')
   const [modalOpen, setModalOpen] = useState(false)
   const [guardando, setGuardando] = useState(false)
-  const [form, setForm] = useState(FORM_INIT)
+  const [form, setForm] = useState(getFormInit)
   const [formError, setFormError] = useState('')
   const [realtimeOk, setRealtimeOk] = useState(false)
   const [borrando, setBorrando] = useState<string | null>(null)
@@ -658,7 +659,7 @@ export default function GastosPage() {
   )
 
   function abrirModal() {
-    setForm({ ...FORM_INIT, fecha: new Date().toISOString().slice(0, 10), pagadoPor: session?.miembroId ?? null })
+    setForm({ ...getFormInit(), pagadoPor: session?.miembroId ?? null })
     setFormError('')
     setAutoSplit(true)
     setCustomSplits({})
@@ -828,11 +829,14 @@ export default function GastosPage() {
           const remaining = gastos.filter(g => g.id !== id)
           setGastos(remaining)
 
-          // Si no quedan gastos variables compartidos, los pagos ya no tienen sentido → limpiarlos
+          // Si no quedan gastos variables compartidos, preguntar antes de limpiar pagos
           const quedanVariables = remaining.some(g => g.tipo === 'variable' && !isPersonal(g))
           if (!quedanVariables && pagos.length > 0) {
-            await supabase.from('pagos').delete().eq('sala_id', session!.salaId)
-            setPagos([])
+            const confirmar = window.confirm('Al eliminar el último gasto variable compartido, se eliminarán todos los pagos registrados. ¿Continuar?')
+            if (confirmar) {
+              await supabase.from('pagos').delete().eq('sala_id', session!.salaId)
+              setPagos([])
+            }
           }
 
           if (gasto) {

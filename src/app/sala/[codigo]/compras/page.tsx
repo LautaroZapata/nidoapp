@@ -113,7 +113,8 @@ export default function ComprasPage() {
     if (toggling) return
     setToggling(item.id)
     const supabase = createClient()
-    await supabase.from('items_compra').update({ completado: !item.completado }).eq('id', item.id)
+    const { error } = await supabase.from('items_compra').update({ completado: !item.completado }).eq('id', item.id)
+    if (error) console.error('Error al actualizar item:', error.message)
     setToggling(null)
   }
 
@@ -594,6 +595,11 @@ export default function ComprasPage() {
                   return (
                     <div key={item.id} className="c-item" style={{ animationDelay: `${idx * 0.04}s` }}>
                       <div
+                        role="checkbox"
+                        aria-checked={item.completado}
+                        aria-label={`Marcar ${item.nombre}`}
+                        tabIndex={0}
+                        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleToggle(item) }}}
                         className={`c-check-wrap${toggling === item.id ? ' loading' : ''}`}
                         onClick={() => handleToggle(item)}
                         title="Marcar como completado"
@@ -754,6 +760,7 @@ export default function ComprasPage() {
                   onChange={e => setForm(f => ({ ...f, nombre: e.target.value }))}
                   autoFocus
                   required
+                  maxLength={200}
                 />
               </div>
 

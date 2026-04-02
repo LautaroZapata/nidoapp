@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useRef, useCallback } from 'react'
+import { useEffect, useState, useRef, useCallback, useMemo } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { Nunito } from 'next/font/google'
 import { createClient } from '@/lib/supabase'
@@ -37,7 +37,7 @@ export default function PerfilPage() {
   const params = useParams()
   const router = useRouter()
   const codigo = params.codigo as string
-  const supabase = createClient()
+  const supabase = useMemo(() => createClient(), [])
 
   const [session, setLocalSession] = useState(getSession())
   const [loading, setLoading] = useState(true)
@@ -58,6 +58,11 @@ export default function PerfilPage() {
 
   const fileInputRef = useRef<HTMLInputElement>(null)
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // Cleanup save timer on unmount
+  useEffect(() => {
+    return () => { if (saveTimerRef.current) clearTimeout(saveTimerRef.current) }
+  }, [])
 
   const flashSave = useCallback((msg = 'Guardado') => {
     setSaveStatus(msg)
@@ -245,10 +250,15 @@ export default function PerfilPage() {
     if (!file || !session) return
     setUploadingPhoto(true)
     try {
+      const { data: { session: authSession } } = await supabase.auth.getSession()
       const formData = new FormData()
       formData.append('file', file)
       formData.append('miembroId', session.miembroId)
-      const res = await fetch('/api/upload-avatar', { method: 'POST', body: formData })
+      const res = await fetch('/api/upload-avatar', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${authSession?.access_token ?? ''}` },
+        body: formData,
+      })
       if (!res.ok) throw new Error('Upload failed')
       const { url } = await res.json()
       setProfile(prev => prev ? { ...prev, foto_url: url } : prev)

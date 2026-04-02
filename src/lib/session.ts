@@ -1,3 +1,9 @@
+/**
+ * SECURITY NOTE: Session data is stored in localStorage and can be tampered with.
+ * All API endpoints MUST validate the session server-side using Supabase auth tokens.
+ * Never trust miembroId or salaId from this session without server verification.
+ */
+
 const STORAGE_KEY = 'nidoapp_session'
 
 export type Session = {

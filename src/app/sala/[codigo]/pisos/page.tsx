@@ -9,7 +9,7 @@ import MemberAvatar from '@/components/MemberAvatar'
 import { getSession } from '@/lib/session'
 import type { Piso, VotoPiso, Miembro } from '@/lib/types'
 import { fmtUYU } from '@/lib/format'
-import { resolverVideoUrl, comprimirImagen, subirArchivoStorage } from '@/lib/pisos-utils'
+import { resolverVideoUrl, comprimirImagen, subirArchivoStorage, SUPPORTED_SITES, detectSupportedSite, buildNotas } from '@/lib/pisos-utils'
 
 const fraunces = Fraunces({
   weight: 'variable',
@@ -31,24 +31,6 @@ type PisoConVotos = Piso & { votos: VotoPiso[]; promedio: number | null }
 
 const FORM_INIT = { titulo: '', url: '', alquiler: '', gastosCom: '', m2: '', zona: '', notas: '', direccion: '' }
 
-const SUPPORTED_SITES = [
-  { pattern: /infocasas/i, label: 'InfoCasas' },
-  { pattern: /mercadolibre/i, label: 'MercadoLibre' },
-  { pattern: /veocasas/i, label: 'VeoCasas' },
-  { pattern: /instagram\.com/i, label: 'Instagram' },
-  { pattern: /facebook\.com|fb\.me|fb\.com/i, label: 'Facebook' },
-]
-
-function detectSupportedSite(url: string): string | null {
-  if (!url.trim()) return null
-  try { new URL(url) } catch { return null }
-  for (const s of SUPPORTED_SITES) {
-    if (s.pattern.test(url)) return s.label
-  }
-  // Any valid URL is worth trying
-  if (/^https?:\/\/.+\..+/.test(url)) return 'sitio'
-  return null
-}
 
 
 export default function PisosPage() {
@@ -104,12 +86,16 @@ export default function PisosPage() {
     if (!session) return
     const supabase = createClient()
     setLoading(true)
-    const [{ data: pisosData }, { data: votosData }, { data: miembrosData }] = await Promise.all([
+    const [{ data: pisosData }, { data: miembrosData }] = await Promise.all([
       supabase.from('pisos').select().eq('sala_id', session.salaId).order('creado_en', { ascending: false }),
-      supabase.from('votos_piso').select(),
       supabase.from('miembros').select().eq('sala_id', session.salaId).not('user_id', 'is', null),
     ])
     if (miembrosData) setMiembros(miembrosData as Miembro[])
+    // Filtrar votos solo por pisos de esta sala (evita leak de datos cross-sala)
+    const pisoIds = ((pisosData as Piso[]) ?? []).map(p => p.id)
+    const { data: votosData } = pisoIds.length > 0
+      ? await supabase.from('votos_piso').select().in('piso_id', pisoIds)
+      : { data: [] as VotoPiso[] }
     const pisosConVotos: PisoConVotos[] = ((pisosData as Piso[]) ?? []).map((piso) => {
       const votos = ((votosData as VotoPiso[]) ?? []).filter((v) => v.piso_id === piso.id)
       const promedio = votos.length > 0 ? votos.reduce((s, v) => s + v.puntuacion, 0) / votos.length : null
@@ -287,23 +273,18 @@ export default function PisosPage() {
     setScraping(false)
   }
 
-  function buildNotas(d: { notas?: string; dormitorios?: number; banos?: number; moneda?: string }): string {
-    const parts: string[] = []
-    if (d.dormitorios) parts.push(`${d.dormitorios} dormitorio${d.dormitorios > 1 ? 's' : ''}`)
-    if (d.banos) parts.push(`${d.banos} baño${d.banos > 1 ? 's' : ''}`)
-    if (d.moneda) parts.push(`Moneda: ${d.moneda}`)
-    const header = parts.length > 0 ? parts.join(' · ') : ''
-    if (d.notas && header) return `${header}\n${d.notas}`
-    return d.notas || header
-  }
-
   async function handleAñadir(e: React.FormEvent) {
     e.preventDefault()
     setFormError('')
-    setGuardando(true)
+
+    if (!form.titulo?.trim()) { setFormError('El título es obligatorio'); return }
 
     const alquiler = form.alquiler ? parseFloat(form.alquiler) : null
+    if (alquiler !== null && isNaN(alquiler)) { setFormError('El alquiler debe ser un número válido'); return }
     const gastosCom = form.gastosCom ? parseFloat(form.gastosCom) : null
+    if (gastosCom !== null && isNaN(gastosCom)) { setFormError('Los gastos comunes deben ser un número válido'); return }
+
+    setGuardando(true)
 
     const supabase = createClient()
     const fotos = fotosForm.map(f => f.trim()).filter(Boolean)

@@ -6,7 +6,7 @@ import { Fraunces, Nunito, DM_Mono } from 'next/font/google'
 import { createClient } from '@/lib/supabase'
 import { getSession } from '@/lib/session'
 import type { Piso, VotoPiso, Miembro } from '@/lib/types'
-import { resolverVideoUrl, comprimirImagen, subirArchivoStorage } from '@/lib/pisos-utils'
+import { resolverVideoUrl, comprimirImagen, subirArchivoStorage, SUPPORTED_SITES, detectSupportedSite, buildNotas } from '@/lib/pisos-utils'
 import { ConfirmModal } from '@/components/ConfirmModal'
 import MemberAvatar from '@/components/MemberAvatar'
 
@@ -143,7 +143,7 @@ export default function PisoDetallePage() {
 
   async function handleVotar(e: React.FormEvent) {
     e.preventDefault()
-    if (puntuacion === 0) { setVotoError('Selecciona una puntuación'); return }
+    if (puntuacion < 1 || puntuacion > 5) { setVotoError('La puntuación debe estar entre 1 y 5'); return }
     setVotoError('')
     setGuardandoVoto(true)
     const supabase = createClient()
@@ -252,24 +252,6 @@ export default function PisoDetallePage() {
     })
   }
 
-  const SUPPORTED_SITES = [
-    { pattern: /infocasas/i, label: 'InfoCasas' },
-    { pattern: /mercadolibre/i, label: 'MercadoLibre' },
-    { pattern: /veocasas/i, label: 'VeoCasas' },
-    { pattern: /instagram\.com/i, label: 'Instagram' },
-    { pattern: /facebook\.com|fb\.me|fb\.com/i, label: 'Facebook' },
-  ]
-
-  function detectSupportedSite(url: string): string | null {
-    if (!url.trim()) return null
-    try { new URL(url) } catch { return null }
-    for (const s of SUPPORTED_SITES) {
-      if (s.pattern.test(url)) return s.label
-    }
-    if (/^https?:\/\/.+\..+/.test(url)) return 'sitio'
-    return null
-  }
-
   function abrirEditar() {
     if (!piso) return
     setEditForm({
@@ -317,7 +299,7 @@ export default function PisoDetallePage() {
         m2: f.m2 || (d.m2 != null ? String(d.m2) : ''),
         zona: f.zona || d.zona || '',
         direccion: f.direccion || d.direccion || '',
-        notas: f.notas || buildEditNotas(d),
+        notas: f.notas || buildNotas(d),
       }))
 
       // Compress and add photos to the piso
@@ -360,15 +342,7 @@ export default function PisoDetallePage() {
     setEditScraping(false)
   }
 
-  function buildEditNotas(d: { notas?: string; dormitorios?: number; banos?: number; moneda?: string }): string {
-    const parts: string[] = []
-    if (d.dormitorios) parts.push(`${d.dormitorios} dormitorio${d.dormitorios > 1 ? 's' : ''}`)
-    if (d.banos) parts.push(`${d.banos} baño${d.banos > 1 ? 's' : ''}`)
-    if (d.moneda) parts.push(`Moneda: ${d.moneda}`)
-    const header = parts.length > 0 ? parts.join(' · ') : ''
-    if (d.notas && header) return `${header}\n${d.notas}`
-    return d.notas || header
-  }
+
 
   async function handleEditar(e: React.FormEvent) {
     e.preventDefault()

@@ -38,7 +38,7 @@ export function NotifProvider({ children }: { children: ReactNode }) {
 
   const loadNotifs = useCallback((items: Notif[]) => {
     setNotifs(items.slice(0, 50))
-    setUnreadCount(items.length)
+    setUnreadCount(0)
   }, [])
 
   const clearNotifs = useCallback(() => setNotifs([]), [])

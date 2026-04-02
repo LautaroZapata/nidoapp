@@ -101,7 +101,7 @@ function SalaLayoutInner({ children }: { children: React.ReactNode }) {
   }, [session, addNotif, loadNotifs])
 
   function handleNotifClick(n: Notif) {
-    if (n.url) {
+    if (n.url && n.url.startsWith('/') && !n.url.startsWith('//')) {
       setBellOpen(false)
       router.push(n.url)
     }

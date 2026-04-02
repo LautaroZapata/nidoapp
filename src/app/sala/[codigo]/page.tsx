@@ -354,9 +354,14 @@ export default function SalaPage() {
         setConfirmDialog(null)
         const s = getSession()
         if (!s) return
+        const supabase = createClient()
+        const { data: { session: authSession } } = await supabase.auth.getSession()
         await fetch('/api/sala/remove-member', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${authSession?.access_token ?? ''}`,
+          },
           body: JSON.stringify({ miembro_id: miembroId, sala_id: s.salaId }),
         })
       },
@@ -367,9 +372,14 @@ export default function SalaPage() {
     setWppLoading(true); setShowWpp(true); setWppCode('')
     const s = getSession()
     if (!s) return
+    const supabase = createClient()
+    const { data: { session: authSession } } = await supabase.auth.getSession()
     const res = await fetch('/api/whatsapp/link', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${authSession?.access_token ?? ''}`,
+      },
       body: JSON.stringify({ miembro_id: s.miembroId, sala_id: s.salaId }),
     })
     const data = await res.json()
