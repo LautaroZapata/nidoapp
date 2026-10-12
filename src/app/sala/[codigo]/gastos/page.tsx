@@ -187,7 +187,7 @@ async function exportarExcel(gastos: Gasto[], pagos: Pago[], miembros: Miembro[]
   const net: Record<string, number> = {}
   miembros.forEach(m => { net[m.id] = 0 })
   gastos.forEach(g => {
-    if (g.tipo === 'fijo' || !g.pagado_por) return
+    if (!g.pagado_por) return
     if (!g.splits) {
       const participantes = miembros.filter(m => m.creado_en <= g.creado_en)
       const share = g.importe / (participantes.length || 1)
@@ -728,7 +728,7 @@ export default function GastosPage() {
       tipo: form.tipo,
       fecha: form.fecha,
       splits,
-      pagado_por: form.tipo === 'variable' ? (form.pagadoPor ?? null) : null,
+      pagado_por: form.pagadoPor ?? null,
     }
 
     if (editandoId) {
@@ -829,10 +829,10 @@ export default function GastosPage() {
           const remaining = gastos.filter(g => g.id !== id)
           setGastos(remaining)
 
-          // Si no quedan gastos variables compartidos, preguntar antes de limpiar pagos
-          const quedanVariables = remaining.some(g => g.tipo === 'variable' && !isPersonal(g))
-          if (!quedanVariables && pagos.length > 0) {
-            const confirmar = window.confirm('Al eliminar el último gasto variable compartido, se eliminarán todos los pagos registrados. ¿Continuar?')
+          // Si no quedan gastos compartidos, preguntar antes de limpiar pagos
+          const quedanCompartidos = remaining.some(g => !isPersonal(g) && g.pagado_por)
+          if (!quedanCompartidos && pagos.length > 0) {
+            const confirmar = window.confirm('Al eliminar el último gasto compartido, se eliminarán todos los pagos registrados. ¿Continuar?')
             if (confirmar) {
               await supabase.from('pagos').delete().eq('sala_id', session!.salaId)
               setPagos([])
@@ -2624,6 +2624,51 @@ export default function GastosPage() {
                 )
               })()}
 
+              {/* ── ¿Quién pagó? ── */}
+              <div className="g-field">
+                <label className="g-label">
+                  ¿Quién pagó?
+                  <span style={{ fontSize: '0.65rem', color: '#B09080', fontWeight: 400, textTransform: 'none', letterSpacing: 0, marginLeft: 6 }}>
+                    Sin seleccionar → no genera deuda
+                  </span>
+                </label>
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                  <button
+                    type="button"
+                    onClick={() => setForm(f => ({ ...f, pagadoPor: null }))}
+                    style={{
+                      padding: '6px 12px', borderRadius: 9, border: '1.5px solid',
+                      borderColor: form.pagadoPor === null ? '#C05A3B' : '#E0C8B8',
+                      background: form.pagadoPor === null ? 'rgba(192,90,59,0.08)' : 'white',
+                      color: form.pagadoPor === null ? '#C05A3B' : '#A07060',
+                      fontSize: '0.78rem', fontWeight: 600, cursor: 'pointer',
+                      fontFamily: 'var(--font-body), Nunito, sans-serif', transition: 'all 0.15s',
+                    }}
+                  >
+                    Ninguno
+                  </button>
+                  {miembros.map(m => (
+                    <button
+                      key={m.id}
+                      type="button"
+                      onClick={() => setForm(f => ({ ...f, pagadoPor: m.id }))}
+                      style={{
+                        display: 'flex', alignItems: 'center', gap: 6,
+                        padding: '6px 12px', borderRadius: 9, border: '1.5px solid',
+                        borderColor: form.pagadoPor === m.id ? m.color : '#E0C8B8',
+                        background: form.pagadoPor === m.id ? `${m.color}22` : 'white',
+                        color: form.pagadoPor === m.id ? m.color : '#6B4030',
+                        fontSize: '0.78rem', fontWeight: 600, cursor: 'pointer',
+                        fontFamily: 'var(--font-body), Nunito, sans-serif', transition: 'all 0.15s',
+                      }}
+                    >
+                      <MemberAvatar nombre={m.nombre} color={m.color} fotoUrl={m.foto_url} icono={m.icono} size="sm" style={{ width: 18, height: 18 }} />
+                      {m.nombre}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
               {/* Más opciones toggle */}
               <button
                 type="button"
@@ -2663,53 +2708,6 @@ export default function GastosPage() {
                   </button>
                 </div>
               </div>
-
-              {/* ── ¿Quién pagó? (solo variable) ── */}
-              {form.tipo === 'variable' && (
-                <div className="g-field">
-                  <label className="g-label">
-                    ¿Quién pagó?
-                    <span style={{ fontSize: '0.65rem', color: '#B09080', fontWeight: 400, textTransform: 'none', letterSpacing: 0, marginLeft: 6 }}>
-                      Sin seleccionar → no genera deuda
-                    </span>
-                  </label>
-                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                    <button
-                      type="button"
-                      onClick={() => setForm(f => ({ ...f, pagadoPor: null }))}
-                      style={{
-                        padding: '6px 12px', borderRadius: 9, border: '1.5px solid',
-                        borderColor: form.pagadoPor === null ? '#C05A3B' : '#E0C8B8',
-                        background: form.pagadoPor === null ? 'rgba(192,90,59,0.08)' : 'white',
-                        color: form.pagadoPor === null ? '#C05A3B' : '#A07060',
-                        fontSize: '0.78rem', fontWeight: 600, cursor: 'pointer',
-                        fontFamily: 'var(--font-body), Nunito, sans-serif', transition: 'all 0.15s',
-                      }}
-                    >
-                      Ninguno
-                    </button>
-                    {miembros.map(m => (
-                      <button
-                        key={m.id}
-                        type="button"
-                        onClick={() => setForm(f => ({ ...f, pagadoPor: m.id }))}
-                        style={{
-                          display: 'flex', alignItems: 'center', gap: 6,
-                          padding: '6px 12px', borderRadius: 9, border: '1.5px solid',
-                          borderColor: form.pagadoPor === m.id ? m.color : '#E0C8B8',
-                          background: form.pagadoPor === m.id ? `${m.color}22` : 'white',
-                          color: form.pagadoPor === m.id ? m.color : '#6B4030',
-                          fontSize: '0.78rem', fontWeight: 600, cursor: 'pointer',
-                          fontFamily: 'var(--font-body), Nunito, sans-serif', transition: 'all 0.15s',
-                        }}
-                      >
-                        <MemberAvatar nombre={m.nombre} color={m.color} fotoUrl={m.foto_url} icono={m.icono} size="sm" style={{ width: 18, height: 18 }} />
-                        {m.nombre}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
 
               {/* Categoría */}
               <div className="g-field">

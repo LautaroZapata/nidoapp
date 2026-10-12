@@ -1,4 +1,4 @@
-import type { Gasto, Miembro, Pago } from '@/lib/types'
+  import type { Gasto, Miembro, Pago } from '@/lib/types'
 
 export type Debt = { from: string; to: string; amount: number }
 
@@ -16,7 +16,6 @@ export function calcularBalance(
   miembros.forEach(m => { net[m.id] = 0 })
 
   gastos.forEach(g => {
-    if (g.tipo === 'fijo') return
     if (!g.pagado_por) return
 
     const payer = g.pagado_por
@@ -74,7 +73,7 @@ export function desglosarDeuda(
 ): Array<{ gasto: Gasto; monto: number }> {
   const result: Array<{ gasto: Gasto; monto: number }> = []
   for (const g of gastos) {
-    if (g.tipo === 'fijo') continue
+    if (!g.pagado_por) continue
     if (g.pagado_por !== toId) continue
     let monto: number
     if (!g.splits) {
